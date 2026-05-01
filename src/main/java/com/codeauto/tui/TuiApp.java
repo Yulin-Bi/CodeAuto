@@ -113,7 +113,7 @@ public class TuiApp {
       new SlashCommand("/status", "Show workspace, session, and context stats"),
       new SlashCommand("/model", "Show active model name"),
       new SlashCommand("/new", "Start a new session"),
-      new SlashCommand("/resume <id>", "Load a saved session"),
+      new SlashCommand("/resume", "Open saved session picker"),
       new SlashCommand("/fork", "Save current transcript into a new session"),
       new SlashCommand("/rename <name>", "Rename current session metadata"),
       new SlashCommand("/compact", "Compact middle conversation messages"),
@@ -416,7 +416,7 @@ public class TuiApp {
       input = "/fork";
       cursorPos = input.length();
     } else if (lower.equals("/re")) {
-      input = "/resume ";
+      input = "/resume";
       cursorPos = input.length();
     } else if (lower.equals("/ren")) {
       input = "/rename ";
@@ -718,7 +718,8 @@ public class TuiApp {
           /status     Show workspace, session, and context stats
           /model      Show active model name
           /new        Start a new session
-          /resume <id> Load a saved session
+          /resume    Open saved session picker
+          /resume <id> Load a saved session by id
           /fork       Save current transcript into a new session
           /rename <n> Rename current session metadata
           /compact    Compact middle conversation messages
@@ -1420,7 +1421,7 @@ public class TuiApp {
           + lineCount(transcriptPanel) + 2
           + (toolPanel.isEmpty() ? 0 : lineCount(toolPanel) + 2)
           + 1;
-      int inputOffset = Ansi.stringDisplayWidth("mini-code> ")
+      int inputOffset = Ansi.stringDisplayWidth("codeauto> ")
           + Ansi.stringDisplayWidth(input.substring(0, Math.min(cursorPos, input.length())));
       int innerWidth = Math.max(1, termWidth - 4);
       int cursorRow = promptStartRow + 5 + (inputOffset / innerWidth);
@@ -1671,7 +1672,7 @@ public class TuiApp {
   }
 
   private String renderPromptPanel(int termWidth) {
-    String promptLine = Ansi.GREEN + Ansi.BOLD + "mini-code>" + Ansi.RESET;
+    String promptLine = Ansi.GREEN + Ansi.BOLD + "codeauto>" + Ansi.RESET;
     String helpText = Ansi.DIM + "Enter send · Esc clear · Ctrl+C exit · Ctrl+O expand" + Ansi.RESET;
 
     String before = input.substring(0, Math.min(cursorPos, input.length()));

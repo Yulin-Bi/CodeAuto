@@ -80,6 +80,7 @@
                 </transformer>
               </transformers>
               <shadedClassifierName>shaded</shadedClassifierName>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
             </configuration>
           </execution>
         </executions>

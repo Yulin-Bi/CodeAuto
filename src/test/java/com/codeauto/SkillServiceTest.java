@@ -11,7 +11,7 @@ class SkillServiceTest {
   @Test
   void discoversProjectSkills() throws Exception {
     java.nio.file.Path temp = Files.createTempDirectory("codeauto-skills-test");
-    java.nio.file.Path skill = temp.resolve(".mini-code/skills/java/SKILL.md");
+    java.nio.file.Path skill = temp.resolve(".code-auto/skills/java/SKILL.md");
     Files.createDirectories(skill.getParent());
     Files.writeString(skill, "# Java Skill");
 

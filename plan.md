@@ -87,7 +87,7 @@
 
 ### Phase 7：Skills 与 MCP ✅ 完成
 
-- [x] Skills 扫描 `.mini-code/skills` + `.claude/skills`
+- [x] Skills 扫描 `.code-auto/skills` + `.claude/skills`
 - [x] `SkillService.discover()` + `LoadSkillTool`
 - [x] `SkillsCommand`（list/add/remove）
 - [x] MCP stdio client：Content-Length 帧 + newline JSON 帧 + 协议自动协商

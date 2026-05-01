@@ -1,6 +1,6 @@
 # CodeAuto
 
-CodeAuto 是一个借鉴 MINICODE 和 Claude Code 思想、使用 Java 21 开发的 AI 编程助手运行时。当前实现包含命令行对话、全屏终端界面、工具调用、权限审批、会话保存、上下文压缩、Skills 和 MCP 支持。
+CodeAuto 是一个面向 Java 生态、借鉴现代 AI 编程助手交互范式、使用 Java 21 开发的 AI 编程助手运行时。当前实现包含命令行对话、全屏终端界面、工具调用、权限审批、会话保存、上下文压缩、Skills 和 MCP 支持。
 
 ## 环境要求
 
@@ -16,7 +16,27 @@ CodeAuto 是一个借鉴 MINICODE 和 Claude Code 思想、使用 Java 21 开发
 mvn test
 ```
 
-使用离线 mock 模型启动普通命令行界面：
+首次使用真实模型前，需要先配置模型 API。CodeAuto 当前内置 Anthropic Messages API 适配器，最少需要配置 `CODEAUTO_BASE_URL`、`CODEAUTO_AUTH_TOKEN` 和 `CODEAUTO_MODEL`：
+
+```powershell
+$env:CODEAUTO_BASE_URL="https://api.anthropic.com"
+$env:CODEAUTO_AUTH_TOKEN="你的 Anthropic API Key"
+$env:CODEAUTO_MODEL="你的模型名称"
+```
+
+启动普通命令行界面：
+
+```bash
+mvn exec:java
+```
+
+启动全屏终端界面：
+
+```bash
+mvn exec:java "-Dexec.args=--tui"
+```
+
+使用离线 mock 模型启动普通命令行界面，适合开发自测、演示工具循环或没有 API Key 的环境：
 
 ```bash
 mvn exec:java "-Dexec.args=--mock"
@@ -40,14 +60,75 @@ mvn exec:java "-Dexec.args=--tui --max-steps 64"
 
 ```bash
 mvn package -DskipTests
-java -jar target/codeauto-0.1.0-SNAPSHOT-shaded.jar --mock --tui
+java -jar target/codeauto-0.1.0-SNAPSHOT-shaded.jar --tui
 ```
 
 也可以使用启动脚本：
 
 ```bash
-bin/codeauto --mock --tui
-bin/codeauto.bat --mock --tui
+bin/codeauto --tui
+bin/codeauto.bat --tui
+```
+
+如果只是离线体验或验证安装是否成功，可以在以上命令中追加 `--mock`。
+
+## API 配置
+
+CodeAuto 的配置优先级从低到高为：默认值、环境变量、项目级 `.codeauto/settings.json`、用户级 `~/.codeauto/settings.json`、命令行参数。命令行参数目前支持覆盖模型名和最大输出 token，例如 `--model <name>` 和 `--max-tokens 8192`。
+
+### 方式一：环境变量
+
+PowerShell：
+
+```powershell
+$env:CODEAUTO_BASE_URL="https://api.anthropic.com"
+$env:CODEAUTO_AUTH_TOKEN="你的 Anthropic API Key"
+$env:CODEAUTO_MODEL="你的模型名称"
+```
+
+macOS / Linux：
+
+```bash
+export CODEAUTO_BASE_URL="https://api.anthropic.com"
+export CODEAUTO_AUTH_TOKEN="你的 Anthropic API Key"
+export CODEAUTO_MODEL="你的模型名称"
+```
+
+### 方式二：用户级配置
+
+把长期使用的配置写入 `~/.codeauto/settings.json`。这个文件在用户目录下，不建议提交到项目仓库：
+
+```json
+{
+  "baseUrl": "https://api.anthropic.com",
+  "authToken": "你的 Anthropic API Key",
+  "model": "你的模型名称",
+  "maxOutputTokens": 4096,
+  "maxRetries": 4
+}
+```
+
+### 方式三：项目级配置
+
+项目级配置位于当前仓库的 `.codeauto/settings.json`，适合放不敏感的团队默认项，例如模型名或输出 token。不要把 API Key 写进项目级配置并提交：
+
+```json
+{
+  "model": "团队约定的模型名称",
+  "maxOutputTokens": 4096
+}
+```
+
+配置完成后可用真实模型启动：
+
+```bash
+mvn exec:java "-Dexec.args=--tui"
+```
+
+也可以临时覆盖模型名：
+
+```bash
+mvn exec:java "-Dexec.args=--tui --model <模型名称>"
 ```
 
 ## 会话恢复和分叉
@@ -57,19 +138,19 @@ bin/codeauto.bat --mock --tui
 恢复最近一次会话：
 
 ```bash
-mvn exec:java "-Dexec.args=--mock --resume"
+mvn exec:java "-Dexec.args=--resume"
 ```
 
 恢复指定会话：
 
 ```bash
-mvn exec:java "-Dexec.args=--mock --resume <id>"
+mvn exec:java "-Dexec.args=--resume <id>"
 ```
 
 从指定会话分叉：
 
 ```bash
-mvn exec:java "-Dexec.args=--mock --fork <id>"
+mvn exec:java "-Dexec.args=--fork <id>"
 ```
 
 在全屏终端界面中输入 `/resume` 可以打开会话选择器，用方向键选择历史会话，按 Enter 加载。
@@ -184,7 +265,7 @@ mvn exec:java "-Dexec.args=skills add my-skill /path/to/skill"
 mvn exec:java "-Dexec.args=skills remove my-skill"
 ```
 
-Skills 会从项目级 `.mini-code/skills` 和用户级 `.claude/skills` 等目录中发现。
+Skills 会从项目级 `.code-auto/skills` 和用户级 `.claude/skills` 等目录中发现。
 
 ## MCP 管理
 
@@ -256,6 +337,10 @@ stdio MCP 协议支持：
 对于 stdio MCP server，保存的 token 会注入为 `MCP_BEARER_TOKEN` 和 `MCP_AUTH_TOKEN`，除非配置中已经显式设置这些环境变量。
 
 ## 常见问题
+
+### 为什么不提交 dependency-reduced-pom.xml？
+
+`dependency-reduced-pom.xml` 是 Maven Shade Plugin 在构建 shaded jar 时生成的中间文件，不是项目的主构建配置。仓库只需要提交 `pom.xml`；用户 clone 后执行 `mvn test`、`mvn exec:java` 或 `mvn package`，Maven 会根据 `pom.xml` 自动下载依赖并构建。这个项目也显式关闭了 dependency-reduced POM 的生成，避免构建后产生容易误解的文件。
 
 ### 鼠标滚轮不能翻聊天记录
 

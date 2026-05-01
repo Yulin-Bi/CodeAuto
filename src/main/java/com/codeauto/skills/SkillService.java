@@ -24,7 +24,7 @@ public class SkillService {
 
   public List<SkillSummary> discover() {
     List<SkillSummary> skills = new ArrayList<>();
-    addDirectorySkills(skills, cwd.resolve(".mini-code/skills"));
+    addDirectorySkills(skills, cwd.resolve(".code-auto/skills"));
     addDirectorySkills(skills, cwd.resolve(".claude/skills"));
     addManagedSkills(skills);
     return skills;

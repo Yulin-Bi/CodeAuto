@@ -1,12 +1,12 @@
 # 🚀 CodeAuto
 
-> **Java 21 原生的 AI 编程助手运行时 — 借鉴 MINICODE 与 Claude Code 思想**
+> **Java 21 原生的 CodeAuto AI 编程助手运行时**
 
 ---
 
 ## 📋 项目简介
 
-CodeAuto 是一个基于 **Java 21** 构建的轻量级 AI 编程助手运行时，借鉴 **MINICODE** 与 **Claude Code** 的设计思想进行开发。它运行在命令行终端中，提供全屏 TUI 交互界面，支持工具调用、权限管理、会话管理、Skills 扩展和 MCP 协议集成。
+CodeAuto 是一个基于 **Java 21** 构建的轻量级 AI 编程助手运行时，面向 Java 生态并借鉴现代 AI 编程助手的交互范式进行开发。它运行在命令行终端中，提供全屏 TUI 交互界面，支持工具调用、权限管理、会话管理、Skills 扩展和 MCP 协议集成。
 
 | 项目维度 | 说明 |
 |---------|------|
@@ -41,7 +41,7 @@ CodeAuto 是一个基于 **Java 21** 构建的轻量级 AI 编程助手运行时
 │               Skills & MCP 扩展                  │
 │   ┌──────────────┐  ┌──────────────────────┐   │
 │   │ SkillService │  │ McpService           │   │
-│   │ .mini-code/  │  │ .mcp.json + stdio    │   │
+│   │ .code-auto/  │  │ .mcp.json + stdio    │   │
 │   │ .claude/     │  │ Streamable HTTP      │   │
 │   └──────────────┘  └──────────────────────┘   │
 └─────────────────────────────────────────────────┘
@@ -98,7 +98,7 @@ CodeAuto 是一个基于 **Java 21** 构建的轻量级 AI 编程助手运行时
 - 30 天过期清理
 
 ### 6. 🧩 Skills & MCP 扩展
-- **Skills**：从 `.mini-code/skills` 和 `.claude/skills` 自动发现
+- **Skills**：从 `.code-auto/skills` 和 `.claude/skills` 自动发现
 - **MCP 协议**：支持 stdio（Content-Length 帧 + newline JSON 帧，自动协商）、Streamable HTTP
 - **MCP 工具**：自动发现并包装为 `ToolDefinition`
 - **辅助工具**：`list_mcp_resources` `read_mcp_resource` `list_mcp_prompts` `get_mcp_prompt`
@@ -109,18 +109,21 @@ CodeAuto 是一个基于 **Java 21** 构建的轻量级 AI 编程助手运行时
 ## 🚀 快速启动
 
 ```bash
-# 离线 mock 模式（无需 API Key）
-mvn exec:java "-Dexec.args=--mock"
+# 真实模型模式：先配置 CODEAUTO_BASE_URL / CODEAUTO_AUTH_TOKEN / CODEAUTO_MODEL
+mvn exec:java
 
 # 全屏 TUI 模式
+mvn exec:java "-Dexec.args=--tui"
+
+# 离线 mock 模式（无需 API Key，适合自测）
 mvn exec:java "-Dexec.args=--mock --tui"
 
 # 构建 fat JAR 并启动
 mvn package -DskipTests
-java -jar target/codeauto-0.1.0-SNAPSHOT-shaded.jar --mock --tui
+java -jar target/codeauto-0.1.0-SNAPSHOT-shaded.jar --tui
 
 # 使用启动脚本
-bin/codeauto --mock --tui
+bin/codeauto --tui
 ```
 
 ---
