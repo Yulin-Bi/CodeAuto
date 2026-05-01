@@ -1,0 +1,8 @@
+{
+  "name": "my-daily-skills",
+  "skills": [
+    "./skills/engineering/tdd",
+    "./skills/engineering/to-prd",
+    "./skills/productivity/grill-me"
+  ]
+}

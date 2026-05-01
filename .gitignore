@@ -1,0 +1,8 @@
+target/
+.idea/
+.codeauto-test/
+dependency-reduced-pom.xml
+*.log
+.DS_Store
+开发记录心得.txt
+
