@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,6 +13,7 @@
   --bg-card: #14181c;
   --bg-card-hover: #1a1f24;
   --bg-terminal: #080a0c;
+  --nav-bg: rgba(10, 12, 14, 0.8);
   --border-color: #1e2832;
   --border-active: #2a3a4a;
   --text-primary: #e8edf2;
@@ -29,6 +30,31 @@
   --radius: 12px;
   --radius-sm: 8px;
   --radius-lg: 16px;
+}
+
+/* ─── Light theme ─── */
+[data-theme="light"] {
+  --bg-primary: #f4f6f9;
+  --bg-secondary: #e8ecf2;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f0f3f8;
+  --bg-terminal: #f8fafc;
+  --nav-bg: rgba(244, 246, 249, 0.85);
+  --border-color: #d0d7de;
+  --border-active: #a0aab8;
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-muted: #94a3b8;
+  --accent-green: #10b981;
+  --accent-green-dim: #059669;
+  --accent-blue: #3b82f6;
+  --accent-cyan: #06b6d4;
+  --accent-purple: #8b5cf6;
+  --accent-orange: #f59e0b;
+  --glow-green: rgba(16, 185, 129, 0.07);
+  --glow-blue: rgba(59, 130, 246, 0.05);
+  --glow-spot-green: rgba(16, 185, 129, 0.06);
+  --glow-spot-blue: rgba(59, 130, 246, 0.04);
 }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -54,7 +80,9 @@ body::before {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 256px 256px;
   pointer-events: none;
+  transition: opacity 0.4s;
 }
+[data-theme="light"] body::before { opacity: 0.015; }
 
 /* ─── Grid background ─── */
 .grid-bg {
@@ -79,12 +107,12 @@ body::before {
 }
 .glow-spot--green {
   width: 600px; height: 600px;
-  background: rgba(0, 255, 65, 0.04);
+  background: var(--glow-spot-green, rgba(0, 255, 65, 0.04));
   top: -200px; left: -100px;
 }
 .glow-spot--blue {
   width: 500px; height: 500px;
-  background: rgba(56, 189, 248, 0.03);
+  background: var(--glow-spot-blue, rgba(56, 189, 248, 0.03));
   bottom: -150px; right: -100px;
 }
 
@@ -95,7 +123,7 @@ nav {
   z-index: 100;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  background: rgba(10, 12, 14, 0.75);
+  background: var(--nav-bg);
   border-bottom: 1px solid var(--border-color);
   transition: border-color 0.3s;
 }
@@ -194,6 +222,41 @@ nav.scrolled { border-color: var(--border-active); }
   color: #0a0c0e;
 }
 .lang-btn:not(.active):hover { color: var(--text-secondary); }
+
+/* ─── Theme toggle ─── */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.theme-toggle:hover {
+  color: var(--accent-green);
+  border-color: var(--accent-green);
+  background: var(--glow-green);
+}
+.theme-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.4s ease;
+}
+.theme-toggle .sun-icon { display: none; }
+.theme-toggle .moon-icon { display: block; }
+[data-theme="light"] .theme-toggle .sun-icon { display: block; }
+[data-theme="light"] .theme-toggle .moon-icon { display: none; }
 
 /* ─── Sections ─── */
 section { padding: 100px 24px; }
@@ -711,6 +774,11 @@ footer {
         <button class="lang-btn" data-lang="en" onclick="switchLang('en')">EN</button>
       </div>
 
+      <button class="theme-toggle" onclick="switchTheme()" title="切换主题">
+        <svg class="moon-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="sun-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+
       <a href="https://github.com/Yulin-Bi/CodeAuto" target="_blank" rel="noopener" class="btn-gh">
         <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         <span data-i18n="nav.github">GitHub</span>
@@ -723,10 +791,10 @@ footer {
 <section class="hero">
   <div class="section-inner">
     <div class="hero-text">
-      <div class="hero-tag"><span class="live-dot"></span> <span data-i18n="hero.tag">JVM 原生编程代理运行时</span></div>
+      <div class="hero-tag"><span class="live-dot"></span> <span data-i18n="hero.tag">轻量级 JVM 编程代理运行时</span></div>
       <h1 data-i18n-html="hero.title">
-        在终端中<br>
-        <span class="highlight">构建 AI 代理</span>
+        CodeAuto，<br>
+        <span class="highlight">基于 Java 构建的轻量级编程代理</span>
       </h1>
       <p data-i18n="hero.desc">
         一个开源的 JVM 原生 AI 编程助手运行时。支持 CLI 和 TUI 双模式，
@@ -915,8 +983,8 @@ const I18N = {
     'nav.features': '功能特性',
     'nav.quickstart': '快速开始',
     'nav.github': 'GitHub',
-    'hero.tag': 'JVM 原生编程代理运行时',
-    'hero.title': '在终端中<br>\n        <span class="highlight">构建 AI 代理</span>',
+    'hero.tag': '轻量级 JVM 编程代理运行时',
+    'hero.title': 'CodeAuto，<br>\n        <span class="highlight">基于 Java 构建的轻量级编程代理</span>',
     'hero.desc': '一个开源的 JVM 原生 AI 编程助手运行时。支持 CLI 和 TUI 双模式，内置工具调用、权限控制、MCP 扩展、会话管理和持久化记忆 —— 全部在终端本地运行。',
     'hero.quickstart': '快速开始',
     'hero.viewgh': '查看 GitHub',
@@ -962,8 +1030,8 @@ const I18N = {
     'nav.features': 'Features',
     'nav.quickstart': 'Quick Start',
     'nav.github': 'GitHub',
-    'hero.tag': 'JVM-Native Coding Agent Runtime',
-    'hero.title': 'Build AI agents<br>\n        <span class="highlight">in the terminal</span>',
+    'hero.tag': 'Lightweight JVM Coding Agent Runtime',
+    'hero.title': 'CodeAuto,<br>\n        <span class="highlight">A lightweight Java-based coding agent</span>',
     'hero.desc': 'An open-source, JVM-based AI coding assistant runtime. CLI and TUI modes, built-in tool calling, permission control, MCP support, session management, and persistent memory — all running locally in your terminal.',
     'hero.quickstart': 'Quick Start',
     'hero.viewgh': 'View on GitHub',
@@ -1008,6 +1076,18 @@ const I18N = {
 };
 
 let currentLang = 'zh';
+let currentTheme = localStorage.getItem('codeauto-theme') || 'light';
+
+function switchTheme() {
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', currentTheme === 'light' ? 'light' : '');
+  try { localStorage.setItem('codeauto-theme', currentTheme); } catch(_) {}
+}
+
+// Apply saved theme on load (light is the HTML default)
+if (currentTheme !== 'light') {
+  document.documentElement.setAttribute('data-theme', '');
+}
 
 function switchLang(lang) {
   currentLang = lang;
