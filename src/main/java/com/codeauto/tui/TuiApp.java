@@ -498,6 +498,9 @@ public class TuiApp {
       scrollTranscript(1);
     } else if (seq.length() > 3 && seq.charAt(2) == '<') {
       parseSgrMouse(seq);
+    } else if (seq.length() == 6 && seq.charAt(1) == '[' && seq.charAt(2) == 'M') {
+      // Legacy X10 mouse format: ESC[Mbtnxy (JLine Windows native terminal)
+      parseX10Mouse(seq);
     } else if (seq.equals("")) {
       if (!input.isEmpty()) { input = ""; cursorPos = 0; render(); }
     }
@@ -523,6 +526,8 @@ public class TuiApp {
       if (next < 0) break;
       seq.append((char) next);
       if (isCompleteEscapeSequence(seq)) break;
+      // X10 mouse: ESC[M + 3 data bytes = 6 chars total
+      if (seq.length() >= 6 && seq.charAt(1) == '[' && seq.charAt(2) == 'M') break;
     }
     return seq.toString();
   }
@@ -537,6 +542,8 @@ public class TuiApp {
     if (seq.charAt(2) == '<') {
       return last == 'M' || last == 'm';
     }
+    // X10 mouse prefix ESC[M — wait for 3 data bytes (btn, x, y) in readEscapeSequence
+    if (len == 3 && seq.charAt(2) == 'M') return false;
     return (last >= '@' && last <= '~');
   }
 
@@ -555,6 +562,21 @@ public class TuiApp {
       }
     } catch (Exception ignored) {
       // Malformed mouse event — skip silently
+    }
+  }
+
+  /** Parse legacy X10 mouse event: ESC[Mbtnxy (JLine Windows native terminal). */
+  private void parseX10Mouse(String seq) {
+    try {
+      // btn = charAt(3) - 32,  x = charAt(4) - 32,  y = charAt(5) - 32
+      int btn = seq.charAt(3) - 0x20;
+      if ((btn & 0x40) != 0) {
+        // Scroll event: 64 (0x40) = up, 65 (0x41) = down
+        int delta = (btn & 0x01) == 0 ? -3 : 3;
+        scrollTranscript(delta);
+      }
+    } catch (Exception ignored) {
+      // Malformed X10 mouse event — skip silently
     }
   }
 

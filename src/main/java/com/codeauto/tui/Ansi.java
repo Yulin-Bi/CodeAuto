@@ -3,32 +3,36 @@ package com.codeauto.tui;
 public class Ansi {
   private Ansi() {}
 
-  public static final String RESET = "[0m";
-  public static final String DIM = "[2m";
-  public static final String CYAN = "[36m";
-  public static final String GREEN = "[32m";
-  public static final String YELLOW = "[33m";
-  public static final String RED = "[31m";
-  public static final String BLUE = "[34m";
-  public static final String MAGENTA = "[35m";
-  public static final String BOLD = "[1m";
-  public static final String REVERSE = "[7m";
-  public static final String BRIGHT_GREEN = "[92m";
-  public static final String BRIGHT_RED = "[91m";
-  public static final String BRIGHT_CYAN = "[96m";
-  public static final String BRIGHT_YELLOW = "[93m";
-  public static final String BORDER = "[38;5;31m";
+  public static final String RESET = "\033[0m";
+  public static final String DIM = "\033[2m";
+  public static final String CYAN = "\033[36m";
+  public static final String GREEN = "\033[32m";
+  public static final String YELLOW = "\033[33m";
+  public static final String RED = "\033[31m";
+  public static final String BLUE = "\033[34m";
+  public static final String MAGENTA = "\033[35m";
+  public static final String BOLD = "\033[1m";
+  public static final String REVERSE = "\033[7m";
+  public static final String BRIGHT_GREEN = "\033[92m";
+  public static final String BRIGHT_RED = "\033[91m";
+  public static final String BRIGHT_CYAN = "\033[96m";
+  public static final String BRIGHT_YELLOW = "\033[93m";
+  public static final String BORDER = "\033[38;5;31m";
 
-  public static final String ENTER_ALT = "[?1049h";
-  public static final String EXIT_ALT = "[?1049l";
-  public static final String CLEAR = "[2J[H";
-  public static final String HIDE_CURSOR = "[?25l";
-  public static final String SHOW_CURSOR = "[?25h";
-  public static final String ENABLE_SGR_MOUSE = "[?1000h[?1002h[?1003h[?1006h";
-  public static final String DISABLE_SGR_MOUSE = "[?1000l[?1002l[?1003l[?1006l";
+  public static final String ENTER_ALT = "\033[?1049h";
+  public static final String EXIT_ALT = "\033[?1049l";
+  public static final String CLEAR = "\033[2J\033[H";
+  public static final String HIDE_CURSOR = "\033[?25l";
+  public static final String SHOW_CURSOR = "\033[?25h";
+
+  /** Disable win32 input mode (?9001l) so Windows Terminal delivers raw SGR mouse sequences.
+   *  Then enable: basic tracking (?1000h), cell-motion/drag (?1002h), SGR extended (?1006h). */
+  public static final String ENABLE_SGR_MOUSE = "\033[?9001l\033[?1000h\033[?1002h\033[?1006h";
+  /** Disable tracking and re-enable win32 input mode for normal terminal operation. */
+  public static final String DISABLE_SGR_MOUSE = "\033[?1000l\033[?1002l\033[?1006l\033[?9001h";
 
   public static String stripAnsi(String input) {
-    return input.replaceAll("\\[[0-9;]*[a-zA-Z]", "");
+    return input.replaceAll("\033\\[[0-9;]*[a-zA-Z]", "");
   }
 
   public static int charDisplayWidth(int codePoint) {
