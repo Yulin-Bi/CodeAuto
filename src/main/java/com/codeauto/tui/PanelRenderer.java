@@ -7,7 +7,7 @@ public class PanelRenderer {
   private PanelRenderer() {}
 
   public static String renderPanel(String title, String body, int termWidth, String rightTitle) {
-    int width = Math.max(60, termWidth);
+    int width = Math.max(20, termWidth);
     int inner = width - 4;
     List<String> bodyLines = new ArrayList<>();
     if (body != null && !body.isEmpty()) {
@@ -22,7 +22,6 @@ public class PanelRenderer {
         ? Ansi.DIM + Ansi.truncatePlain(rightTitle, Math.max(10, inner / 3)) + Ansi.RESET
         : null;
     sb.append(panelRow(Ansi.BRIGHT_CYAN + Ansi.BOLD + title + Ansi.RESET, width, rt)).append("\n");
-    sb.append(emptyPanelRow(width)).append("\n");
     for (String line : bodyLines) {
       sb.append(panelRow(line, width, null)).append("\n");
     }
@@ -58,10 +57,6 @@ public class PanelRenderer {
     int leftPrinted = Ansi.stringDisplayWidth(leftAdjusted);
     int pad = Math.max(0, inner - leftPrinted - rightWidth);
     return Ansi.BORDER + "│" + Ansi.RESET + " " + leftAdjusted + " ".repeat(pad) + rightText + " " + Ansi.BORDER + "│" + Ansi.RESET;
-  }
-
-  private static String emptyPanelRow(int width) {
-    return Ansi.BORDER + "│" + Ansi.RESET + " ".repeat(Math.max(0, width - 2)) + Ansi.BORDER + "│" + Ansi.RESET;
   }
 
   private static List<String> wrapPanelBodyLine(String line, int width) {

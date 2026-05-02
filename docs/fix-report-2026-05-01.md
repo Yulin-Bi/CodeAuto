@@ -316,3 +316,88 @@ mvn test
 ```
 
 验证结果：通过，58 个测试。
+
+## TUI 鼠标滚轮与布局稳定性优化
+
+日期：2026-05-02
+
+### 鼠标滚轮仍无法滚动聊天记录
+
+问题：
+
+- TUI 已启用 SGR mouse，但原事件读取逻辑只短暂等待 `reader.ready()`，在 Windows Terminal / PowerShell 下可能读到半截 ESC 序列。
+- 鼠标滚轮序列如果被拆开读取，就不会进入 SGR mouse 解析分支，表现为滚轮没有效果。
+
+修复：
+
+- 增加完整 ESC 序列读取逻辑，等待 CSI / SGR mouse 序列到达终止符后再解析。
+- SGR mouse tracking 增加 all-motion 模式，提升终端兼容性。
+- 保留 PageUp/PageDown、Alt/Ctrl+方向键滚动路径。
+
+### 快捷键上下翻动时 UI 框散掉
+
+问题：
+
+- TUI 先按聊天记录原始行数切片，再交给面板渲染器。
+- 如果聊天内容或工具输出包含长行，面板渲染器会二次换行，导致实际输出行数超过预估高度。
+- 输出高度超过终端高度后，终端发生滚屏，看起来像边框被撕开或顶部栏被挤乱。
+
+修复：
+
+- 会话记录在滚动切片前先按面板可视宽度进行换行。
+- 滚动偏移量基于换行后的实际显示行计算，避免渲染结果超过预算高度。
+- 每次渲染从屏幕左上角清到末尾后再绘制，减少旧内容残留。
+
+### 聊天记录区域太小
+
+问题：
+
+- Header 区域包含说明文字、空行、路径、状态徽章和权限说明，占用高度偏多。
+
+修复：
+
+- 压缩 Header 内容，仅保留当前目录、路径和关键状态徽章。
+- 减少 Header 与会话记录之间的空白，把更多终端高度留给 session feed。
+- 移除面板标题后的固定空行，让 Header、Prompt、Tools 等面板更紧凑。
+- 面板宽度改为跟随真实终端宽度，避免窄窗口下强制 60 列导致横向溢出。
+- Footer 状态栏在空间不足时截断左右内容，避免状态文本撑破一整行。
+
+验证命令：
+
+```bash
+mvn test
+javac --release 21 -cp "target/classes;$(Get-Content target\\classpath.txt)" -d target/classes src\\main\\java\\com\\codeauto\\tui\\Ansi.java src\\main\\java\\com\\codeauto\\tui\\PanelRenderer.java src\\main\\java\\com\\codeauto\\tui\\TuiApp.java
+```
+
+验证结果：
+
+- `mvn test`：通过，58 个测试。
+- `javac` 显式编译 TUI 改动类：通过。
+
+备注：
+
+- 曾尝试执行 `mvn clean test`，但 Windows 下 `target/test-classes/com/codeauto/tools/ToolParameterCompatibilityTest.class` 被占用，clean 阶段删除失败；随后使用 `mvn test` 和显式 `javac` 完成验证。
+
+### 快捷键和滚轮回归：ESC 序列后半截进入命令区
+
+问题：
+
+- 上一轮增强 ESC 序列读取后，完成条件过宽，把 `ESC [` 误判为完整序列。
+- PageUp/PageDown、方向键和鼠标滚轮都会以 `ESC [` 开头，因此后续的 `5~`、`1;5A`、`<64;...M` 等字符会漏到普通输入路径。
+- 结果表现为快捷键和鼠标都无法翻页，并且命令区出现残留字符。
+
+修复：
+
+- `ESC [` 只有前缀时不再视为完整序列。
+- 普通 CSI 序列至少读到第三个字符，并以标准终止符结束后才处理。
+- SGR mouse 序列必须读到 `M` 或 `m` 后才处理。
+- 新增 `TuiAppEscapeSequenceTest`，覆盖半截 `ESC [`、方向键、PageUp、Ctrl/Alt 方向键和 SGR 鼠标滚轮序列。
+
+验证命令：
+
+```bash
+mvn test
+javac --release 21 -cp "target/classes;$(Get-Content target\\classpath.txt)" -d target/classes src\\main\\java\\com\\codeauto\\tui\\TuiApp.java
+```
+
+验证结果：通过，60 个测试。

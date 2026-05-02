@@ -264,7 +264,6 @@ public class TuiApp {
   // --- Event loop ---
 
   private void eventLoop() throws IOException {
-    var buf = new StringBuilder();
     while (running) {
       int c = terminal.reader().read();
       if (c < 0) break;
@@ -288,19 +287,7 @@ public class TuiApp {
         }
         if (c == 0x1B) {
           compactNotification = null;
-          buf.setLength(0);
-          buf.append((char) c);
-          try {
-            Thread.sleep(10);
-          } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-          }
-          while (terminal.reader().ready()) {
-            int next = terminal.reader().read();
-            if (next < 0) break;
-            buf.append((char) next);
-          }
-          handleEscapeSequence(buf.toString());
+          handleEscapeSequence(readEscapeSequence(c));
         }
         continue;
       }
@@ -323,19 +310,7 @@ public class TuiApp {
         case 0x09 -> handleTab();
         case 0x1B -> {
           compactNotification = null;
-          buf.setLength(0);
-          buf.append((char) c);
-          try {
-            Thread.sleep(10);
-          } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-          }
-          while (terminal.reader().ready()) {
-            int next = terminal.reader().read();
-            if (next < 0) break;
-            buf.append((char) next);
-          }
-          handleEscapeSequence(buf.toString());
+          handleEscapeSequence(readEscapeSequence(c));
         }
         case 0x15 -> { input = ""; cursorPos = 0; render(); }
         case 0x01 -> {
@@ -481,10 +456,47 @@ public class TuiApp {
     }
   }
 
-  /** Parse SGR mouse event: ESC[<row;col;btnM or ESC[<row;col;btnm */
+  private String readEscapeSequence(int first) throws IOException {
+    var seq = new StringBuilder();
+    seq.append((char) first);
+
+    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(40);
+    while (System.nanoTime() < deadline) {
+      if (!terminal.reader().ready()) {
+        try {
+          Thread.sleep(2);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          break;
+        }
+        continue;
+      }
+
+      int next = terminal.reader().read();
+      if (next < 0) break;
+      seq.append((char) next);
+      if (isCompleteEscapeSequence(seq)) break;
+    }
+    return seq.toString();
+  }
+
+  static boolean isCompleteEscapeSequence(CharSequence seq) {
+    int len = seq.length();
+    if (len <= 1) return false;
+    if (seq.charAt(1) == 'O') return len >= 3;
+    if (seq.charAt(1) != '[') return true;
+    if (len < 3) return false;
+    char last = seq.charAt(len - 1);
+    if (seq.charAt(2) == '<') {
+      return last == 'M' || last == 'm';
+    }
+    return (last >= '@' && last <= '~');
+  }
+
+  /** Parse SGR mouse event: ESC[<button;col;rowM or ESC[<button;col;rowm */
   private void parseSgrMouse(String seq) {
     try {
-      // Format: ESC[<row;col;btnM or m
+      // Format: ESC[<button;col;rowM or m
       String inner = seq.substring(3, seq.length() - 1);
       String[] parts = inner.split(";");
       if (parts.length != 3) return;
@@ -526,15 +538,7 @@ public class TuiApp {
           return;
         }
         case 0x1B -> {
-          var seq = new StringBuilder();
-          seq.append((char) c);
-          try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-          while (terminal.reader().ready()) {
-            int next = terminal.reader().read();
-            if (next < 0) break;
-            seq.append((char) next);
-          }
-          if (seq.toString().equals("")) {
+          if (readEscapeSequence(c).equals("")) {
             approvalFeedbackMode = false;
             render();
           }
@@ -586,15 +590,7 @@ public class TuiApp {
         }
       }
       case 0x1B -> {
-        var seq = new StringBuilder();
-        seq.append((char) c);
-        try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        while (terminal.reader().ready()) {
-          int next = terminal.reader().read();
-          if (next < 0) break;
-          seq.append((char) next);
-        }
-        String es = seq.toString();
+        String es = readEscapeSequence(c);
         if (es.equals("[A") || es.equals("OA")) {
           pendingApproval = new PendingApproval(pa.request(), pa.future(),
               Math.max(0, pa.selectedIndex() - 1));
@@ -1166,15 +1162,7 @@ public class TuiApp {
     switch (c) {
       case 0x03 -> { running = false; return; }
       case 0x1B -> {
-        var seq = new StringBuilder();
-        seq.append((char) c);
-        try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        while (terminal.reader().ready()) {
-          int next = terminal.reader().read();
-          if (next < 0) break;
-          seq.append((char) next);
-        }
-        String es = seq.toString();
+        String es = readEscapeSequence(c);
         if (es.equals("\033[A") || es.equals("\033OA")) {
           if (sp.allProjects()) {
             int idx = Math.max(0, sp.projectIndex() - 1);
@@ -1362,9 +1350,7 @@ public class TuiApp {
   private void render() {
     var sb = new StringBuilder();
 
-    // Flicker-free update: cursor home + overwrite + clear to end
-    // instead of clearing the entire screen which causes a visible flash
-    sb.append("[H");
+    sb.append("[H[J");
     sb.append(Ansi.HIDE_CURSOR);
 
     int termWidth = terminal.getSize().getColumns();
@@ -1387,13 +1373,13 @@ public class TuiApp {
       bottomPanel = renderPromptPanel(termWidth);
     }
 
-    int fixedLines = lineCount(headerPanel) + 2
+    int fixedLines = lineCount(headerPanel) + 1
         + (toolPanel.isEmpty() ? 0 : lineCount(toolPanel) + 2)
         + lineCount(bottomPanel)
         + 1
         + 1;
     int transcriptPanelOverhead = 4;
-    int transcriptMaxLines = Math.max(1, termHeight - fixedLines - transcriptPanelOverhead);
+    int transcriptMaxLines = Math.max(3, termHeight - fixedLines - transcriptPanelOverhead);
 
     String transcriptBody = buildTranscriptBody(termWidth, transcriptMaxLines);
     String rightTitle = transcriptSize() + " events";
@@ -1402,7 +1388,7 @@ public class TuiApp {
     }
     String transcriptPanel = PanelRenderer.renderPanel("session feed", transcriptBody, termWidth, rightTitle);
 
-    sb.append(headerPanel).append("\n\n");
+    sb.append(headerPanel).append("\n");
     sb.append(transcriptPanel).append("\n\n");
 
     if (!toolPanel.isEmpty()) {
@@ -1417,7 +1403,7 @@ public class TuiApp {
     sb.append("[J");
 
     if (sessionPicker == null && pendingApproval == null) {
-      int promptStartRow = lineCount(headerPanel) + 2
+      int promptStartRow = lineCount(headerPanel) + 1
           + lineCount(transcriptPanel) + 2
           + (toolPanel.isEmpty() ? 0 : lineCount(toolPanel) + 2)
           + 1;
@@ -1442,8 +1428,6 @@ public class TuiApp {
 
   private String buildHeaderBody() {
     var sb = new StringBuilder();
-    sb.append(Ansi.DIM).append("Java terminal coding assistant.").append(Ansi.RESET).append("\n\n");
-
     String cwdName = cwd.getFileName().toString();
     String modelName = config != null ? config.model() : "unknown";
     sb.append(Ansi.BLUE).append(Ansi.BOLD).append(Ansi.truncatePlain(cwdName, 24)).append(Ansi.RESET);
@@ -1460,8 +1444,7 @@ public class TuiApp {
     }
 
     var badgeLine = joinBadges(badges, termWidth());
-    sb.append(badgeLine).append("\n");
-    sb.append(Ansi.DIM).append("permissions: ask on sensitive actions").append(Ansi.RESET);
+    sb.append(badgeLine);
 
     return sb.toString();
   }
@@ -1502,7 +1485,7 @@ public class TuiApp {
   }
 
   private int termWidth() {
-    return Math.max(60, terminal.getSize().getColumns());
+    return Math.max(20, terminal.getSize().getColumns());
   }
 
   private int transcriptHeight(int termHeight) {
@@ -1515,7 +1498,7 @@ public class TuiApp {
   }
 
   private String buildTranscriptBody(int termWidth, int maxLines) {
-    var lines = renderTranscriptLines();
+    var lines = wrapDisplayLines(renderTranscriptLines(), Math.max(1, termWidth - 4));
     if (lines.isEmpty()) {
       return "Type /help for commands.";
     }
@@ -1595,6 +1578,45 @@ public class TuiApp {
     cachedRenderLines = lines;
     transcriptDirty = false;
     return lines;
+  }
+
+  private List<String> wrapDisplayLines(List<String> inputLines, int width) {
+    var wrapped = new ArrayList<String>();
+    for (String line : inputLines) {
+      wrapped.addAll(wrapDisplayLine(line, width));
+    }
+    return wrapped;
+  }
+
+  private List<String> wrapDisplayLine(String line, int width) {
+    var parts = new ArrayList<String>();
+    if (line == null || line.isEmpty() || width <= 0) {
+      parts.add("");
+      return parts;
+    }
+
+    String plain = Ansi.stripAnsi(line);
+    if (Ansi.stringDisplayWidth(plain) <= width) {
+      parts.add(line);
+      return parts;
+    }
+
+    var current = new StringBuilder();
+    int currentWidth = 0;
+    for (int cp : plain.codePoints().toArray()) {
+      int cw = Ansi.charDisplayWidth(cp);
+      if (currentWidth + cw > width && currentWidth > 0) {
+        parts.add(current.toString());
+        current = new StringBuilder();
+        currentWidth = 0;
+      }
+      current.appendCodePoint(cp);
+      currentWidth += cw;
+    }
+    if (!current.isEmpty()) {
+      parts.add(current.toString());
+    }
+    return parts;
   }
 
   private String renderTranscriptEntry(TranscriptEntry entry) {
@@ -1889,10 +1911,20 @@ public class TuiApp {
       left.append("  ").append(Ansi.YELLOW).append(Ansi.BOLD).append(compactNotification).append(Ansi.RESET);
     }
 
-    int leftLen = Ansi.stringDisplayWidth(Ansi.stripAnsi(left.toString()));
-    int rightLen = Ansi.stringDisplayWidth(Ansi.stripAnsi(right.toString()));
-    int gap = Math.max(1, termWidth - 2 - leftLen - rightLen);
+    int contentWidth = Math.max(1, termWidth - 2);
+    String leftText = left.toString();
+    String rightText = right.toString();
+    int leftLen = Ansi.stringDisplayWidth(leftText);
+    int rightLen = Ansi.stringDisplayWidth(rightText);
+    if (leftLen + rightLen + 1 > contentWidth) {
+      int rightBudget = Math.min(rightLen, Math.max(8, contentWidth / 2));
+      rightText = Ansi.DIM + Ansi.truncatePlain(Ansi.stripAnsi(rightText), rightBudget) + Ansi.RESET;
+      rightLen = Ansi.stringDisplayWidth(rightText);
+      leftText = Ansi.truncatePlain(Ansi.stripAnsi(leftText), Math.max(0, contentWidth - rightLen - 1));
+      leftLen = Ansi.stringDisplayWidth(leftText);
+    }
+    int gap = Math.max(1, contentWidth - leftLen - rightLen);
 
-    return Ansi.BORDER + " " + Ansi.RESET + left + " ".repeat(gap) + right + " " + Ansi.BORDER + Ansi.RESET;
+    return Ansi.BORDER + " " + Ansi.RESET + leftText + " ".repeat(gap) + rightText + " " + Ansi.BORDER + Ansi.RESET;
   }
 }

@@ -24,8 +24,8 @@ public class Ansi {
   public static final String CLEAR = "[2J[H";
   public static final String HIDE_CURSOR = "[?25l";
   public static final String SHOW_CURSOR = "[?25h";
-  public static final String ENABLE_SGR_MOUSE = "[?1000h[?1002h[?1006h";
-  public static final String DISABLE_SGR_MOUSE = "[?1000l[?1002l[?1006l";
+  public static final String ENABLE_SGR_MOUSE = "[?1000h[?1002h[?1003h[?1006h";
+  public static final String DISABLE_SGR_MOUSE = "[?1000l[?1002l[?1003l[?1006l";
 
   public static String stripAnsi(String input) {
     return input.replaceAll("\\[[0-9;]*[a-zA-Z]", "");
