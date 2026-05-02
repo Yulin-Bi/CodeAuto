@@ -1,8 +1,12 @@
 # CodeAuto
 
-CodeAuto 是一个用 Java 21 编写的终端 AI 编程助手运行时。它提供普通 CLI 和全屏 TUI 两种交互方式，内置工具调用、权限审批、文件 diff review、会话保存与恢复、上下文压缩、Skills、MCP、持久化记忆和多级项目指令加载。
+当前主流的 AI Coding 工具几乎全部基于 TypeScript 或 Python 实现，JVM 生态严重缺位。
 
-当前项目重点是：在 JVM 生态里实现一个轻量、可测试、可扩展的本地 coding agent runtime。
+对于以 Java 为主力语言的开发者来说，想学习或二次开发 AI Coding Agent，往往需要越过语言壁垒，门槛极高。
+
+CodeAuto 参考 Claude Code 源码的设计思路，融合 MINICODE 的轻量可扩展理念，用 **Java 21** 构建了一个简单、可扩展、贴近 JVM 开发者的 AI 编程代理运行时。
+
+提供普通 CLI 和全屏 TUI 两种交互方式，内置工具调用、权限审批、文件 diff review、会话保存与恢复、上下文压缩、Skills、MCP、持久化记忆和多级项目指令加载。
 
 ## 环境要求
 
@@ -43,14 +47,34 @@ mvn package -DskipTests
 java -jar target/codeauto-0.1.0-SNAPSHOT-shaded.jar --tui
 ```
 
-也可以使用启动脚本：
+也可以使用启动脚本，**从任意目录运行**，自动以当前目录为工作目录：
 
 ```bash
 bin/codeauto --tui
 bin/codeauto.bat --tui
 ```
 
-Windows `bin/codeauto.bat` 会自动切换到项目根目录，避免默认 workspace 变成 `CodeAuto/bin`。
+指定其他目录作为工作目录：
+
+```bash
+bin/codeauto --cwd /path/to/project --tui
+```
+
+### 随处运行
+
+将 `bin` 目录添加到 `PATH` 后，可直接在任何目录调用：
+
+```bash
+codeauto --tui                    # 当前目录为工作目录
+codeauto --mock --tui             # 离线 Mock 模式
+codeauto --cwd D:/other-project   # 指定其他工作目录
+```
+
+**Windows PowerShell（管理员）添加到 PATH：**
+
+```powershell
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$env:USERPROFILE\CodeAuto\bin", "User")
+```
 
 ## 模型配置
 

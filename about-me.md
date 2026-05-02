@@ -1,6 +1,12 @@
 # About CodeAuto
 
-CodeAuto 是一个 Java 21 原生的终端 AI 编程助手运行时。它把模型对话、工具调用、权限审批、会话管理、上下文压缩、MCP、Skills 和持久化记忆整合在一个轻量 JVM 应用里。
+## 项目背景
+
+当前主流的 AI Coding 工具几乎全部基于 TypeScript 或 Python 实现，JVM 生态严重缺位。
+
+对于以 Java 为主力语言的开发者来说，想学习或二次开发 AI Coding Agent，往往需要越过语言壁垒，门槛极高。
+
+CodeAuto 参考 Claude Code 源码的设计思路，融合 MINICODE 的轻量可扩展理念，用 **Java 21** 构建了一个简单、可扩展、贴近 JVM 开发者的 AI 编程代理运行时。
 
 ## 项目定位
 
@@ -206,7 +212,33 @@ BUILD SUCCESS
 - Assistant 流式输出事件
 - TUI escape sequence 处理
 
-## 设计取向
+## 常用 CLI 参数
+
+```bash
+# 工作目录（默认：当前目录）
+codeauto --cwd /path/to/project
+
+# 启动模式
+codeauto --tui             # 全屏 TUI 模式
+codeauto --mock --tui      # 离线 Mock + TUI（无需 API Key）
+codeauto                   # 普通 CLI 模式
+
+# 会话相关
+codeauto --resume          # 恢复最近会话
+codeauto --resume <id>     # 恢复指定会话
+codeauto --fork <id>       # 从指定会话分叉
+
+# 模型配置
+codeauto --model claude-sonnet-4-6
+codeauto --max-tokens 8192
+
+# 最大工具调用步数
+codeauto --max-steps 64
+
+# 随处运行：将 bin/ 目录加入 PATH 即可
+```
+
+## 设计与架构
 
 CodeAuto 保持几个工程原则：
 

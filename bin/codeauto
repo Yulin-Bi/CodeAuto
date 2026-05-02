@@ -3,14 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+JAR="$PROJECT_DIR/target/codeauto-0.1.0-SNAPSHOT-shaded.jar"
 
-cd "$PROJECT_DIR"
-
-# Build fat JAR if missing
-JAR="$PROJECT_DIR/target/codeauto-0.1.0-SNAPSHOT.jar"
+# Build fat JAR if missing (don't change user's cwd)
 if [ ! -f "$JAR" ]; then
   echo "Building codeauto (first launch)..." >&2
-  mvn -q package -DskipTests 2>/dev/null || {
+  (cd "$PROJECT_DIR" && mvn -q package -DskipTests) 2>/dev/null || {
     echo "Error: build failed. Run 'mvn package -DskipTests' in codeauto/ manually." >&2
     exit 1
   }
