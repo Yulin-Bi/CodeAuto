@@ -2,6 +2,7 @@ package com.codeauto.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -38,6 +39,19 @@ public class ConfigLoader {
       result = result.withMaxOutputTokens(overrides.maxTokens());
     }
     return result;
+  }
+
+  /** Persist user-level settings to ~/.codeauto/settings.json. */
+  public static void writeUserSettings(RuntimeConfig config) throws Exception {
+    Path path = RuntimeConfig.homeDir().resolve("settings.json");
+    Files.createDirectories(path.getParent());
+    ObjectNode json = MAPPER.createObjectNode();
+    json.put("model", config.model());
+    json.put("baseUrl", config.baseUrl());
+    json.put("authToken", config.authToken());
+    json.put("maxOutputTokens", config.maxOutputTokens());
+    json.put("maxRetries", config.maxRetries());
+    Files.writeString(path, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(json) + "\n");
   }
 
   public record CliOverrides(String model, int maxTokens) {

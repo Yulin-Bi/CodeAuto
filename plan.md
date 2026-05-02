@@ -199,3 +199,27 @@ BUILD SUCCESS
 - 配置目录：`~/.codeauto/`
 - 不引入 Spring/Quarkus 等重型框架
 - 纯 ANSI 转义序列渲染（无第三方 TUI 框架）
+## FuturePlan 优化追加记录（2026-05-02）
+
+### 第一阶段：TUI 即时体验优化
+
+- [x] 增加 TUI 本地工具快捷命令，简单文件和命令操作不再需要进入 AgentLoop：
+  - `/ls [path]`：直接调用 `list_files`
+  - `/grep <pattern>::[path]`：直接调用 `grep_files`
+  - `/read <path>`：直接调用 `read_file`
+  - `/write <path>::<content>`：直接调用 `write_file`，保留 diff review
+  - `/modify <path>::<content>`：直接调用 `modify_file`，保留 diff review
+  - `/edit <path>::<search>::<replace>`：直接调用 `edit_file`，保留 diff review
+  - `/patch <path>::<search>::<replace>...`：批量替换后复用 `modify_file` 写入 review
+  - `/cmd <command>`：直接调用 `run_command`
+- [x] 增强 `/model`：支持 `/model <name>` 在 TUI 内切换当前模型，并持久化写入 `~/.codeauto/settings.json`；切换后重建 `AgentLoop`，后续对话立即使用新模型。
+- [x] 增加 TUI `/mcp`：展示已配置 MCP server 的连接/错误状态、传输类型和工具数量，便于在 TUI 内调试 MCP。
+- [x] 增加 `ConfigLoader.writeUserSettings()`，为 TUI 内模型切换提供用户级 settings 写回能力。
+- [x] 增加配置写回测试，确保写入的用户 settings 可被 `ConfigLoader` 重新加载。
+
+### 验证结果
+
+```
+Tests run: 61, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```

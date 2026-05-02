@@ -1,6 +1,9 @@
 package com.codeauto.tui;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.codeauto.config.ConfigLoader;
 import com.codeauto.config.RuntimeConfig;
 import com.codeauto.context.CompactService;
 import com.codeauto.context.ContextStats;
@@ -10,7 +13,9 @@ import com.codeauto.core.AgentLoopListener;
 import com.codeauto.core.ChatMessage;
 import com.codeauto.manage.ManagementStore;
 import com.codeauto.mcp.McpService;
+import com.codeauto.model.AnthropicModelAdapter;
 import com.codeauto.model.ModelAdapter;
+import com.codeauto.model.MockModelAdapter;
 import com.codeauto.permissions.PermissionDecision;
 import com.codeauto.permissions.PermissionManager;
 import com.codeauto.permissions.PermissionPrompt;
@@ -38,6 +43,7 @@ import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 
 public class TuiApp {
+  private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final int CONTEXT_WINDOW = 200_000;
   private static final int PERMISSION_TIMEOUT_SECS = 120;
   private static final int SCROLL_STEP = 5;
@@ -45,10 +51,10 @@ public class TuiApp {
   private static final int TOOL_COLLAPSE_CHARS = 400;
 
   private final ToolRegistry tools;
-  private final ModelAdapter model;
+  private ModelAdapter model;
   private final Path cwd;
   private final int maxSteps;
-  private final RuntimeConfig config;
+  private RuntimeConfig config;
 
   private Terminal terminal;
   private Writer writer;
@@ -111,7 +117,16 @@ public class TuiApp {
       new SlashCommand("/skills", "List discovered skills"),
       new SlashCommand("/sessions", "List saved sessions"),
       new SlashCommand("/status", "Show workspace, session, and context stats"),
-      new SlashCommand("/model", "Show active model name"),
+      new SlashCommand("/model", "Show or switch active model"),
+      new SlashCommand("/mcp", "Show MCP server and tool status"),
+      new SlashCommand("/ls [path]", "List local files without model call"),
+      new SlashCommand("/grep <pattern>::[path]", "Search local files without model call"),
+      new SlashCommand("/read <path>", "Read local file without model call"),
+      new SlashCommand("/write <path>::<content>", "Write local file with review"),
+      new SlashCommand("/modify <path>::<content>", "Replace local file with review"),
+      new SlashCommand("/edit <path>::<search>::<replace>", "Edit local file with review"),
+      new SlashCommand("/patch <path>::<search>::<replace>...", "Batch replace local file with review"),
+      new SlashCommand("/cmd <command>", "Run local command without model call"),
       new SlashCommand("/new", "Start a new session"),
       new SlashCommand("/resume", "Open saved session picker"),
       new SlashCommand("/fork", "Save current transcript into a new session"),
@@ -713,6 +728,16 @@ public class TuiApp {
           /sessions   List saved sessions
           /status     Show workspace, session, and context stats
           /model      Show active model name
+          /model <n>  Switch model and persist to user settings
+          /mcp        Show MCP server and tool status
+          /ls [path]  List local files without a model call
+          /grep <pattern>::[path] Search local files
+          /read <path> Read a local file
+          /write <path>::<content> Write a local file with review
+          /modify <path>::<content> Replace a local file with review
+          /edit <path>::<search>::<replace> Edit a local file with review
+          /patch <path>::<search>::<replace>... Batch replace a local file
+          /cmd <command> Run a local command
           /new        Start a new session
           /resume    Open saved session picker
           /resume <id> Load a saved session by id
@@ -779,8 +804,29 @@ public class TuiApp {
       return;
     }
 
+    if (text.startsWith("/mcp")) {
+      if (!text.equals("/mcp")) {
+        addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Usage: /mcp"));
+      } else {
+        addEntry(new TranscriptEntry.Assistant(nextEntryId++, mcpStatus()));
+      }
+      render();
+      return;
+    }
+
     if (text.equals("/model")) {
       addEntry(new TranscriptEntry.Assistant(nextEntryId++, config.model()));
+      render();
+      return;
+    }
+
+    if (text.startsWith("/model ")) {
+      switchModel(text.substring("/model ".length()).trim());
+      render();
+      return;
+    }
+
+    if (tryLocalToolShortcut(text)) {
       render();
       return;
     }
@@ -935,6 +981,167 @@ public class TuiApp {
         render();
       }
     });
+  }
+
+  private void switchModel(String modelName) {
+    if (modelName == null || modelName.isBlank()) {
+      addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Usage: /model <name>"));
+      return;
+    }
+    config = config.withModel(modelName);
+    model = "mock".equalsIgnoreCase(config.model())
+        ? new MockModelAdapter()
+        : new AnthropicModelAdapter(config, tools);
+    loop = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps, listener, CONTEXT_WINDOW);
+    try {
+      ConfigLoader.writeUserSettings(config);
+      addEntry(new TranscriptEntry.Assistant(nextEntryId++,
+          "Switched model to " + config.model() + " and saved to " + RuntimeConfig.homeDir().resolve("settings.json")));
+    } catch (Exception error) {
+      addEntry(new TranscriptEntry.Assistant(nextEntryId++,
+          "Switched model to " + config.model() + ", but could not save settings: " + error.getMessage()));
+    }
+  }
+
+  private String mcpStatus() {
+    var service = new McpService(new ManagementStore(), cwd);
+    var servers = service.configuredServers();
+    if (servers.isEmpty()) {
+      return "No MCP servers configured.";
+    }
+    var toolsByServer = new java.util.LinkedHashMap<String, List<String>>();
+    var errorsByServer = new java.util.LinkedHashMap<String, String>();
+    for (var tool : service.listTools()) {
+      if ("(error)".equals(tool.name())) {
+        errorsByServer.put(tool.serverName(), tool.description());
+      } else {
+        toolsByServer.computeIfAbsent(tool.serverName(), ignored -> new ArrayList<>()).add(tool.name());
+      }
+    }
+
+    var sb = new StringBuilder();
+    for (var server : servers) {
+      var names = toolsByServer.getOrDefault(server.name(), List.of());
+      String status = errorsByServer.containsKey(server.name()) ? "error" : "ok";
+      String transport = server.isHttp() ? "http" : "stdio/" + server.protocol();
+      sb.append(server.name())
+          .append(" [").append(status).append("] ")
+          .append(transport)
+          .append(" tools=").append(names.size());
+      if (errorsByServer.containsKey(server.name())) {
+        sb.append("\n  error: ").append(errorsByServer.get(server.name()));
+      } else if (!names.isEmpty()) {
+        sb.append("\n  ").append(String.join(", ", names));
+      }
+      sb.append("\n");
+    }
+    return sb.toString().trim();
+  }
+
+  private boolean tryLocalToolShortcut(String text) {
+    ObjectNode input = MAPPER.createObjectNode();
+    String toolName = null;
+    if (text.equals("/ls") || text.startsWith("/ls ")) {
+      toolName = "list_files";
+      String path = text.length() > 3 ? text.substring(3).trim() : ".";
+      input.put("path", path.isBlank() ? "." : path);
+    } else if (text.startsWith("/read ")) {
+      toolName = "read_file";
+      input.put("path", text.substring("/read ".length()).trim());
+    } else if (text.startsWith("/grep ")) {
+      toolName = "grep_files";
+      String[] parts = splitShortcutPayload(text.substring("/grep ".length()).trim(), 2);
+      input.put("pattern", parts[0]);
+      input.put("path", parts.length > 1 && !parts[1].isBlank() ? parts[1] : ".");
+    } else if (text.startsWith("/write ")) {
+      toolName = "write_file";
+      String[] parts = splitShortcutPayload(text.substring("/write ".length()).trim(), 2);
+      if (parts.length < 2) return shortcutUsage("/write <path>::<content>");
+      input.put("path", parts[0]);
+      input.put("content", parts[1]);
+    } else if (text.startsWith("/modify ")) {
+      toolName = "modify_file";
+      String[] parts = splitShortcutPayload(text.substring("/modify ".length()).trim(), 2);
+      if (parts.length < 2) return shortcutUsage("/modify <path>::<content>");
+      input.put("path", parts[0]);
+      input.put("content", parts[1]);
+    } else if (text.startsWith("/edit ")) {
+      toolName = "edit_file";
+      String[] parts = splitShortcutPayload(text.substring("/edit ".length()).trim(), 3);
+      if (parts.length < 3) return shortcutUsage("/edit <path>::<search>::<replace>");
+      input.put("path", parts[0]);
+      input.put("oldText", parts[1]);
+      input.put("newText", parts[2]);
+    } else if (text.startsWith("/patch ")) {
+      return runPatchShortcut(text.substring("/patch ".length()).trim());
+    } else if (text.startsWith("/cmd ")) {
+      toolName = "run_command";
+      input.put("command", parseCmdShortcut(text.substring("/cmd ".length()).trim()));
+    }
+
+    if (toolName == null) return false;
+    runShortcutTool(toolName, input);
+    return true;
+  }
+
+  private boolean runPatchShortcut(String payload) {
+    String[] parts = splitShortcutPayload(payload, 0);
+    if (parts.length < 3 || parts.length % 2 == 0) {
+      return shortcutUsage("/patch <path>::<search>::<replace>[::<search>::<replace>...]");
+    }
+    try {
+      Path file = cwd.resolve(parts[0]).normalize();
+      String before = java.nio.file.Files.readString(file);
+      String after = before;
+      for (int i = 1; i < parts.length; i += 2) {
+        after = after.replace(parts[i], parts[i + 1]);
+      }
+      ObjectNode input = MAPPER.createObjectNode()
+          .put("path", parts[0])
+          .put("content", after);
+      runShortcutTool("modify_file", input);
+    } catch (Exception error) {
+      addEntry(new TranscriptEntry.Tool(nextEntryId++, "patch",
+          TranscriptEntry.ToolStatus.ERROR, error.getMessage()));
+    }
+    return true;
+  }
+
+  private boolean shortcutUsage(String usage) {
+    addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Usage: " + usage));
+    return true;
+  }
+
+  private void runShortcutTool(String toolName, JsonNode input) {
+    addEntry(new TranscriptEntry.Tool(nextEntryId++, toolName, TranscriptEntry.ToolStatus.RUNNING, input.toString()));
+    var result = tools.execute(toolName, input, new ToolContext(cwd, permissions));
+    recentTools.addLast(new ToolStatus(toolName, !result.ok()));
+    if (recentTools.size() > 10) recentTools.removeFirst();
+    addEntry(new TranscriptEntry.Tool(nextEntryId++, toolName,
+        result.ok() ? TranscriptEntry.ToolStatus.SUCCESS : TranscriptEntry.ToolStatus.ERROR,
+        result.output() == null ? "" : result.output()));
+  }
+
+  private static String[] splitShortcutPayload(String payload, int limit) {
+    String[] parts = limit > 0 ? payload.split("::", limit) : payload.split("::", -1);
+    for (int i = 0; i < parts.length; i++) {
+      parts[i] = parts[i].trim();
+    }
+    return parts;
+  }
+
+  private String parseCmdShortcut(String payload) {
+    String[] parts = splitShortcutPayload(payload, 2);
+    if (parts.length == 2 && !parts[0].isBlank() && !parts[1].isBlank()) {
+      try {
+        if (java.nio.file.Files.isDirectory(cwd.resolve(parts[0]).normalize())) {
+          return parts[1].isBlank() ? parts[0] : parts[1];
+        }
+      } catch (Exception ignored) {
+        // Fall through and treat the full payload as a command.
+      }
+    }
+    return payload;
   }
 
   private void runCompact() {
