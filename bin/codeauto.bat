@@ -15,4 +15,5 @@ if not exist "%JAR%" (
     )
 )
 
+cd /d "%PROJECT_DIR%"
 java -jar "%JAR%" %*

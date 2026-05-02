@@ -1,6 +1,7 @@
 package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolResult;
@@ -12,7 +13,13 @@ import java.util.List;
 public class GrepFilesTool implements ToolDefinition {
   @Override public String name() { return "grep_files"; }
   @Override public String description() { return "Search text files by substring."; }
-  @Override public JsonNode inputSchema() { return JsonSchemas.objectSchema(); }
+  @Override public JsonNode inputSchema() {
+    ObjectNode schema = JsonSchemas.schema();
+    ObjectNode props = schema.putObject("properties");
+    props.set("pattern", JsonSchemas.stringProp("Search substring"));
+    props.set("path", JsonSchemas.stringProp("Directory to search in (default: workspace root)"));
+    return JsonSchemas.required(schema, "pattern");
+  }
 
   @Override
   public ToolResult run(JsonNode input, ToolContext context) throws Exception {

@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CodeAuto | 终端 AI 编程助手运行时</title>
+  <meta name="description" content="CodeAuto 是一个 Java 21 原生的终端 AI 编程助手运行时，支持 CLI、TUI、工具调用、权限审批、会话、记忆、Skills 与 MCP。" />
+  <style>
+    :root {
+      --bg: #071018;
+      --bg-2: #0d1824;
+      --panel: rgba(15, 25, 37, 0.84);
+      --panel-strong: #101b28;
+      --ink: #f5f0e8;
+      --muted: rgba(245, 240, 232, 0.68);
+      --soft: rgba(245, 240, 232, 0.48);
+      --line: rgba(255, 255, 255, 0.1);
+      --line-strong: rgba(255, 255, 255, 0.18);
+      --cyan: #6be4ff;
+      --green: #9df0b6;
+      --amber: #ffd166;
+      --red: #ff8197;
+      --shadow: 0 26px 80px rgba(0, 0, 0, 0.36);
+      --radius: 18px;
+      --radius-sm: 10px;
+      --max: 1140px;
+      --sans: "Trebuchet MS", "Segoe UI", "Microsoft YaHei", sans-serif;
+      --mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at 18% 0%, rgba(107, 228, 255, 0.16), transparent 28%),
+        radial-gradient(circle at 88% 12%, rgba(255, 209, 102, 0.12), transparent 24%),
+        linear-gradient(160deg, #050a10 0%, #071018 42%, #101827 100%);
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent 78%);
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .shell {
+      width: min(var(--max), calc(100% - 36px));
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 24px 0 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 13px;
+      background:
+        linear-gradient(135deg, rgba(107,228,255,0.96), rgba(157,240,182,0.88));
+      box-shadow: 0 16px 34px rgba(107, 228, 255, 0.18);
+      position: relative;
+      flex: 0 0 auto;
+    }
+
+    .mark::after {
+      content: ">";
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: #061018;
+      font-family: var(--mono);
+      font-weight: 800;
+      font-size: 1.1rem;
+    }
+
+    .brand strong {
+      display: block;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 0.94rem;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .nav {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .nav a {
+      padding: 9px 12px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+    }
+
+    .nav a:hover {
+      color: var(--ink);
+      border-color: var(--line);
+      background: rgba(255,255,255,0.04);
+    }
+
+    .hero {
+      padding: 68px 0 44px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.03fr) minmax(340px, 0.97fr);
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    .hero-copy,
+    .terminal-board,
+    .panel,
+    .card,
+    .step {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.028));
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+    }
+
+    .hero-copy {
+      border-radius: 28px;
+      padding: clamp(30px, 4.4vw, 56px);
+      min-height: 560px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero-copy::after {
+      content: "";
+      position: absolute;
+      width: 340px;
+      height: 340px;
+      right: -140px;
+      bottom: -160px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(107,228,255,0.18), transparent 68%);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 780px;
+      font-size: clamp(3rem, 6.4vw, 5.7rem);
+      line-height: 0.96;
+      letter-spacing: -0.065em;
+      font-weight: 800;
+    }
+
+    h1 span {
+      display: block;
+      color: rgba(245,240,232,0.64);
+      font-weight: 650;
+    }
+
+    .lead {
+      margin: 24px 0 0;
+      max-width: 66ch;
+      color: var(--muted);
+      font-size: 1.06rem;
+      line-height: 1.84;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 34px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line-strong);
+      font-weight: 700;
+      font-size: 0.94rem;
+      transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255,255,255,0.34);
+    }
+
+    .btn.primary {
+      color: #061018;
+      background: var(--cyan);
+      border-color: transparent;
+    }
+
+    .btn.secondary {
+      color: var(--ink);
+      background: rgba(255,255,255,0.045);
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 32px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .meta {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      background: rgba(255,255,255,0.035);
+    }
+
+    .meta strong {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 1.08rem;
+    }
+
+    .meta span {
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+
+    .terminal-board {
+      border-radius: 28px;
+      padding: 18px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(18, 30, 44, 0.92), rgba(8, 14, 22, 0.9));
+    }
+
+    .terminal {
+      height: 100%;
+      min-height: 560px;
+      border-radius: 20px;
+      border: 1px solid rgba(107,228,255,0.18);
+      background: #090e15;
+      overflow: hidden;
+      font-family: var(--mono);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.025);
+    }
+
+    .terminal-head {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 15px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.035);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--red);
+    }
+
+    .dot:nth-child(2) { background: var(--amber); }
+    .dot:nth-child(3) { background: var(--green); }
+
+    .terminal-title {
+      margin-left: auto;
+      color: rgba(245,240,232,0.42);
+      font-size: 0.76rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .terminal-body {
+      padding: 18px;
+      color: #dce7ee;
+      font-size: 0.86rem;
+      line-height: 1.65;
+    }
+
+    .prompt { color: var(--cyan); }
+    .ok { color: var(--green); }
+    .warn { color: var(--amber); }
+    .dim { color: rgba(220,231,238,0.48); }
+
+    .tui-panel {
+      margin-top: 16px;
+      border: 1px solid rgba(107,228,255,0.28);
+      border-radius: 8px;
+      padding: 14px;
+      background: rgba(255,255,255,0.025);
+    }
+
+    .tui-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--cyan);
+      margin-bottom: 10px;
+    }
+
+    .tui-row {
+      display: grid;
+      grid-template-columns: 86px 1fr;
+      gap: 12px;
+      padding: 8px 0;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .tui-row:first-of-type { border-top: 0; }
+    .role { color: var(--green); }
+    .content { color: #dce7ee; }
+
+    .section {
+      padding: 44px 0;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 0.48fr);
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      line-height: 1.04;
+      letter-spacing: -0.05em;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 14px;
+    }
+
+    .card {
+      grid-column: span 4;
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: none;
+    }
+
+    .card.wide { grid-column: span 6; }
+    .card.full { grid-column: span 12; }
+
+    .card h3,
+    .step h3 {
+      margin: 0 0 10px;
+      font-size: 1.14rem;
+      line-height: 1.28;
+    }
+
+    .card p,
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.75;
+      font-size: 0.96rem;
+    }
+
+    .icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 18px;
+      background: rgba(107,228,255,0.1);
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-weight: 800;
+    }
+
+    .step {
+      grid-column: span 6;
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: none;
+    }
+
+    .cmd {
+      margin-top: 15px;
+      border-radius: 11px;
+      padding: 14px;
+      overflow-x: auto;
+      background: rgba(0,0,0,0.32);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #dce7ee;
+      font-family: var(--mono);
+      font-size: 0.86rem;
+      line-height: 1.6;
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-top: 18px;
+    }
+
+    .tag {
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: rgba(255,255,255,0.035);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+    }
+
+    .architecture {
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 26px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.026));
+      box-shadow: var(--shadow);
+    }
+
+    footer {
+      padding: 36px 0 56px;
+      color: var(--soft);
+      border-top: 1px solid var(--line);
+      margin-top: 36px;
+    }
+
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    @media (max-width: 980px) {
+      .hero,
+      .section-head {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-copy,
+      .terminal {
+        min-height: auto;
+      }
+
+      .card,
+      .card.wide,
+      .step {
+        grid-column: span 6;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .shell { width: min(var(--max), calc(100% - 28px)); }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .nav { justify-content: flex-start; }
+      .hero { padding-top: 40px; }
+      .hero-copy { padding: 26px; border-radius: 22px; }
+      .meta-grid { grid-template-columns: 1fr; }
+      .card,
+      .card.wide,
+      .step { grid-column: span 12; }
+      .tui-row { grid-template-columns: 1fr; }
+      h1 { font-size: clamp(2.6rem, 15vw, 4.2rem); }
+    }
+  </style>
+</head>
+<body>
+  <header class="shell topbar">
+    <a class="brand" href="#">
+      <span class="mark" aria-hidden="true"></span>
+      <span>
+        <strong>CodeAuto</strong>
+        <span>Java 21 终端 AI 编程助手运行时</span>
+      </span>
+    </a>
+    <nav class="nav" aria-label="页面导航">
+      <a href="#features">特性</a>
+      <a href="#workflow">启动</a>
+      <a href="#memory">记忆</a>
+      <a href="#architecture">架构</a>
+      <a href="https://github.com/Yulin-Bi/CodeAuto" target="_blank" rel="noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <article class="hero-copy">
+        <div>
+          <div class="eyebrow">Terminal-first AI Coding Runtime</div>
+          <h1>
+            把 AI 编程助手
+            <span>放进可控的本地终端</span>
+          </h1>
+          <p class="lead">
+            CodeAuto 面向真实开发工作流：模型可以读文件、改文件、运行命令、调用 MCP 和管理记忆；用户仍然掌握权限审批、diff review、会话恢复和上下文压缩的控制权。
+          </p>
+          <div class="actions">
+            <a class="btn primary" href="#workflow">查看启动方式</a>
+            <a class="btn secondary" href="https://github.com/Yulin-Bi/CodeAuto" target="_blank" rel="noreferrer">访问项目仓库</a>
+          </div>
+        </div>
+        <div class="meta-grid">
+          <div class="meta">
+            <strong>安全优先</strong>
+            <span>敏感命令和文件修改进入审批流程，写入前生成 unified diff。</span>
+          </div>
+          <div class="meta">
+            <strong>可恢复</strong>
+            <span>会话、权限、记忆和配置都落盘，跨工作区隔离管理。</span>
+          </div>
+          <div class="meta">
+            <strong>可扩展</strong>
+            <span>通过 Skills、MCP 和内置工具持续扩展 agent 能力。</span>
+          </div>
+          <div class="meta">
+            <strong>流式体验</strong>
+            <span>AI 回复边生成边显示，TUI 原地刷新，CLI 边收边打印。</span>
+          </div>
+        </div>
+      </article>
+
+      <aside class="terminal-board" aria-label="CodeAuto TUI 终端示意">
+        <div class="terminal">
+          <div class="terminal-head">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="terminal-title">codeauto tui</span>
+          </div>
+          <div class="terminal-body">
+            <div><span class="prompt">$</span> mvn exec:java "-Dexec.args=--tui"</div>
+            <div class="dim">workspace D:\JAVA\git-pro\CodeAuto</div>
+            <br />
+            <div class="tui-panel">
+              <div class="tui-title">
+                <span>CodeAuto</span>
+                <span class="dim">deepseek-v4-flash · ctx 8%</span>
+              </div>
+              <div class="tui-row">
+                <div class="role">you</div>
+                <div class="content">继续优化记忆系统，并更新计划。</div>
+              </div>
+              <div class="tui-row">
+                <div class="role">assistant</div>
+                <div class="content">我会先读取 futureplan.md，再检查现有 memory 模块和工具注册点...</div>
+              </div>
+              <div class="tui-row">
+                <div class="role">tool</div>
+                <div class="content"><span class="ok">read_file ok</span> · src/main/java/com/codeauto/memory</div>
+              </div>
+              <div class="tui-row">
+                <div class="role">prompt</div>
+                <div class="content"><span class="prompt">codeauto&gt;</span> /memory list project<span class="warn">▌</span></div>
+              </div>
+            </div>
+            <br />
+            <div><span class="prompt">$</span> mvn test</div>
+            <div class="ok">Tests run: 76, Failures: 0, Errors: 0, Skipped: 0</div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="section" id="features">
+      <div class="section-head">
+        <div>
+          <h2>核心能力收束在一个 JVM 应用里</h2>
+        </div>
+        <p>CodeAuto 的设计重点是可审计、可恢复和可扩展。它不是 IDE，而是终端里的 agent runtime。</p>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <div class="icon">UI</div>
+          <h3>CLI + TUI 双模式</h3>
+          <p>普通 CLI 适合快速对话，全屏 TUI 提供 transcript、prompt、状态栏、权限审批和斜杠菜单。</p>
+        </article>
+        <article class="card">
+          <div class="icon">Δ</div>
+          <h3>文件修改可审计</h3>
+          <p>写入、编辑、patch 和 modify 统一进入 diff review，降低模型直接改文件的风险。</p>
+        </article>
+        <article class="card">
+          <div class="icon">↯</div>
+          <h3>本地命令可控</h3>
+          <p>危险命令需要审批；权限支持 once、turn、always、deny with feedback 和通配规则。</p>
+        </article>
+        <article class="card wide">
+          <div class="icon">M</div>
+          <h3>持久化记忆</h3>
+          <p>记忆以 frontmatter Markdown 保存，支持 user、feedback、project、reference 四类，并注入 system prompt。</p>
+          <div class="tag-row">
+            <span class="tag">save_memory</span>
+            <span class="tag">list_memory</span>
+            <span class="tag">delete_memory</span>
+            <span class="tag">stale marker</span>
+          </div>
+        </article>
+        <article class="card wide">
+          <div class="icon">∞</div>
+          <h3>Skills 与 MCP</h3>
+          <p>支持本地 Skills 发现、stdio MCP、Streamable HTTP MCP，以及 resources/prompts helper 工具。</p>
+          <div class="tag-row">
+            <span class="tag">load_skill</span>
+            <span class="tag">mcp list</span>
+            <span class="tag">mcp login</span>
+            <span class="tag">backed tools</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="workflow">
+      <div class="section-head">
+        <div>
+          <h2>启动与日常命令</h2>
+        </div>
+        <p>Maven 直接启动即可开发调试；打包后也可以通过脚本运行。Windows bat 会自动回到项目根目录作为 workspace。</p>
+      </div>
+      <div class="grid">
+        <article class="step">
+          <h3>离线 TUI</h3>
+          <p>不需要 API Key，适合验证界面和工具循环。</p>
+          <div class="cmd">mvn exec:java "-Dexec.args=--mock --tui"</div>
+        </article>
+        <article class="step">
+          <h3>真实模型 TUI</h3>
+          <p>使用配置好的模型运行，AI 文本回复会流式显示。</p>
+          <div class="cmd">mvn exec:java "-Dexec.args=--tui"</div>
+        </article>
+        <article class="step">
+          <h3>打包运行</h3>
+          <p>构建 shaded JAR，或使用启动脚本进入 TUI。</p>
+          <div class="cmd">mvn package -DskipTests<br />bin/codeauto.bat --tui</div>
+        </article>
+        <article class="step">
+          <h3>TUI 快捷命令</h3>
+          <p>在全屏界面中直接管理模型、权限、记忆、会话和 MCP。</p>
+          <div class="cmd">/model &lt;name&gt;&nbsp;&nbsp;/memory&nbsp;&nbsp;/permissions&nbsp;&nbsp;/mcp</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="memory">
+      <div class="section-head">
+        <div>
+          <h2>会话、记忆和指令长期可用</h2>
+        </div>
+        <p>每次新会话都会加载多级指令；相关记忆会进入 system reminder；会话按 workspace 保存并支持恢复、分叉和压缩。</p>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <div class="icon">01</div>
+          <h3>多级指令</h3>
+          <p>加载 `~/.claude/CLAUDE.md`、`~/.codeauto/CLAUDE.md`、项目 `CLAUDE.md` 和 `CLAUDE.local.md`。</p>
+        </article>
+        <article class="card">
+          <div class="icon">02</div>
+          <h3>会话存储</h3>
+          <p>会话保存到 `~/.codeauto/projects/`，支持 resume、fork、rename、compact 和跨项目浏览。</p>
+        </article>
+        <article class="card">
+          <div class="icon">03</div>
+          <h3>上下文压缩</h3>
+          <p>优先使用 provider usage，本地估算兜底；上下文紧张时自动压缩中间消息。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="architecture">
+      <div class="architecture">
+        <div class="section-head">
+          <div>
+            <h2>模块边界清晰，方便继续演进</h2>
+          </div>
+          <p>核心循环、模型适配器、权限、工具、MCP、Skills、会话 和记忆系统分别维护，测试覆盖当前主要行为。</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <div class="icon">AL</div>
+            <h3>AgentLoop</h3>
+            <p>驱动模型响应、工具调用、工具结果回填和最终回复。</p>
+          </article>
+          <article class="card">
+            <div class="icon">TR</div>
+            <h3>ToolRegistry</h3>
+            <p>统一注册内置工具与 MCP backed tools。</p>
+          </article>
+          <article class="card">
+            <div class="icon">PM</div>
+            <h3>PermissionManager</h3>
+            <p>集中处理命令、文件编辑和持久化权限规则。</p>
+          </article>
+          <article class="card">
+            <div class="icon">MM</div>
+            <h3>MemoryManager</h3>
+            <p>保存、检索、删除和注入持久化记忆。</p>
+          </article>
+          <article class="card">
+            <div class="icon">IL</div>
+            <h3>InstructionLoader</h3>
+            <p>将用户、应用和项目级指令组织进 system prompt。</p>
+          </article>
+          <article class="card">
+            <div class="icon">UI</div>
+            <h3>TUI Renderer</h3>
+            <p>基于 JLine raw mode 和 ANSI 绘制全屏终端界面。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell footer-inner">
+      <span>CodeAuto · Java 21 terminal coding assistant runtime</span>
+      <a href="https://github.com/Yulin-Bi/CodeAuto" target="_blank" rel="noreferrer">GitHub</a>
+    </div>
+  </footer>
+</body>
+</html>

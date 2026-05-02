@@ -1,181 +1,225 @@
-# 🚀 CodeAuto
+# About CodeAuto
 
-> **Java 21 原生的 CodeAuto AI 编程助手运行时**
+CodeAuto 是一个 Java 21 原生的终端 AI 编程助手运行时。它把模型对话、工具调用、权限审批、会话管理、上下文压缩、MCP、Skills 和持久化记忆整合在一个轻量 JVM 应用里。
 
----
+## 项目定位
 
-## 📋 项目简介
+CodeAuto 的目标不是做一个庞大的 IDE，而是做一个清晰、可审计、可扩展的本地 coding agent runtime：
 
-CodeAuto 是一个基于 **Java 21** 构建的轻量级 AI 编程助手运行时，面向 Java 生态并借鉴现代 AI 编程助手的交互范式进行开发。它运行在命令行终端中，提供全屏 TUI 交互界面，支持工具调用、权限管理、会话管理、Skills 扩展和 MCP 协议集成。
+- 能在普通终端和全屏 TUI 中工作
+- 能让模型安全地读文件、改文件、跑命令
+- 能保存会话和项目记忆
+- 能通过 MCP 和 Skills 扩展能力
+- 能用 Java 工程方式测试和维护
 
-| 项目维度 | 说明 |
-|---------|------|
-| **语言** | Java 21 |
-| **构建工具** | Maven 3.9+ |
-| **代码规模** | 66 个源文件，~6664 行代码 |
-| **测试** | 50 个测试，全部通过 ✅ |
-| **包名** | `com.codeauto` |
-| **命令名** | `codeauto` |
-| **配置目录** | `~/.codeauto/` |
+## 当前能力概览
 
----
+| 维度 | 状态 |
+| --- | --- |
+| 语言 | Java 21 |
+| 构建 | Maven |
+| CLI | Picocli + JLine 输入 |
+| TUI | JLine 3 + ANSI |
+| 模型 | Anthropic Messages API + Mock |
+| 工具 | 20 个默认内置工具 |
+| 会话 | JSONL append-only，按 workspace 隔离 |
+| 权限 | 命令/路径/编辑权限，支持通配规则 |
+| 记忆 | frontmatter Markdown 持久化记忆 |
+| 指令 | 多级 CLAUDE.md 加载 |
+| MCP | stdio + Streamable HTTP |
+| 测试 | 75 个测试通过 |
 
-## 🧩 技术架构
+## 架构模块
 
+```text
+com.codeauto
+  background     后台命令任务
+  cli            CLI 入口和子命令
+  config         多级配置加载
+  context        token 估算、压缩和工具结果落盘
+  core           AgentLoop、ChatMessage、ToolCall、AgentStep
+  instructions   CLAUDE.md 和 system prompt 指令注入
+  manage         用户级管理配置读写
+  mcp            MCP client/service/backed tool
+  memory         持久化记忆系统
+  model          ModelAdapter、Anthropic、Mock
+  permissions    权限审批和持久化规则
+  session        会话保存、恢复、fork、compact boundary
+  skills         Skills 发现和加载
+  tool           工具接口、注册表和结果类型
+  tools          内置工具实现
+  tui            全屏终端 UI
 ```
-┌─────────────────────────────────────────────────┐
-│                  TUI (JLine 3)                   │
-│   ┌─────────┬──────────────┬────────┐          │
-│   │ Header  │  Transcript  │ Prompt │          │
-│   └─────────┴──────────────┴────────┘          │
-├─────────────────────────────────────────────────┤
-│              AgentLoop (核心循环)                 │
-│   ┌───────────┐  ┌──────────┐  ┌───────────┐  │
-│   │ Model     │→│ Tool     │→│ Session   │  │
-│   │ Adapter   │  │ Registry │  │ Store     │  │
-│   └───────────┘  └──────────┘  └───────────┘  │
-├─────────────────────────────────────────────────┤
-│              内置工具 (14 个)                     │
-│   📂 文件  🔍 搜索  💻 命令  🌐 网络  🧠 Skill │
-├─────────────────────────────────────────────────┤
-│               Skills & MCP 扩展                  │
-│   ┌──────────────┐  ┌──────────────────────┐   │
-│   │ SkillService │  │ McpService           │   │
-│   │ .code-auto/  │  │ .mcp.json + stdio    │   │
-│   │ .claude/     │  │ Streamable HTTP      │   │
-│   └──────────────┘  └──────────────────────┘   │
-└─────────────────────────────────────────────────┘
-```
 
-### 核心技术栈
+## 核心运行流程
 
-| 组件 | 选型 |
-|------|------|
-| **CLI 框架** | Picocli |
-| **序列化** | Jackson (JSON/JSONL) |
-| **HTTP 客户端** | Java HttpClient |
-| **终端控制** | JLine 3 (raw mode, Reader, 窗口尺寸检测) |
-| **Diff 生成** | java-diff-utils |
-| **测试框架** | JUnit 5 |
-| **模型 API** | Anthropic Messages API (可扩展) |
+1. CLI 解析参数并加载配置。
+2. 根据配置创建 `ModelAdapter`。
+3. 注册本地工具和 MCP backed tools。
+4. 创建 `PermissionManager` 和 `SessionStore`。
+5. 通过 `InstructionLoader` 构建 system prompt。
+6. `AgentLoop` 驱动模型响应、工具调用、工具结果回填和最终回答。
+7. 会话追加保存到 `~/.codeauto/projects/`。
 
----
+## TUI 体验
 
-## ✨ 核心功能
+全屏 TUI 使用 JLine 3 raw mode 和 ANSI 序列绘制，没有引入重量级 UI 框架。
 
-### 1. 🤖 多模型适配
-- `MockModelAdapter` — 离线 mock 模式，无需 API Key 即可完整跑通工具循环
-- `AnthropicModelAdapter` — 支持 Anthropic Messages API，含 429/5xx 自动重试 + exponential backoff
+主要能力：
 
-### 2. 🛠 14 个内置工具
+- Header 显示模型、session、workspace 和上下文用量
+- Transcript 支持滚动
+- Prompt 支持中文输入、历史、光标渲染和 Tab 补全
+- Footer 显示状态、后台任务和最近工具结果
+- 权限审批弹窗支持快捷键和反馈输入
+- `/` 斜杠菜单支持补全，并限制可见行数，避免铺满屏幕
+- 长文本优先自动换行，窄窗口下减少不必要的 `...` 截断
+- Anthropic 文本回复支持流式输出，TUI 原地刷新，CLI 边收边打印
 
-| 类别 | 工具 |
-|------|------|
-| **文件操作** | `list_files` `grep_files` `read_file` `write_file` `edit_file` `patch_file` `modify_file` |
-| **执行与交互** | `run_command` `ask_user` `background_tasks` |
-| **网络** | `web_fetch` `web_search` |
-| **扩展** | `load_skill` `mcp_helper` |
+近期补强：
 
-### 3. 🖥 全屏终端界面 (TUI)
-基于 JLine 3 纯 ANSI 转义序列渲染，无第三方 TUI 框架：
-- **面板布局**：Header / Transcript / Prompt / Footer
-- **Markdown 渲染**：代码块、表格、标题、列表、内联代码 → ANSI 彩色
-- **CJK 支持**：中文输入、字符显示宽度精确计算
-- **交互菜单**：斜杠命令补全、交互式 session 选择器、权限审批弹窗
-- **会话管理**：滚动、展开/折叠工具输出、Ctrl+O 切换
+- SGR mouse 滚轮
+- PageUp/PageDown 和 Alt/Ctrl 方向键滚动稳定性
+- 本地工具快捷命令
+- `/model <name>` TUI 内切换模型并写入 settings
+- `/mcp`、`/permissions`、`/memory`
+- CLI 中文输入编码修复
+- Windows `bin` 启动 workspace 自动回到项目根目录
+- JLine deprecated provider 警告默认隐藏
+- Assistant streaming delta 事件接入 AgentLoop
 
-### 4. 🔐 权限与安全
-- 危险命令检测 + 三层权限决策（allow/deny/feedback）
-- `PermissionStore` 持久化到 `~/.codeauto/permissions.json`
-- `FileReviewService`：修改前生成 unified diff，终端确认
-- "Deny with Feedback" 模式方便模型调整策略
+## 工具系统
 
-### 5. 💾 会话管理
-- JSONL append-only 格式，按工作目录隔离
-- 支持：恢复 (`resume`)、分叉 (`fork`)、重命名 (`rename`)、新建 (`new`)、压缩 (`compact`)
-- 自动上下文压缩 + 微压缩 (`CompactService` + `MicroCompactService`)
-- 超大工具结果落盘 (`ToolResultStorage`)
+工具接口由 `ToolDefinition` 定义，统一注册到 `ToolRegistry`。默认工具包括：
+
+- 文件读写、搜索、编辑、patch、modify
+- 命令执行和后台任务
+- Web fetch/search
+- Skill 加载
+- MCP resources/prompts helper
+- 持久化记忆保存、列表、删除
+
+文件写入类工具统一接入 `FileReviewService`，写入前生成 unified diff 并走权限审批。
+
+## 权限模型
+
+CodeAuto 的权限层由 `PermissionManager` 和 `PermissionStore` 组成。
+
+支持：
+
+- workspace 内默认可读
+- 编辑前审批
+- 危险命令审批
+- allow once / always / turn
+- deny once / always / with feedback
+- 持久化权限规则
+- 通配规则，例如 `Bash(npm run *)`、`Edit(src/*.java)`
+
+`/permissions` 可以查看当前权限文件路径、workspace 和规则数量。
+
+## 记忆系统
+
+记忆系统由 `MemoryManager`、`MemoryEntry`、`MemoryType` 和 `MemoryTool` 组成。
+
+特点：
+
+- 默认存储目录：`~/.codeauto/memory/`
+- 文件格式：frontmatter Markdown
+- 类型：`user`、`feedback`、`project`、`reference`
+- 支持保存、列表、删除、相关性检索
+- 相关记忆会注入 system prompt
+- 24 小时以上未更新的记忆会标记为 stale
+- 用户可通过 `/memory` 管理，模型可通过 `save_memory` 等工具管理
+
+## 指令加载
+
+`InstructionLoader` 会加载：
+
+1. `~/.claude/CLAUDE.md`
+2. `~/.codeauto/CLAUDE.md`
+3. `<project>/CLAUDE.md`
+4. `<project>/CLAUDE.local.md`
+
+这些内容会进入 system prompt 的 `<system-reminder>` 区域。越靠后的本地文件优先级越高。
+
+## 会话和上下文
+
+会话系统支持：
+
+- 新建会话
+- resume
+- fork
+- rename
+- compact
+- 跨项目 session 浏览
 - 30 天过期清理
 
-### 6. 🧩 Skills & MCP 扩展
-- **Skills**：从 `.code-auto/skills` 和 `.claude/skills` 自动发现
-- **MCP 协议**：支持 stdio（Content-Length 帧 + newline JSON 帧，自动协商）、Streamable HTTP
-- **MCP 工具**：自动发现并包装为 `ToolDefinition`
-- **辅助工具**：`list_mcp_resources` `read_mcp_resource` `list_mcp_prompts` `get_mcp_prompt`
-- **Bearer token 管理**：mcp login/logout，环境变量插值 (`$VAR`)
+上下文管理支持：
 
----
+- `TokenEstimator`
+- `ContextStats`
+- `CompactService`
+- `MicroCompactService`
+- `ToolResultStorage`
+- provider usage 优先，估算作为 fallback
 
-## 🚀 快速启动
+## Skills 和 MCP
 
-```bash
-# 真实模型模式：先配置 CODEAUTO_BASE_URL / CODEAUTO_AUTH_TOKEN / CODEAUTO_MODEL
-mvn exec:java
+Skills：
 
-# 全屏 TUI 模式
-mvn exec:java "-Dexec.args=--tui"
+- 项目级 `.code-auto/skills`
+- 用户级 `.claude/skills`
+- `load_skill` 工具
+- `skills list/add/remove` CLI 子命令
 
-# 离线 mock 模式（无需 API Key，适合自测）
-mvn exec:java "-Dexec.args=--mock --tui"
+MCP：
 
-# 构建 fat JAR 并启动
-mvn package -DskipTests
-java -jar target/codeauto-0.1.0-SNAPSHOT-shaded.jar --tui
+- 用户级 `~/.codeauto/mcp.json`
+- 项目级 `.mcp.json`
+- stdio `content-length` / `newline-json` 自动协商
+- Streamable HTTP
+- token 存储和注入
+- MCP backed tools 自动注册
 
-# 使用启动脚本
-bin/codeauto --tui
+## 测试
+
+当前测试状态：
+
+```text
+Tests run: 76, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
 ```
 
----
+测试覆盖：
 
-## 📂 项目结构
+- AgentLoop
+- 工具注册和工具参数兼容
+- 文件 review
+- 命令执行和后台任务
+- 权限审批、反馈、通配规则、权限摘要
+- 会话保存、恢复和压缩边界
+- MCP client/service/helper/backed tool
+- Skills 发现
+- 指令加载
+- 记忆保存、检索、注入和工具管理
+- CLI 编码和 workspace 解析
+- Assistant 流式输出事件
+- TUI escape sequence 处理
 
-```
-codeauto/
-├── src/
-│   ├── main/java/com/codeauto/
-│   │   ├── cli/          # Picocli CLI 入口 + 命令
-│   │   ├── core/         # 核心类型 (ChatMessage, ToolCall, AgentStep...)
-│   │   ├── agent/        # AgentLoop 主循环
-│   │   ├── tools/        # 14 个内置工具实现
-│   │   ├── model/        # 模型适配器接口 + Anthropic/Mock 实现
-│   │   ├── permission/   # 权限管理 + FileReview
-│   │   ├── session/      # 会话存储、上下文压缩
-│   │   ├── tui/          # JLine 全屏终端界面
-│   │   ├── skill/        # Skills 服务
-│   │   └── mcp/          # MCP 客户端 + 服务
-│   └── test/             # 50 个单元测试
-├── docs/                 # 文档
-├── bin/                  # 启动脚本
-├── pom.xml               # Maven 配置
-└── README.md             # 使用说明
-```
+## 设计取向
 
----
+CodeAuto 保持几个工程原则：
 
-## 📊 完成状态
+- 轻量：不引入 Spring/Quarkus
+- 可测试：核心逻辑优先写成普通 Java 类
+- 可审计：敏感操作必须经过权限层
+- 可恢复：会话和记忆都落盘
+- 可扩展：工具、MCP、Skills 和记忆系统都可继续演进
 
-| 阶段 | 状态 | 说明 |
-|------|------|------|
-| Phase 1: 核心运行时 | ✅ 完成 | AgentLoop, 核心类型, MockModelAdapter |
-| Phase 2: 内置工具 | ✅ 完成 | 14 个工具全部实现并接入 diff review |
-| Phase 3: 模型适配器 | ✅ 完成 | Anthropic + Mock，含重试与 backoff |
-| Phase 4: 权限与 Review | ✅ 完成 | 决策流程、持久化、unified diff |
-| Phase 5: 会话与压缩 | ✅ 完成 | JSONL 存储、resume/fork/compact |
-| Phase 6: JLine TUI | ✅ 完成 | 全屏面板、Markdown 渲染、CJK 支持 |
-| Phase 7: Skills & MCP | ✅ 完成 | Skills 发现、MCP stdio/HTTP、辅助工具 |
-| Phase 8: 配置与启动 | ✅ 完成 | 多级配置、CLI 标志、启动脚本 |
+下一步适合继续推进：
 
----
-
-## 🔗 技术亮点
-
-- **纯 Java 21**：无 Spring/Quarkus 等重型框架，单体结构
-- **纯 ANSI 渲染**：无第三方 TUI 框架，直接通过 ANSI 转义序列绘制界面
-- **协议自动协商**：MCP stdio 自动尝试 `content-length` → `newline-json` 回退
-- **本地 Token 估算**：`TokenEstimator` 作为 API usage 的 fallback
-- **配置分层覆盖**：默认值 → 环境变量 → 项目 settings → 用户 settings → CLI 标志
-
----
-
-> *"CodeAuto — 把 AI 编程助手的灵魂，装进 JVM 的躯壳里。"* 🚀
+- SessionMemory 自动提取
+- L2 Session Memory 压缩层
+- 同文件多次编辑 transcript 聚合
+- Skill 变量替换和 fork 模式
+- 更细的模型上下文窗口查询表

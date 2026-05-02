@@ -11,6 +11,7 @@ import com.codeauto.context.TokenEstimator;
 import com.codeauto.core.AgentLoop;
 import com.codeauto.core.AgentLoopListener;
 import com.codeauto.core.ChatMessage;
+import com.codeauto.instructions.InstructionLoader;
 import com.codeauto.manage.ManagementStore;
 import com.codeauto.mcp.McpService;
 import com.codeauto.model.AnthropicModelAdapter;
@@ -34,10 +35,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -47,8 +48,7 @@ public class TuiApp {
   private static final int CONTEXT_WINDOW = 200_000;
   private static final int PERMISSION_TIMEOUT_SECS = 120;
   private static final int SCROLL_STEP = 5;
-  private static final int TOOL_PREVIEW_LINES = 3;
-  private static final int TOOL_COLLAPSE_CHARS = 400;
+  private static final int SLASH_MENU_MAX_ROWS = 7;
 
   private final ToolRegistry tools;
   private ModelAdapter model;
@@ -87,13 +87,19 @@ public class TuiApp {
   private String historyDraft = "";
   private volatile PendingApproval pendingApproval;
   private volatile boolean running = true;
+  private Integer streamingAssistantEntryId;
+  private final StringBuilder streamingAssistantBuffer = new StringBuilder();
+  private volatile boolean cursorBlinkVisible = true;
+  private ScheduledExecutorService cursorBlinker;
 
   // Scrolling
   private int transcriptScrollOffset;
   private boolean transcriptAutoScroll = true;
 
-  // Tool output expand/collapse
-  private final Set<Integer> expandedTools = ConcurrentHashMap.newKeySet();
+  // Status line (spinner + text shown during AgentLoop execution)
+  private static final String[] SPINNER_FRAMES = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
+  private volatile String statusLineText = "";
+  private volatile int spinnerFrame;
 
   // External service status
   private int skillCount = -1;
@@ -127,12 +133,14 @@ public class TuiApp {
       new SlashCommand("/edit <path>::<search>::<replace>", "Edit local file with review"),
       new SlashCommand("/patch <path>::<search>::<replace>...", "Batch replace local file with review"),
       new SlashCommand("/cmd <command>", "Run local command without model call"),
+      new SlashCommand("/memory", "List, add, or delete persistent memories"),
       new SlashCommand("/new", "Start a new session"),
       new SlashCommand("/resume", "Open saved session picker"),
       new SlashCommand("/fork", "Save current transcript into a new session"),
       new SlashCommand("/rename <name>", "Rename current session metadata"),
       new SlashCommand("/compact", "Compact middle conversation messages"),
       new SlashCommand("/config-paths", "Show config home directory"),
+      new SlashCommand("/permissions", "Show permission storage and rule counts"),
       new SlashCommand("/exit", "Exit")
   );
   private record SessionPickerState(
@@ -176,7 +184,7 @@ public class TuiApp {
       sessions = new SessionStore(cwd);
       sessionId = UUID.randomUUID().toString().substring(0, 8);
       savedCount = 1;
-      messages.add(new ChatMessage.SystemMessage("You are CodeAuto. Permissions: " + permissions.summary()));
+      messages.add(new ChatMessage.SystemMessage(systemPrompt()));
 
       historyFile = RuntimeConfig.homeDir().resolve("history.jsonl");
       try {
@@ -219,6 +227,7 @@ public class TuiApp {
 
       terminal.handle(Terminal.Signal.WINCH, signal -> handleResize());
       handleResize();
+      startCursorBlinker();
       render();
       eventLoop();
 
@@ -232,6 +241,10 @@ public class TuiApp {
 
   private void cleanup() {
     try {
+      if (cursorBlinker != null) {
+        cursorBlinker.shutdownNow();
+        cursorBlinker = null;
+      }
       writer.write(Ansi.SHOW_CURSOR);
       writer.write(Ansi.DISABLE_SGR_MOUSE);
       writer.write(Ansi.EXIT_ALT);
@@ -277,6 +290,26 @@ public class TuiApp {
   }
 
   // --- Event loop ---
+
+  private void startCursorBlinker() {
+    cursorBlinker = Executors.newSingleThreadScheduledExecutor(task -> {
+      Thread thread = new Thread(task, "codeauto-cursor-blink");
+      thread.setDaemon(true);
+      return thread;
+    });
+    cursorBlinker.scheduleAtFixedRate(() -> {
+      if (!running || terminal == null || writer == null) return;
+      if (sessionPicker != null || pendingApproval != null) return;
+      if (isBusy) {
+        spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
+        updateStatusLine();
+        render();
+      } else {
+        cursorBlinkVisible = !cursorBlinkVisible;
+        render();
+      }
+    }, 500, 500, TimeUnit.MILLISECONDS);
+  }
 
   private void eventLoop() throws IOException {
     while (running) {
@@ -338,7 +371,6 @@ public class TuiApp {
         }
         case 0x10 -> { historyUp(); render(); }
         case 0x0E -> { historyDown(); render(); }
-        case 0x0F -> toggleToolExpand(); // Ctrl+O
         default -> {
           // terminal.reader() is a java.io.Reader — it already decodes UTF-8 into
           // Unicode code points. Accept any printable character (>= 0x20).
@@ -671,25 +703,34 @@ public class TuiApp {
     render();
   }
 
-  /** Toggle expand/collapse on the most recent non-running tool entry. */
-  private void toggleToolExpand() {
-    int size = transcriptSize();
-    for (int i = size - 1; i >= 0; i--) {
-      TranscriptEntry entry;
-      synchronized (transcript) {
-        entry = transcript.get(i);
-      }
-      if (entry instanceof TranscriptEntry.Tool t
-          && t.status() != TranscriptEntry.ToolStatus.RUNNING) {
-        // Toggle expansion of this entry
-        if (expandedTools.contains(t.id())) {
-          expandedTools.remove(t.id());
-        } else {
-          expandedTools.add(t.id());
-        }
+  /** Update or create the transient status line entry with current spinner + text. */
+  private void updateStatusLine() {
+    synchronized (transcript) {
+      String text = statusLineText;
+      if (text == null || text.isBlank()) {
+        transcript.removeIf(e -> e instanceof TranscriptEntry.Status);
         transcriptDirty = true;
-        render();
-        break;
+        return;
+      }
+      String body = SPINNER_FRAMES[spinnerFrame] + " " + text;
+      for (int i = transcript.size() - 1; i >= 0; i--) {
+        if (transcript.get(i) instanceof TranscriptEntry.Status) {
+          transcript.set(i, new TranscriptEntry.Status(i, body));
+          transcriptDirty = true;
+          return;
+        }
+      }
+      // No existing status entry — add one
+      transcript.add(new TranscriptEntry.Status(transcript.size(), body));
+      transcriptDirty = true;
+    }
+  }
+
+  /** Remove the transient status line entry if present. */
+  private void clearStatusLine() {
+    synchronized (transcript) {
+      if (transcript.removeIf(e -> e instanceof TranscriptEntry.Status)) {
+        transcriptDirty = true;
       }
     }
   }
@@ -738,6 +779,9 @@ public class TuiApp {
           /edit <path>::<search>::<replace> Edit a local file with review
           /patch <path>::<search>::<replace>... Batch replace a local file
           /cmd <command> Run a local command
+          /memory list [query] List persistent memories
+          /memory add <type>::<title>::<content> Save a memory
+          /memory delete <id> Delete a memory
           /new        Start a new session
           /resume    Open saved session picker
           /resume <id> Load a saved session by id
@@ -745,6 +789,7 @@ public class TuiApp {
           /rename <n> Rename current session metadata
           /compact    Compact middle conversation messages
           /config-paths Show config home directory
+          /permissions Show permission storage and rule counts
           /exit       Exit"""));
       render();
       return;
@@ -784,7 +829,7 @@ public class TuiApp {
               sb.append(s.id()).append("  ").append(s.title()).append("  ").append(s.updatedAt()).append("\n"));
           addEntry(new TranscriptEntry.Assistant(nextEntryId++, sb.toString().trim()));
         }
-      } catch (Exception e) {
+      } catch (Throwable e) {
         addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Error: " + e.getMessage()));
       }
       render();
@@ -831,10 +876,16 @@ public class TuiApp {
       return;
     }
 
+    if (text.equals("/memory") || text.startsWith("/memory ")) {
+      addEntry(new TranscriptEntry.Assistant(nextEntryId++, runMemoryCommand(text)));
+      render();
+      return;
+    }
+
     if (text.equals("/new")) {
       sessionId = UUID.randomUUID().toString().substring(0, 8);
       messages.clear();
-      messages.add(new ChatMessage.SystemMessage("You are CodeAuto. Permissions: " + permissions.summary()));
+      messages.add(new ChatMessage.SystemMessage(systemPrompt()));
       savedCount = 1;
       clearEntries();
       transcriptScrollOffset = 0;
@@ -913,7 +964,7 @@ public class TuiApp {
         } else {
           sessionId = target;
           messages.clear();
-          messages.add(new ChatMessage.SystemMessage("You are CodeAuto. Permissions: " + permissions.summary()));
+          messages.add(new ChatMessage.SystemMessage(systemPrompt()));
           messages.addAll(loaded);
           savedCount = messages.size();
           clearEntries();
@@ -955,9 +1006,17 @@ public class TuiApp {
       return;
     }
 
+    if (text.equals("/permissions")) {
+      addEntry(new TranscriptEntry.Assistant(nextEntryId++, permissions.describePermissions()));
+      render();
+      return;
+    }
+
     // Submit to AgentLoop
     isBusy = true;
     statusText = "Thinking...";
+    statusLineText = "Thinking...";
+    updateStatusLine();
     render();
 
     messages.add(new ChatMessage.UserMessage(text));
@@ -975,6 +1034,7 @@ public class TuiApp {
         addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Error: " + e.getMessage()));
       } finally {
         isBusy = false;
+        clearStatusLine();
         transcriptAutoScroll = true;
         statusText = null;
         contextStats = TokenEstimator.compute(messages, CONTEXT_WINDOW);
@@ -1001,6 +1061,10 @@ public class TuiApp {
       addEntry(new TranscriptEntry.Assistant(nextEntryId++,
           "Switched model to " + config.model() + ", but could not save settings: " + error.getMessage()));
     }
+  }
+
+  private String systemPrompt() {
+    return InstructionLoader.systemPrompt(cwd, permissions.summary());
   }
 
   private String mcpStatus() {
@@ -1107,6 +1171,31 @@ public class TuiApp {
     return true;
   }
 
+  private String runMemoryCommand(String text) {
+    String rest = text.equals("/memory") ? "list" : text.substring("/memory ".length()).trim();
+    String toolName;
+    ObjectNode input = MAPPER.createObjectNode();
+    if (rest.equals("list") || rest.startsWith("list ")) {
+      toolName = "list_memory";
+      String query = rest.length() > 4 ? rest.substring(4).trim() : "";
+      if (!query.isBlank()) input.put("query", query);
+    } else if (rest.startsWith("add ")) {
+      toolName = "save_memory";
+      String[] parts = splitShortcutPayload(rest.substring("add ".length()).trim(), 3);
+      if (parts.length < 3) return "Usage: /memory add <type>::<title>::<content>";
+      input.put("type", parts[0]);
+      input.put("title", parts[1]);
+      input.put("content", parts[2]);
+    } else if (rest.startsWith("delete ")) {
+      toolName = "delete_memory";
+      input.put("id", rest.substring("delete ".length()).trim());
+    } else {
+      return "Usage: /memory list [query] | /memory add <type>::<title>::<content> | /memory delete <id>";
+    }
+    var result = tools.execute(toolName, input, new ToolContext(cwd, permissions));
+    return result.output();
+  }
+
   private boolean shortcutUsage(String usage) {
     addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Usage: " + usage));
     return true;
@@ -1176,7 +1265,7 @@ public class TuiApp {
           int savedPct = Math.max(1, (int) ((double) savedTokens / result.tokensBefore() * 100));
           compactNotification = "ctx -" + savedPct + "% (saved " + savedTokens + " tokens)";
         }
-      } catch (Exception e) {
+      } catch (Throwable e) {
         addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Compression failed: " + e.getMessage()));
       } finally {
         isBusy = false;
@@ -1211,14 +1300,61 @@ public class TuiApp {
     @Override
     public void onProgressMessage(String content) {
       if (content != null && !content.isBlank()) {
-        addEntry(new TranscriptEntry.Progress(nextEntryId++, content));
+        statusLineText = content;
+        updateStatusLine();
         render();
       }
     }
 
     @Override
+    public void onAssistantDelta(String delta) {
+      if (delta == null || delta.isEmpty()) return;
+      synchronized (transcript) {
+        // Remove transient status line before showing assistant content
+        transcript.removeIf(e -> e instanceof TranscriptEntry.Status);
+
+        if (streamingAssistantEntryId == null) {
+          streamingAssistantEntryId = nextEntryId++;
+          streamingAssistantBuffer.setLength(0);
+          transcript.add(new TranscriptEntry.Assistant(streamingAssistantEntryId, ""));
+        }
+        streamingAssistantBuffer.append(delta);
+        for (int i = transcript.size() - 1; i >= 0; i--) {
+          var entry = transcript.get(i);
+          if (entry instanceof TranscriptEntry.Assistant a && a.id() == streamingAssistantEntryId) {
+            transcript.set(i, new TranscriptEntry.Assistant(a.id(), streamingAssistantBuffer.toString()));
+            break;
+          }
+        }
+      }
+      transcriptDirty = true;
+      transcriptAutoScroll = true;
+      render();
+    }
+
+    @Override
     public void onAssistantMessage(String content) {
       if (content != null && !content.isBlank()) {
+        if (streamingAssistantEntryId != null) {
+          synchronized (transcript) {
+            // Remove transient status line before finalizing assistant content
+            transcript.removeIf(e -> e instanceof TranscriptEntry.Status);
+
+            for (int i = transcript.size() - 1; i >= 0; i--) {
+              var entry = transcript.get(i);
+              if (entry instanceof TranscriptEntry.Assistant a && a.id() == streamingAssistantEntryId) {
+                transcript.set(i, new TranscriptEntry.Assistant(a.id(), content));
+                break;
+              }
+            }
+            streamingAssistantEntryId = null;
+            streamingAssistantBuffer.setLength(0);
+          }
+          transcriptDirty = true;
+          render();
+          return;
+        }
+        clearStatusLine();
         addEntry(new TranscriptEntry.Assistant(nextEntryId++, content));
         render();
       }
@@ -1228,10 +1364,8 @@ public class TuiApp {
     public void onToolStart(String toolName, JsonNode input) {
       runningToolName = toolName;
       statusText = "Running " + toolName + "...";
-      String inputSummary = input != null ? input.toString() : "";
-      if (inputSummary.length() > 200) inputSummary = inputSummary.substring(0, 200) + "...";
-      addEntry(new TranscriptEntry.Tool(nextEntryId++, toolName,
-          TranscriptEntry.ToolStatus.RUNNING, inputSummary));
+      statusLineText = "Running " + toolName + "...";
+      updateStatusLine();
       render();
     }
 
@@ -1241,20 +1375,8 @@ public class TuiApp {
       recentTools.addLast(new ToolStatus(toolName, isError));
       if (recentTools.size() > 10) recentTools.removeFirst();
       statusText = "Thinking...";
-      // Update the latest running tool entry for this tool
-      synchronized (transcript) {
-        for (int i = transcript.size() - 1; i >= 0; i--) {
-          var entry = transcript.get(i);
-          if (entry instanceof TranscriptEntry.Tool t && t.toolName().equals(toolName)
-              && t.status() == TranscriptEntry.ToolStatus.RUNNING) {
-            String body = output;
-            if (body != null && body.length() > 2000) body = body.substring(0, 2000) + "...\n[truncated]";
-            transcript.set(i, new TranscriptEntry.Tool(t.id(), toolName,
-                isError ? TranscriptEntry.ToolStatus.ERROR : TranscriptEntry.ToolStatus.SUCCESS, body));
-            break;
-          }
-        }
-      }
+      statusLineText = "Processed " + toolName + " (" + recentTools.size() + " total)";
+      updateStatusLine();
       transcriptDirty = true;
       render();
     }
@@ -1319,7 +1441,7 @@ public class TuiApp {
       } else {
         sessionId = target;
         messages.clear();
-        messages.add(new ChatMessage.SystemMessage("You are CodeAuto. Permissions: " + permissions.summary()));
+        messages.add(new ChatMessage.SystemMessage(systemPrompt()));
         messages.addAll(loaded);
         savedCount = messages.size();
         clearEntries();
@@ -1345,7 +1467,7 @@ public class TuiApp {
       } else {
         sessionId = target;
         messages.clear();
-        messages.add(new ChatMessage.SystemMessage("You are CodeAuto. Permissions: " + permissions.summary()));
+        messages.add(new ChatMessage.SystemMessage(systemPrompt()));
         messages.addAll(loaded);
         savedCount = messages.size();
         clearEntries();
@@ -1472,89 +1594,29 @@ public class TuiApp {
     java.nio.file.Files.deleteIfExists(file);
   }
 
-  /** Apply ANSI color highlighting to unified diff output with word-level changes. */
-  private static String highlightDiff(String text) {
-    if (text == null || text.isEmpty()) return text;
-    var sb = new StringBuilder();
-    var lines = text.lines().toList();
-    String pendingRemoved = null;
-
-    for (var line : lines) {
-      if (line.startsWith("-") && !line.startsWith("---")) {
-        pendingRemoved = line;
-        continue;
-      }
-
-      if (line.startsWith("+") && !line.startsWith("+++") && pendingRemoved != null) {
-        sb.append(wordDiff(pendingRemoved, line)).append("\n");
-        pendingRemoved = null;
-        continue;
-      }
-
-      if (pendingRemoved != null) {
-        sb.append(Ansi.RED).append(pendingRemoved).append(Ansi.RESET).append("\n");
-        pendingRemoved = null;
-      }
-
-      if (line.startsWith("@@")) {
-        sb.append(Ansi.CYAN).append(Ansi.BOLD).append(line).append(Ansi.RESET).append("\n");
-      } else if (line.startsWith("--- ") || line.startsWith("+++ ") || line.startsWith("diff --git")) {
-        sb.append(Ansi.DIM).append(line).append(Ansi.RESET).append("\n");
-      } else if (line.startsWith("+")) {
-        sb.append(Ansi.GREEN).append(line).append(Ansi.RESET).append("\n");
-      } else {
-        sb.append(line).append("\n");
-      }
-    }
-
-    if (pendingRemoved != null) {
-      sb.append(Ansi.RED).append(pendingRemoved).append(Ansi.RESET).append("\n");
-    }
-
-    return sb.toString().stripTrailing();
-  }
-
-  /** Bold the differing text between a removed and added diff line. */
-  private static String wordDiff(String removedLine, String addedLine) {
-    String rem = removedLine.substring(1);
-    String add = addedLine.substring(1);
-
-    int prefixLen = 0;
-    int minLen = Math.min(rem.length(), add.length());
-    while (prefixLen < minLen && rem.charAt(prefixLen) == add.charAt(prefixLen)) {
-      prefixLen++;
-    }
-
-    int suffixLen = 0;
-    while (suffixLen < minLen - prefixLen
-        && rem.charAt(rem.length() - 1 - suffixLen) == add.charAt(add.length() - 1 - suffixLen)) {
-      suffixLen++;
-    }
-
-    String prefix = rem.substring(0, prefixLen);
-    String remMiddle = rem.substring(prefixLen, rem.length() - suffixLen);
-    String addMiddle = add.substring(prefixLen, add.length() - suffixLen);
-    String suffix = rem.length() - suffixLen > 0 ? rem.substring(rem.length() - suffixLen) : "";
-
-    var sb = new StringBuilder();
-    sb.append(Ansi.RED).append("-");
-    sb.append(prefix);
-    if (!remMiddle.isEmpty()) sb.append(Ansi.BOLD).append(remMiddle).append(Ansi.RESET).append(Ansi.RED);
-    sb.append(suffix);
-    sb.append(Ansi.RESET);
-    sb.append("\n");
-    sb.append(Ansi.GREEN).append("+");
-    sb.append(prefix);
-    if (!addMiddle.isEmpty()) sb.append(Ansi.BOLD).append(addMiddle).append(Ansi.RESET).append(Ansi.GREEN);
-    sb.append(suffix);
-    sb.append(Ansi.RESET);
-
-    return sb.toString();
-  }
-
   // --- Rendering ---
 
-  private void render() {
+  private synchronized void render() {
+    try {
+      renderUnsafe();
+    } catch (Throwable error) {
+      try {
+        if (writer != null) {
+          writer.write(Ansi.CLEAR);
+          writer.write(Ansi.HIDE_CURSOR);
+          writer.write(PanelRenderer.renderPanel("CodeAuto render error",
+              (error.getMessage() == null ? error.toString() : error.getMessage())
+                  + "\n\nThe TUI is still running. Press Ctrl+C to exit, or continue typing.",
+              termWidth()));
+          writer.flush();
+        }
+      } catch (Throwable ignored) {
+        // Never let rendering errors terminate the TUI.
+      }
+    }
+  }
+
+  private void renderUnsafe() {
     var sb = new StringBuilder();
 
     sb.append("[H[J");
@@ -1596,11 +1658,12 @@ public class TuiApp {
     String transcriptPanel = PanelRenderer.renderPanel("session feed", transcriptBody, termWidth, rightTitle);
 
     sb.append(headerPanel).append("\n");
-    sb.append(transcriptPanel).append("\n\n");
 
     if (!toolPanel.isEmpty()) {
       sb.append(toolPanel).append("\n\n");
     }
+
+    sb.append(transcriptPanel).append("\n\n");
 
     sb.append(bottomPanel);
 
@@ -1611,11 +1674,12 @@ public class TuiApp {
 
     if (sessionPicker == null && pendingApproval == null) {
       int promptStartRow = lineCount(headerPanel) + 1
-          + lineCount(transcriptPanel) + 2
           + (toolPanel.isEmpty() ? 0 : lineCount(toolPanel) + 2)
+          + lineCount(transcriptPanel) + 2
           + 1;
+      int safeCursor = Math.max(0, Math.min(cursorPos, input == null ? 0 : input.length()));
       int inputOffset = Ansi.stringDisplayWidth("codeauto> ")
-          + Ansi.stringDisplayWidth(input.substring(0, Math.min(cursorPos, input.length())));
+          + Ansi.stringDisplayWidth((input == null ? "" : input).substring(0, safeCursor));
       int innerWidth = Math.max(1, termWidth - 4);
       int cursorRow = promptStartRow + 5 + (inputOffset / innerWidth);
       int cursorCol = 3 + (inputOffset % innerWidth);
@@ -1839,6 +1903,8 @@ public class TuiApp {
         yield labelColor + Ansi.BOLD + "assistant" + Ansi.RESET + "\n"
             + indentBlock(MarkdownRenderer.render(body));
       }
+      case TranscriptEntry.Status s ->
+          Ansi.YELLOW + s.body() + Ansi.RESET;
       case TranscriptEntry.Progress p ->
           Ansi.YELLOW + Ansi.BOLD + "progress" + Ansi.RESET + "\n" + indentBlock(p.body());
       case TranscriptEntry.Tool t -> {
@@ -1852,38 +1918,8 @@ public class TuiApp {
           case SUCCESS -> "ok";
           case ERROR -> "err";
         };
-
-        // Collapse long tool output; expand on 'o' key
-        String body = t.body();
-        if (t.status() != TranscriptEntry.ToolStatus.RUNNING
-            && body != null
-            && body.length() > TOOL_COLLAPSE_CHARS
-            && !expandedTools.contains(t.id())) {
-          String[] bodyLines = body.split("\n");
-          int lineCount = Math.min(TOOL_PREVIEW_LINES, bodyLines.length);
-          var preview = new StringBuilder();
-          for (int i = 0; i < lineCount; i++) {
-            if (i > 0) preview.append("\n");
-            preview.append(bodyLines[i]);
-          }
-          int totalLines = bodyLines.length;
-          int totalChars = body.length();
-          if (totalLines > lineCount) {
-            preview.append("\n  ").append(Ansi.DIM).append("[").append(totalLines - lineCount)
-                .append(" more lines, ").append(totalChars - TOOL_COLLAPSE_CHARS).append(" more chars]")
-                .append(Ansi.RESET);
-            preview.append("\n  ").append(Ansi.YELLOW).append("[press Ctrl+O to expand]").append(Ansi.RESET);
-          }
-          body = preview.toString();
-        }
-
-        // Apply diff highlighting if body looks like unified diff output
-        if (body != null && (body.contains("\n@@") || body.contains("\n--- "))) {
-          body = highlightDiff(body);
-        }
-
         yield Ansi.MAGENTA + Ansi.BOLD + "tool" + Ansi.RESET + " " + t.toolName() + " "
-            + statusColor + statusLabel + Ansi.RESET + "\n" + indentBlock(body);
+            + statusColor + statusLabel + Ansi.RESET;
       }
     };
   }
@@ -1902,19 +1938,25 @@ public class TuiApp {
 
   private String renderPromptPanel(int termWidth) {
     String promptLine = Ansi.GREEN + Ansi.BOLD + "codeauto>" + Ansi.RESET;
-    String helpText = Ansi.DIM + "Enter send · Esc clear · Ctrl+C exit · Ctrl+O expand" + Ansi.RESET;
+    String helpText = Ansi.DIM + "Enter send · Esc clear · Ctrl+C exit" + Ansi.RESET;
 
-    String before = input.substring(0, Math.min(cursorPos, input.length()));
-    String at = cursorPos < input.length() ? String.valueOf(input.charAt(cursorPos)) : " ";
-    String after = cursorPos < input.length() ? input.substring(cursorPos + 1) : "";
+    String currentInput = input == null ? "" : input;
+    int safeCursor = Math.max(0, Math.min(cursorPos, currentInput.length()));
+    String before = currentInput.substring(0, safeCursor);
+    String at = safeCursor < currentInput.length() ? String.valueOf(currentInput.charAt(safeCursor)) : " ";
+    String after = safeCursor < currentInput.length() ? currentInput.substring(safeCursor + 1) : "";
 
-    String placeholder = input.isEmpty()
+    String placeholder = currentInput.isEmpty()
         ? Ansi.DIM + " Ask for code, files, tasks, or MCP tools" + Ansi.RESET
         : "";
 
     var inputLine = new StringBuilder();
     inputLine.append(promptLine).append(" ").append(before);
-    inputLine.append(Ansi.REVERSE).append(at).append(Ansi.RESET);
+    if (cursorBlinkVisible) {
+      inputLine.append(Ansi.REVERSE).append(at).append(Ansi.RESET);
+    } else {
+      inputLine.append(at);
+    }
     inputLine.append(after);
     inputLine.append(placeholder);
 
@@ -1926,9 +1968,13 @@ public class TuiApp {
     if (!visCmds.isEmpty()) {
       body.append("\n");
       int cmdWidth = Math.max(24, termWidth - 6);
-      for (int i = 0; i < visCmds.size(); i++) {
+      int selected = Math.max(0, Math.min(slashMenuSelectedIndex, visCmds.size() - 1));
+      int start = Math.max(0, selected - SLASH_MENU_MAX_ROWS / 2);
+      int end = Math.min(visCmds.size(), start + SLASH_MENU_MAX_ROWS);
+      start = Math.max(0, end - SLASH_MENU_MAX_ROWS);
+      for (int i = start; i < end; i++) {
         var cmd = visCmds.get(i);
-        String prefix = (i == slashMenuSelectedIndex)
+        String prefix = (i == selected)
             ? Ansi.REVERSE + "> " + Ansi.RESET
             : "  ";
         String usage = Ansi.BOLD + cmd.usage() + Ansi.RESET;
@@ -1937,6 +1983,16 @@ public class TuiApp {
         int pad = Math.max(1, cmdWidth - usageWidth);
         body.append("\n").append(prefix).append(" ").append(usage);
         body.append(" ".repeat(pad)).append(desc);
+      }
+      if (visCmds.size() > SLASH_MENU_MAX_ROWS) {
+        body.append("\n")
+            .append(Ansi.DIM)
+            .append("  ")
+            .append(selected + 1)
+            .append("/")
+            .append(visCmds.size())
+            .append(" matches, Up/Down select")
+            .append(Ansi.RESET);
       }
     }
 

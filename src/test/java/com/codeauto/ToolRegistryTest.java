@@ -85,6 +85,39 @@ class ToolRegistryTest {
     assertTrue(result.output().contains("Do not edit generated files."), result.output());
   }
 
+  @Test
+  void memoryToolsSaveListAndDeletePersistentMemory() throws Exception {
+    String previousHome = System.getProperty("codeauto.home");
+    java.nio.file.Path home = Files.createTempDirectory("codeauto-memory-tool-home");
+    java.nio.file.Path cwd = Files.createTempDirectory("codeauto-memory-tool-workspace");
+    try {
+      System.setProperty("codeauto.home", home.toString());
+      var registry = DefaultTools.create();
+      var context = new ToolContext(cwd, allowingPermissions(cwd));
+      var save = registry.execute("save_memory",
+          MAPPER.createObjectNode()
+              .put("type", "project")
+              .put("title", "Tool memory")
+              .put("content", "Remember this from a tool."),
+          context);
+
+      assertTrue(save.ok(), save.output());
+      var list = registry.execute("list_memory", MAPPER.createObjectNode(), context);
+      assertTrue(list.ok(), list.output());
+      assertTrue(list.output().contains("Tool memory"));
+
+      String id = list.output().split(" ")[0];
+      var delete = registry.execute("delete_memory", MAPPER.createObjectNode().put("id", id), context);
+      assertTrue(delete.ok(), delete.output());
+    } finally {
+      if (previousHome == null) {
+        System.clearProperty("codeauto.home");
+      } else {
+        System.setProperty("codeauto.home", previousHome);
+      }
+    }
+  }
+
   private static PermissionManager allowingPermissions(java.nio.file.Path root) throws Exception {
     return new PermissionManager(root, new PermissionStore(Files.createTempFile("permissions-tools", ".json")),
         request -> PermissionDecision.ALLOW_ONCE);

@@ -5,16 +5,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.config.RuntimeConfig;
+import com.codeauto.core.AgentLoopListener;
 import com.codeauto.core.AgentStep;
 import com.codeauto.core.ChatMessage;
 import com.codeauto.core.ProviderUsage;
 import com.codeauto.core.ToolCall;
 import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolRegistry;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +39,20 @@ public class AnthropicModelAdapter implements ModelAdapter {
 
   @Override
   public AgentStep next(List<ChatMessage> messages) throws Exception {
+    ObjectNode body = buildRequestBody(messages);
+    HttpResponse<String> response = sendWithRetry(body);
+    JsonNode json = MAPPER.readTree(response.body());
+    return parseStep(json);
+  }
+
+  @Override
+  public AgentStep next(List<ChatMessage> messages, AgentLoopListener listener) throws Exception {
+    ObjectNode body = buildRequestBody(messages);
+    body.put("stream", true);
+    return sendStreaming(body, listener == null ? AgentLoopListener.NOOP : listener);
+  }
+
+  private ObjectNode buildRequestBody(List<ChatMessage> messages) {
     if (config.baseUrl() == null || config.baseUrl().isBlank()) {
       throw new IllegalStateException("baseUrl is required for Anthropic model mode");
     }
@@ -75,10 +94,7 @@ public class AnthropicModelAdapter implements ModelAdapter {
     if (!system.isEmpty()) {
       body.put("system", system.toString());
     }
-
-    HttpResponse<String> response = sendWithRetry(body);
-    JsonNode json = MAPPER.readTree(response.body());
-    return parseStep(json);
+    return body;
   }
 
   private HttpResponse<String> sendWithRetry(ObjectNode body) throws Exception {
@@ -102,6 +118,138 @@ public class AnthropicModelAdapter implements ModelAdapter {
       Thread.sleep(retryDelayMs(attempt, response.headers().firstValue("retry-after").orElse(null)));
     }
     throw new IllegalStateException("Model request failed after retries");
+  }
+
+  private AgentStep sendStreaming(ObjectNode body, AgentLoopListener listener) throws Exception {
+    int attempts = Math.max(1, config.maxRetries() + 1);
+    for (int attempt = 1; attempt <= attempts; attempt++) {
+      HttpRequest request = HttpRequest.newBuilder()
+          .uri(URI.create(config.baseUrl().replaceAll("/+$", "") + "/v1/messages"))
+          .timeout(Duration.ofMinutes(2))
+          .header("content-type", "application/json")
+          .header("accept", "text/event-stream")
+          .header("anthropic-version", "2023-06-01")
+          .header("x-api-key", config.authToken())
+          .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)))
+          .build();
+      HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+      if (response.statusCode() < 400) {
+        return parseStreamingResponse(response.body(), listener);
+      }
+      String errorBody = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
+      if (attempt == attempts || (response.statusCode() != 429 && response.statusCode() < 500)) {
+        throw new IllegalStateException("Model request failed: " + response.statusCode() + " " + errorBody);
+      }
+      Thread.sleep(retryDelayMs(attempt, response.headers().firstValue("retry-after").orElse(null)));
+    }
+    throw new IllegalStateException("Model request failed after retries");
+  }
+
+  private AgentStep parseStreamingResponse(InputStream stream, AgentLoopListener listener) throws Exception {
+    List<ObjectNode> blocks = new ArrayList<>();
+    List<StringBuilder> toolInputs = new ArrayList<>();
+    ProviderUsage[] usage = new ProviderUsage[1];
+    try (var reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        if (!line.startsWith("data:")) continue;
+        String data = line.substring("data:".length()).trim();
+        if (data.isBlank() || "[DONE]".equals(data)) continue;
+        JsonNode event = MAPPER.readTree(data);
+        String type = event.path("type").asText();
+        if ("content_block_start".equals(type)) {
+          int index = event.path("index").asInt(blocks.size());
+          ensureSize(blocks, index + 1);
+          ensureSize(toolInputs, index + 1);
+          JsonNode block = event.path("content_block");
+          ObjectNode copy = block.isObject() ? block.deepCopy() : MAPPER.createObjectNode();
+          if ("text".equals(copy.path("type").asText()) && !copy.has("text")) {
+            copy.put("text", "");
+          }
+          if ("tool_use".equals(copy.path("type").asText())) {
+            copy.set("input", MAPPER.createObjectNode());
+            toolInputs.set(index, new StringBuilder());
+          }
+          blocks.set(index, copy);
+        } else if ("content_block_delta".equals(type)) {
+          int index = event.path("index").asInt(-1);
+          if (index < 0) continue;
+          ensureSize(blocks, index + 1);
+          ensureSize(toolInputs, index + 1);
+          ObjectNode block = blocks.get(index);
+          if (block == null) {
+            block = MAPPER.createObjectNode();
+            blocks.set(index, block);
+          }
+          JsonNode delta = event.path("delta");
+          String deltaType = delta.path("type").asText();
+          if ("text_delta".equals(deltaType)) {
+            String text = delta.path("text").asText("");
+            block.put("type", "text");
+            block.put("text", block.path("text").asText("") + text);
+            if (!text.isEmpty()) listener.onAssistantDelta(text);
+          } else if ("input_json_delta".equals(deltaType)) {
+            String partial = delta.path("partial_json").asText("");
+            StringBuilder input = toolInputs.get(index);
+            if (input == null) {
+              input = new StringBuilder();
+              toolInputs.set(index, input);
+            }
+            input.append(partial);
+          }
+        } else if ("content_block_stop".equals(type)) {
+          int index = event.path("index").asInt(-1);
+          if (index >= 0 && index < blocks.size()) {
+            ObjectNode block = blocks.get(index);
+            if (block != null && "tool_use".equals(block.path("type").asText())) {
+              String input = index < toolInputs.size() && toolInputs.get(index) != null
+                  ? toolInputs.get(index).toString()
+                  : "";
+              if (!input.isBlank()) {
+                try {
+                  block.set("input", MAPPER.readTree(input));
+                } catch (Exception ignored) {
+                  block.set("input", MAPPER.createObjectNode());
+                }
+              }
+            }
+          }
+        } else if ("message_delta".equals(type)) {
+          usage[0] = mergeUsage(usage[0], parseUsage(event.path("usage")));
+        } else if ("message_start".equals(type)) {
+          usage[0] = mergeUsage(usage[0], parseUsage(event.path("message").path("usage")));
+        } else if ("error".equals(type)) {
+          throw new IllegalStateException("Model stream failed: " + event.path("error").toString());
+        }
+      }
+    }
+
+    ArrayNode content = MAPPER.createArrayNode();
+    for (ObjectNode block : blocks) {
+      if (block != null && !block.path("type").asText().isBlank()) {
+        content.add(block);
+      }
+    }
+    ObjectNode message = MAPPER.createObjectNode();
+    message.set("content", content);
+    if (usage[0] != null) {
+      ObjectNode usageNode = message.putObject("usage");
+      usageNode.put("input_tokens", usage[0].inputTokens());
+      usageNode.put("output_tokens", usage[0].outputTokens());
+    }
+    return parseStep(message);
+  }
+
+  private static <T> void ensureSize(List<T> list, int size) {
+    while (list.size() < size) list.add(null);
+  }
+
+  private static ProviderUsage mergeUsage(ProviderUsage previous, ProviderUsage next) {
+    if (next == null) return previous;
+    if (previous == null) return next;
+    int input = Math.max(previous.inputTokens(), next.inputTokens());
+    int output = Math.max(previous.outputTokens(), next.outputTokens());
+    return new ProviderUsage(input, output, input + output, "anthropic");
   }
 
   private static long retryDelayMs(int attempt, String retryAfter) {

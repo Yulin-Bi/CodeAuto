@@ -1,6 +1,7 @@
 package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolResult;
@@ -16,8 +17,13 @@ public class WebSearchTool implements ToolDefinition {
   private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 
   @Override public String name() { return "web_search"; }
-  @Override public String description() { return "Search the web through CODEAUTO_SEARCH_URL."; }
-  @Override public JsonNode inputSchema() { return JsonSchemas.objectSchema(); }
+  @Override public String description() { return "Search the web via CODEAUTO_SEARCH_URL env variable."; }
+  @Override public JsonNode inputSchema() {
+    ObjectNode schema = JsonSchemas.schema();
+    ObjectNode props = schema.putObject("properties");
+    props.set("query", JsonSchemas.stringProp("Search query"));
+    return JsonSchemas.required(schema, "query");
+  }
 
   @Override
   public ToolResult run(JsonNode input, ToolContext context) throws Exception {

@@ -19,6 +19,10 @@ public class PermissionStore {
     this.path = path;
   }
 
+  public Path path() {
+    return path;
+  }
+
   public Data read() {
     if (!Files.exists(path)) return new Data();
     try {

@@ -72,4 +72,58 @@ class PermissionManagerTest {
     assertTrue(permissions.canWrite(cwd.resolve("notes.md")));
     assertFalse(permissions.canWrite(cwd.resolve("..").resolve("outside.md")));
   }
+
+  @Test
+  void supportsWildcardCommandPermissionRules() throws Exception {
+    Path storePath = Files.createTempFile("permissions-command-rules", ".json");
+    PermissionStore store = new PermissionStore(storePath);
+    PermissionStore.Data data = new PermissionStore.Data();
+    data.allowedCommandPatterns.add("Bash(python scripts/*)");
+    data.deniedCommandPatterns.add("Bash(git push --force*)");
+    store.write(data);
+
+    PermissionManager permissions = new PermissionManager(Path.of("").toAbsolutePath(), store,
+        request -> PermissionDecision.DENY_ONCE);
+
+    assertTrue(permissions.canRun("python", List.of("scripts/build.py")));
+    assertFalse(permissions.canRun("git", List.of("push", "--force")));
+  }
+
+  @Test
+  void supportsWildcardEditPermissionRules() throws Exception {
+    Path cwd = Files.createTempDirectory("codeauto-permission-rules");
+    Path storePath = Files.createTempFile("permissions-edit-rules", ".json");
+    PermissionStore store = new PermissionStore(storePath);
+    PermissionStore.Data data = new PermissionStore.Data();
+    data.allowedEditPatterns.add("Edit(src/*.java)");
+    data.deniedEditPatterns.add("Edit(src/Secret*)");
+    store.write(data);
+
+    PermissionManager permissions = new PermissionManager(cwd, store,
+        request -> PermissionDecision.DENY_ONCE);
+
+    assertTrue(permissions.canWrite(cwd.resolve("src").resolve("Main.java")));
+    assertFalse(permissions.canWrite(cwd.resolve("src").resolve("Secret.java")));
+    assertFalse(permissions.canWrite(cwd.resolve("README.md")));
+  }
+
+  @Test
+  void describesPermissionStorageAndRuleCounts() throws Exception {
+    Path cwd = Files.createTempDirectory("codeauto-permission-describe");
+    Path storePath = Files.createTempFile("permissions-describe", ".json");
+    PermissionStore store = new PermissionStore(storePath);
+    PermissionStore.Data data = new PermissionStore.Data();
+    data.allowedCommandPatterns.add("Bash(npm run *)");
+    data.deniedEditPatterns.add("Edit(secret/*)");
+    store.write(data);
+
+    PermissionManager permissions = new PermissionManager(cwd, store,
+        request -> PermissionDecision.DENY_ONCE);
+
+    String description = permissions.describePermissions();
+    assertTrue(description.contains(storePath.toAbsolutePath().normalize().toString()));
+    assertTrue(description.contains("workspace=" + cwd.toAbsolutePath().normalize()));
+    assertTrue(description.contains("allowedCommandPatterns=1"));
+    assertTrue(description.contains("deniedEditPatterns=1"));
+  }
 }

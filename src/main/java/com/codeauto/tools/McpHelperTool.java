@@ -1,6 +1,7 @@
 package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.manage.ManagementStore;
 import com.codeauto.mcp.McpClient;
 import com.codeauto.mcp.McpHttpClient;
@@ -48,7 +49,36 @@ public class McpHelperTool implements ToolDefinition {
 
   @Override
   public JsonNode inputSchema() {
-    return JsonSchemas.objectSchema();
+    return switch (kind) {
+      case LIST_RESOURCES -> {
+        ObjectNode schema = JsonSchemas.schema();
+        ObjectNode props = schema.putObject("properties");
+        props.set("server", JsonSchemas.stringProp("Server name (omit for all)"));
+        yield schema;
+      }
+      case READ_RESOURCE -> {
+        ObjectNode schema = JsonSchemas.schema();
+        ObjectNode props = schema.putObject("properties");
+        props.set("server", JsonSchemas.stringProp("MCP server name"));
+        props.set("uri", JsonSchemas.stringProp("Resource URI to read"));
+        yield JsonSchemas.required(schema, "server", "uri");
+      }
+      case LIST_PROMPTS -> {
+        ObjectNode schema = JsonSchemas.schema();
+        ObjectNode props = schema.putObject("properties");
+        props.set("server", JsonSchemas.stringProp("Server name (omit for all)"));
+        yield schema;
+      }
+      case GET_PROMPT -> {
+        ObjectNode schema = JsonSchemas.schema();
+        ObjectNode props = schema.putObject("properties");
+        props.set("server", JsonSchemas.stringProp("MCP server name"));
+        props.set("name", JsonSchemas.stringProp("Prompt name"));
+        props.set("arguments", JsonSchemas.MAPPER.createObjectNode()
+            .put("type", "object").put("description", "Optional prompt arguments"));
+        yield JsonSchemas.required(schema, "server", "name");
+      }
+    };
   }
 
   @Override

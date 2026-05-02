@@ -6,7 +6,7 @@ import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolResult;
 
 public record PlaceholderTool(String name, String description) implements ToolDefinition {
-  @Override public JsonNode inputSchema() { return JsonSchemas.objectSchema(); }
+  @Override public JsonNode inputSchema() { return JsonSchemas.emptySchema(); }
 
   @Override
   public ToolResult run(JsonNode input, ToolContext context) {

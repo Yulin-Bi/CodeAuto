@@ -61,7 +61,7 @@ public class AgentLoop {
           listener.onContextStats(TokenEstimator.compute(messages, contextWindow));
         }
       }
-      AgentStep next = model.next(List.copyOf(messages));
+      AgentStep next = model.next(List.copyOf(messages), listener);
 
       if (next instanceof AgentStep.AssistantStep assistant) {
         String content = assistant.content() == null ? "" : assistant.content().trim();

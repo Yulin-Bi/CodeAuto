@@ -17,6 +17,9 @@ public interface AgentLoopListener {
   default void onProgressMessage(String content) {
   }
 
+  default void onAssistantDelta(String delta) {
+  }
+
   default void onAssistantMessage(String content) {
   }
 

@@ -1,6 +1,7 @@
 package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolResult;
@@ -12,14 +13,20 @@ import java.util.List;
 public class PatchFileTool implements ToolDefinition {
   @Override public String name() { return "patch_file"; }
   @Override public String description() { return "Apply a simple single-file unified patch."; }
-  @Override public JsonNode inputSchema() { return JsonSchemas.objectSchema(); }
+  @Override public JsonNode inputSchema() {
+    ObjectNode schema = JsonSchemas.schema();
+    ObjectNode props = schema.putObject("properties");
+    props.set("patch", JsonSchemas.stringProp("Unified diff patch content"));
+    props.set("path", JsonSchemas.stringProp("Target file path (auto-detected from patch header if omitted)"));
+    return JsonSchemas.required(schema, "patch");
+  }
 
   @Override
   public ToolResult run(JsonNode input, ToolContext context) throws Exception {
     String patch = JsonSchemas.text(input, "patch", "");
     if (patch.isBlank()) return ToolResult.error("patch is required");
     ParsedPatch parsed = parsePatch(patch);
-    String rawPath = JsonSchemas.text(input, "path", parsed.path());
+    String rawPath = JsonSchemas.textAny(input, parsed.path(), "path", "file_path", "filepath", "filePath");
     if (rawPath == null || rawPath.isBlank()) return ToolResult.error("path is required or must be present in patch header");
     Path file = context.cwd().resolve(stripPrefix(rawPath)).normalize();
     if (!Files.exists(file)) return ToolResult.error("File does not exist: " + file);

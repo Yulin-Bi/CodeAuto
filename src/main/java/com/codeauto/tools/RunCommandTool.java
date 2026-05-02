@@ -1,23 +1,36 @@
 package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.background.BackgroundTaskRegistry;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolResult;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 public class RunCommandTool implements ToolDefinition {
   private static final int DEFAULT_TIMEOUT_SECONDS = 20;
+  private static final int MAX_FOREGROUND_OUTPUT_BYTES = 512 * 1024;
 
   @Override public String name() { return "run_command"; }
   @Override public String description() { return "Run a local command in the workspace."; }
-  @Override public JsonNode inputSchema() { return JsonSchemas.objectSchema(); }
+  @Override public JsonNode inputSchema() {
+    ObjectNode schema = JsonSchemas.schema();
+    ObjectNode props = schema.putObject("properties");
+    props.set("command", JsonSchemas.stringProp("Shell command to run"));
+    props.set("background", JsonSchemas.booleanProp("Run in background"));
+    props.set("timeout", JsonSchemas.integerProp("Timeout in seconds (default: 20)"));
+    props.set("args", JsonSchemas.arrayProp("string", "Command arguments"));
+    return JsonSchemas.required(schema, "command");
+  }
 
   @Override
   public ToolResult run(JsonNode input, ToolContext context) throws Exception {
@@ -40,6 +53,11 @@ public class RunCommandTool implements ToolDefinition {
       return ToolResult.error("Command requires approval: " + (reason == null ? command : reason)
           + context.permissions().formatLastDenialFeedback());
     }
+    // Cross-platform check: detect Linux-only commands on Windows
+    String compatError = checkCommandAvailability(executable);
+    if (compatError != null) {
+      return ToolResult.error(compatError);
+    }
     Process process = new ProcessBuilder(parts)
         .directory(context.cwd().toFile())
         .redirectErrorStream(true)
@@ -50,7 +68,7 @@ public class RunCommandTool implements ToolDefinition {
     }
     CompletableFuture<String> outputFuture = CompletableFuture.supplyAsync(() -> {
       try {
-        return new String(process.getInputStream().readAllBytes());
+        return readLimited(process.getInputStream(), MAX_FOREGROUND_OUTPUT_BYTES);
       } catch (IOException error) {
         return error.getMessage() == null ? error.toString() : error.getMessage();
       }
@@ -168,5 +186,57 @@ public class RunCommandTool implements ToolDefinition {
     return trimmed.endsWith("&") && !trimmed.endsWith("&&")
         ? trimmed.substring(0, trimmed.length() - 1).trim()
         : trimmed;
+  }
+
+  /**
+   * Check if the executable is available on this platform. Returns an error message with
+   * suggestions if the command is likely unavailable, or null if it should proceed.
+   */
+  private static String checkCommandAvailability(String executable) {
+    if (!isWindows()) return null;
+
+    // Common Linux commands not available on Windows cmd
+    var linuxCommands = Map.of(
+        "head", "Use cmd /c \"more +<N> <file>\" or PowerShell Get-Content -Head",
+        "tail", "Use PowerShell Get-Content -Tail or Get-Content -Wait",
+        "wc", "Use PowerShell Measure-Object -Line -Word -Character",
+        "grep", "Use findstr or PowerShell Select-String",
+        "awk", "Use PowerShell ForEach-Object with -split",
+        "sed", "Use PowerShell -replace operator",
+        "diff", "Use fc (Windows) or Compare-Object (PowerShell)",
+        "cat", "Use type (Windows) or Get-Content (PowerShell)",
+        "less", "Use more (Windows) or type <file> | more",
+        "touch", "Use copy /b nul <file> or PowerShell New-Item");
+
+    String suggestion = linuxCommands.get(executable.toLowerCase());
+    if (suggestion != null) {
+      return "'" + executable + "' is a Linux command not available on Windows cmd. "
+          + suggestion + ".";
+    }
+    return null;
+  }
+
+  private static String readLimited(InputStream input, int maxBytes) throws IOException {
+    var output = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
+    byte[] buffer = new byte[8192];
+    int total = 0;
+    boolean truncated = false;
+    while (true) {
+      int read = input.read(buffer);
+      if (read < 0) break;
+      if (total + read <= maxBytes) {
+        output.write(buffer, 0, read);
+      } else {
+        int keep = Math.max(0, maxBytes - total);
+        if (keep > 0) output.write(buffer, 0, keep);
+        truncated = true;
+      }
+      total += read;
+    }
+    String text = output.toString();
+    if (truncated) {
+      text += "\n[truncated command output after " + maxBytes + " bytes]";
+    }
+    return text;
   }
 }

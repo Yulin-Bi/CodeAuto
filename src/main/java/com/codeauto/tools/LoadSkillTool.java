@@ -1,6 +1,7 @@
 package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.skills.SkillService;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolDefinition;
@@ -9,7 +10,12 @@ import com.codeauto.tool.ToolResult;
 public class LoadSkillTool implements ToolDefinition {
   @Override public String name() { return "load_skill"; }
   @Override public String description() { return "Load a local skill by name from project or managed skill config."; }
-  @Override public JsonNode inputSchema() { return JsonSchemas.objectSchema(); }
+  @Override public JsonNode inputSchema() {
+    ObjectNode schema = JsonSchemas.schema();
+    ObjectNode props = schema.putObject("properties");
+    props.set("name", JsonSchemas.stringProp("Skill name to load"));
+    return JsonSchemas.required(schema, "name");
+  }
 
   @Override
   public ToolResult run(JsonNode input, ToolContext context) throws Exception {

@@ -1,6 +1,7 @@
 package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.background.BackgroundTask;
 import com.codeauto.background.BackgroundTaskRegistry;
 import com.codeauto.tool.ToolContext;
@@ -10,7 +11,13 @@ import com.codeauto.tool.ToolResult;
 public class BackgroundTasksTool implements ToolDefinition {
   @Override public String name() { return "background_tasks"; }
   @Override public String description() { return "List, inspect, or cancel background shell tasks."; }
-  @Override public JsonNode inputSchema() { return JsonSchemas.objectSchema(); }
+  @Override public JsonNode inputSchema() {
+    ObjectNode schema = JsonSchemas.schema();
+    ObjectNode props = schema.putObject("properties");
+    props.set("operation", JsonSchemas.stringProp("Operation: list, inspect, or cancel (default: list)"));
+    props.set("task_id", JsonSchemas.stringProp("Task ID (required for inspect/cancel)"));
+    return schema;
+  }
 
   @Override
   public ToolResult run(JsonNode input, ToolContext context) {

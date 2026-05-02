@@ -38,6 +38,27 @@ class ToolParameterCompatibilityTest {
   }
 
   @Test
+  void writeAndEditToolsAcceptFilePathAlias() throws Exception {
+    var cwd = Files.createTempDirectory("codeauto-write-alias");
+    var writeInput = MAPPER.createObjectNode()
+        .put("file_path", "self-test-report-2026-05-02.md")
+        .put("content", "initial\n");
+
+    var writeResult = new WriteFileTool().run(writeInput, new ToolContext(cwd, new PermissionManager(cwd)));
+
+    assertTrue(writeResult.ok(), writeResult.output());
+
+    var editInput = MAPPER.createObjectNode()
+        .put("file_path", "self-test-report-2026-05-02.md")
+        .put("old_text", "initial")
+        .put("new_text", "updated");
+    var editResult = new EditFileTool().run(editInput, new ToolContext(cwd, new PermissionManager(cwd)));
+
+    assertTrue(editResult.ok(), editResult.output());
+    assertTrue(Files.readString(cwd.resolve("self-test-report-2026-05-02.md")).contains("updated"));
+  }
+
+  @Test
   void writeFileStillRejectsPathsOutsideWorkspace() throws Exception {
     var cwd = Files.createTempDirectory("codeauto-write-tool-root");
     var outside = Files.createTempDirectory("codeauto-write-tool-outside").resolve("blocked.md");

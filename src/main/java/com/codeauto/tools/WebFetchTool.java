@@ -1,6 +1,7 @@
 package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolResult;
@@ -15,7 +16,12 @@ public class WebFetchTool implements ToolDefinition {
 
   @Override public String name() { return "web_fetch"; }
   @Override public String description() { return "Fetch text content from a URL."; }
-  @Override public JsonNode inputSchema() { return JsonSchemas.objectSchema(); }
+  @Override public JsonNode inputSchema() {
+    ObjectNode schema = JsonSchemas.schema();
+    ObjectNode props = schema.putObject("properties");
+    props.set("url", JsonSchemas.stringProp("URL to fetch text content from"));
+    return JsonSchemas.required(schema, "url");
+  }
 
   @Override
   public ToolResult run(JsonNode input, ToolContext context) throws Exception {

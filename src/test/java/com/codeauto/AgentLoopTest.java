@@ -110,6 +110,46 @@ class AgentLoopTest {
   }
 
   @Test
+  void listenerReceivesAssistantStreamingDeltas() throws Exception {
+    Path cwd = Path.of("").toAbsolutePath().normalize();
+    List<String> events = new ArrayList<>();
+    ModelAdapter model = new ModelAdapter() {
+      @Override
+      public AgentStep next(List<ChatMessage> messages) {
+        throw new AssertionError("streaming path should be used");
+      }
+
+      @Override
+      public AgentStep next(List<ChatMessage> messages, AgentLoopListener listener) {
+        listener.onAssistantDelta("he");
+        listener.onAssistantDelta("llo");
+        return new AgentStep.AssistantStep("hello", AgentStep.Kind.FINAL, null);
+      }
+    };
+    AgentLoop loop = new AgentLoop(
+        model,
+        DefaultTools.create(),
+        new ToolContext(cwd, new PermissionManager(cwd)),
+        8,
+        new AgentLoopListener() {
+          @Override public void onAssistantDelta(String delta) { events.add("delta:" + delta); }
+          @Override public void onAssistantMessage(String content) { events.add("assistant:" + content); }
+        },
+        200_000);
+    List<ChatMessage> messages = new ArrayList<>();
+    messages.add(new ChatMessage.SystemMessage("test"));
+    messages.add(new ChatMessage.UserMessage("say hello"));
+
+    List<ChatMessage> result = loop.runTurn(messages);
+
+    assertTrue(events.contains("delta:he"));
+    assertTrue(events.contains("delta:llo"));
+    assertTrue(events.contains("assistant:hello"));
+    assertTrue(result.stream().anyMatch(message ->
+        message instanceof ChatMessage.AssistantMessage assistant && assistant.content().equals("hello")));
+  }
+
+  @Test
   void preservesRawAssistantToolCallContentForProviderRoundTrip() throws Exception {
     Path cwd = Path.of("").toAbsolutePath().normalize();
     var rawContent = MAPPER.createArrayNode();

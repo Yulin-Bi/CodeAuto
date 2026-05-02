@@ -1,6 +1,7 @@
 package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolResult;
@@ -11,7 +12,13 @@ import java.util.stream.Collectors;
 public class ListFilesTool implements ToolDefinition {
   @Override public String name() { return "list_files"; }
   @Override public String description() { return "List files in a directory."; }
-  @Override public JsonNode inputSchema() { return JsonSchemas.objectSchema(); }
+  @Override
+  public JsonNode inputSchema() {
+    ObjectNode schema = JsonSchemas.schema();
+    ObjectNode props = schema.putObject("properties");
+    props.set("path", JsonSchemas.stringProp("Directory path (default: workspace root)"));
+    return schema;
+  }
 
   @Override
   public ToolResult run(JsonNode input, ToolContext context) throws Exception {

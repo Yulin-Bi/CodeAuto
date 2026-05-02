@@ -44,14 +44,16 @@ public class PanelRenderer {
   private static String panelRow(String left, int width, String right) {
     int inner = Math.max(0, width - 4);
     String rightText = right != null ? right : "";
-    int leftWidth = Ansi.stringDisplayWidth(left);
+    // Ensure ANSI codes are terminated before borders so escape sequences from
+    // content (e.g. diff highlighting) don't bleed into the border characters.
+    String safeLeft = left + Ansi.RESET;
+    int leftWidth = Ansi.stringDisplayWidth(safeLeft);
     int rightWidth = Ansi.stringDisplayWidth(rightText);
-    int gap = Math.max(1, inner - leftWidth - rightWidth);
     String leftAdjusted;
-    if (leftWidth + rightWidth + gap > inner) {
-      leftAdjusted = Ansi.truncatePlain(left, Math.max(0, inner - rightWidth - 1));
+    if (leftWidth + rightWidth > inner) {
+      leftAdjusted = Ansi.truncatePlain(safeLeft, Math.max(0, inner - rightWidth - 1)) + Ansi.RESET;
     } else {
-      leftAdjusted = left;
+      leftAdjusted = safeLeft;
     }
 
     int leftPrinted = Ansi.stringDisplayWidth(leftAdjusted);

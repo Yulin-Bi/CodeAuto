@@ -11,6 +11,8 @@ public sealed interface TranscriptEntry {
   record Assistant(int id, String body) implements TranscriptEntry {}
   record Tool(int id, String toolName, ToolStatus status, String body) implements TranscriptEntry {}
   record Progress(int id, String body) implements TranscriptEntry {}
+  /** Transient status line with spinner animation during AgentLoop execution. */
+  record Status(int id, String body) implements TranscriptEntry {}
 
   enum ToolStatus { RUNNING, SUCCESS, ERROR }
 

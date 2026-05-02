@@ -223,3 +223,309 @@ BUILD SUCCESS
 Tests run: 61, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
+
+## FuturePlan 优化追加记录（2026-05-02，第二批）
+
+### 第二阶段：多级指令加载
+
+- [x] 增加 `InstructionLoader`，启动时自动加载多级 Markdown 指令：
+  - `~/.claude/CLAUDE.md`：用户级通用指令
+  - `~/.codeauto/CLAUDE.md`：CodeAuto 应用级指令
+  - `<project>/CLAUDE.md`：项目级指令
+  - `<project>/CLAUDE.local.md`：项目本地私有指令
+- [x] 将加载到的指令注入 system prompt 的 `<system-reminder>` 区域，并明确“越靠后的本地指令优先级越高”。
+- [x] CLI 和 TUI 的新会话、恢复会话入口统一使用 `InstructionLoader.systemPrompt()` 构建系统提示，避免硬编码 system prompt 分散在多个位置。
+- [x] 增加指令加载测试，覆盖加载顺序、无指令文件时保持原始紧凑 system prompt 的行为。
+
+### 验证结果
+
+```
+Tests run: 63, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## FuturePlan 优化追加记录（2026-05-02，第三批）
+
+### 第二/三阶段：细粒度权限通配规则
+
+- [x] 增强 `PermissionManager`，让现有 `allowedCommandPatterns` / `deniedCommandPatterns` 真正支持通配规则。
+- [x] 支持 `Bash(<pattern>)` / `Command(<pattern>)` / `RunCommand(<pattern>)` 形式的命令规则，例如 `Bash(python scripts/*)`、`Bash(git push --force*)`。
+- [x] 增强编辑权限规则，支持 `Edit(<path-pattern>)` / `Write(...)` / `Modify(...)` 等形式，例如 `Edit(src/*.java)`。
+- [x] 保持旧有精确命令、精确路径和目录前缀权限兼容，不改变 `permissions.json` 的字段结构。
+- [x] 增加权限通配测试，覆盖允许危险命令、拒绝命令、允许编辑路径、拒绝编辑路径等场景。
+
+### 验证结果
+
+```
+Tests run: 65, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## FuturePlan 优化追加记录（2026-05-02，第四批）
+
+### 低优先级补齐：`/permissions` 命令
+
+- [x] 增加 `PermissionStore.path()`，暴露当前权限文件路径用于诊断展示。
+- [x] 增加 `PermissionManager.describePermissions()`，统一输出权限文件路径、workspace、持久化规则数量和 turn-scoped 临时权限数量。
+- [x] CLI 增加 `/permissions`，可直接查看权限存储位置和规则概览。
+- [x] TUI 增加 `/permissions` 斜杠菜单项和命令处理，和 CLI 使用同一份权限摘要。
+- [x] 增加权限摘要测试，覆盖路径展示和规则计数。
+
+### 验证结果
+
+```
+Tests run: 66, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## FuturePlan 优化追加记录（2026-05-02，第五批）
+
+### 第二阶段：持久化记忆系统最小闭环
+
+- [x] 新增 `MemoryType`，支持 `user`、`feedback`、`project`、`reference` 四类记忆。
+- [x] 新增 `MemoryEntry`，统一描述记忆 id、类型、标题、项目路径、标签、创建/更新时间、正文和文件路径。
+- [x] 新增 `MemoryManager`，默认使用 `~/.codeauto/memory/` 存储 frontmatter Markdown 记忆文件。
+- [x] 支持记忆保存、列表、删除和相关性检索；检索优先匹配当前 workspace，再结合项目名/查询关键词命中排序。
+- [x] 将相关记忆注入 `InstructionLoader.systemPrompt()` 的 `<system-reminder>` 区域，最多注入 5 条，并对超过 24 小时未更新的记忆标记 `[stale]`。
+- [x] 增加记忆系统测试，覆盖 Markdown 保存/读取/删除、项目相关检索、system prompt 记忆注入和 stale 标记。
+
+### 验证结果
+
+```
+Tests run: 70, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## FuturePlan 优化追加记录（2026-05-02，第六批）
+
+### 第二阶段：记忆管理工具与命令
+
+- [x] 新增 `MemoryTool`，注册 `save_memory`、`list_memory`、`delete_memory` 三个内置工具，让模型可以主动保存、查询和删除持久化记忆。
+- [x] `DefaultTools` 默认注册记忆工具，和现有文件、命令、MCP helper 工具走同一套 `ToolRegistry`。
+- [x] CLI 增加 `/memory` 命令：
+  - `/memory list [query]`
+  - `/memory add <type>::<title>::<content>`
+  - `/memory delete <id>`
+- [x] TUI 增加 `/memory` 斜杠菜单、帮助文本和命令处理，用户可在全屏界面直接管理记忆。
+- [x] 增加工具层测试，覆盖 `save_memory`、`list_memory`、`delete_memory` 的完整闭环。
+
+### 验证结果
+
+```
+Tests run: 71, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## Bug 修复记录（2026-05-02）
+
+### CLI 中文输入编码修复
+
+- [x] 修复普通 CLI 模式下中文输入可能被错误字符集解码，导致发送给模型的消息变成乱码的问题。
+- [x] 普通 CLI 输入读取优先切换为 JLine `LineReader`，和 TUI 共享更可靠的终端输入处理能力。
+- [x] JLine 初始化失败时回退到 Scanner；Scanner stdin 字符集选择顺序为：`-Dcodeauto.cli.charset`、`CODEAUTO_CLI_CHARSET`、真实 console charset、`native.encoding`、JVM 默认 charset。
+- [x] 为 Maven exec / IDE 等 `System.console()` 为空的 fallback 场景增加 `native.encoding`。
+- [x] 增加 CLI 编码策略测试，覆盖显式覆盖和 fallback。
+- [x] README 增加 CLI 中文输入编码排查说明。
+
+### 验证结果
+
+```
+Tests run: 73, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## Bug 修复记录（2026-05-02，第二批）
+
+### bin 启动默认 workspace 修复
+
+- [x] 修复 Windows `bin/codeauto.bat` 在 JAR 已存在时不会切换到项目根目录，导致默认 workspace 变成 `CodeAuto/bin` 的问题。
+- [x] CLI 默认 cwd 解析增加 bundled `bin` 目录识别：当当前目录是项目根下的 `bin`，且父目录包含 `pom.xml` 和 CodeAuto 源码结构时，自动提升 workspace 到父项目根。
+- [x] 增加回归测试，覆盖 `CodeAuto/bin` 自动解析为项目根。
+
+### 验证结果
+
+```
+Tests run: 74, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## 文档更新记录（2026-05-02）
+
+### README 与 about-me 同步
+
+- [x] 重写 `README.md`，补齐当前 CodeAuto 的 CLI/TUI、工具、会话、权限、记忆、多级指令、Skills、MCP、测试状态和常见问题说明。
+- [x] 重写 `about-me.md`，更新项目定位、架构模块、核心运行流程、TUI 体验、工具系统、权限模型、记忆系统和后续演进方向。
+- [x] 文档补充近期修复：CLI 中文输入编码、Windows `bin` 启动 workspace、JLine deprecated provider 警告隐藏、TUI 斜杠菜单限高和长文本换行优化。
+
+## 体验优化记录（2026-05-02）
+
+### AI 回复流式输出
+
+- [x] 扩展 `ModelAdapter`，新增兼容式流式入口 `next(messages, listener)`，默认回退到原一次性响应，保持 Mock 和测试模型兼容。
+- [x] 扩展 `AgentLoopListener.onAssistantDelta()`，让模型适配器可以在最终 `AgentStep` 返回前推送文本增量。
+- [x] `AnthropicModelAdapter` 接入 Messages API `stream=true`，解析 SSE 中的 `text_delta`，并保留最终完整内容用于会话保存和工具调用循环。
+- [x] TUI 流式刷新同一条 assistant transcript，避免每个 delta 生成一条新消息。
+- [x] CLI 模式边接收边打印文本，并避免最终回复重复输出。
+- [x] 增加 AgentLoop 流式 delta 测试，覆盖流式事件和最终消息保存。
+
+### 验证结果
+
+```
+Tests run: 75, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## 页面优化记录（2026-05-02）
+
+### instruction 展示页视觉优化
+
+- [x] 重写 `instruction/index.html`，保留 CodeAuto 原有深色终端气质，不参考其他项目页面版式。
+- [x] 移除展示图片引用，改为纯 HTML/CSS 的 TUI 终端示意，突出真实工作流、命令、状态和测试结果。
+- [x] 优化首屏标题、导航、按钮、终端示意、能力卡片、启动步骤、记忆说明和架构模块区，让页面更专业、克制。
+- [x] 保持页面为单文件静态 HTML，不引入图片依赖或额外构建依赖。
+
+## TUI 体验优化记录（2026-05-02）
+
+### 输入光标闪烁
+
+- [x] 为 TUI 增加轻量 `ScheduledExecutorService` 光标刷新器，每 500ms 切换 prompt 光标可见状态。
+- [x] 输入光标在反色块和普通字符之间切换，形成动态闪烁效果；TUI 退出时会关闭刷新线程。
+- [x] 保持终端真实光标隐藏，继续使用自绘 prompt 光标，避免和 ANSI 面板渲染冲突。
+
+### 验证结果
+
+```
+Tests run: 75, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## Bug 修复记录（2026-05-02，第三批）
+
+### TUI 工具输出 diff 高亮卡死修复
+
+- [x] 修复 TUI 在渲染工具输出 diff 时，极短的删除/新增行可能触发 `StringIndexOutOfBoundsException: Range [1, 0)` 的问题。
+- [x] 增强 `wordDiff()` 边界保护，对 `-a`/`+`、`-`/`+b`、`-`/`+` 等极短 diff 行不再抛异常。
+- [x] TUI `render()` 改为同步渲染，避免光标闪烁线程、模型流式输出线程和输入线程同时重绘造成状态竞争。
+- [x] Prompt 渲染统一 clamp 光标位置，避免输入内容和光标位置短暂不同步时触发 substring 边界异常。
+- [x] 增加 TUI diff 高亮回归测试。
+
+### 验证结果
+
+```
+Tests run: 76, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## Bug 修复记录（2026-05-02，第四批）
+
+### TUI 长命令/长工具输出闪退防护
+
+- [x] 为 TUI 渲染增加最外层兜底保护：渲染异常不再让全屏界面退出到 PowerShell，而是在 TUI 内显示 render error。
+- [x] `AgentLoop` 异步任务和手动压缩任务捕获 `Throwable`，避免长任务或渲染链路中的运行时错误直接终止后台回合。
+- [x] `run_command` 前台输出增加 512KB 上限，超过后追加 `[truncated command output ...]`，避免自测类长命令输出过大导致内存或界面压力。
+- [x] 保持已有工具结果预览折叠逻辑，完整超长输出仍建议使用后台任务或写入报告文件。
+
+### 验证结果
+
+```
+Tests run: 76, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## FuturePlan 优化追加记录（2026-05-02，第七批）
+
+### 自测报告问题修复
+
+- [x] 修复所有工具的 inputSchema 返回空对象：当前 `WriteFileTool.inputSchema()` 等返回 `{"type":"object"}`，无 required/properties，模型无法通过 schema 获知参数约束。需为每个内置工具补齐准确的 properties 和 required 定义。
+- [x] WriteFileTool / ModifyFileTool 增加 content 非空校验：content 为 null 或空字符串时拒绝写入，避免参数缺失时静默覆盖文件。`edit_file` / `patch_file` 也应一并加固参数校验。
+- [x] RunCommandTool 跨平台兼容性：Windows 上调用 Linux 命令（head/tail/grep/wc/awk）时直接失败，需要命令可用性预检或友好提示，避免用户困惑。
+- [x] web_search 配置体验：当前依赖环境变量 `CODEAUTO_SEARCH_URL` 才能工作，考虑内置默认搜索端点或提供更清晰的首次配置引导。
+
+### TUI 渲染与布局优化
+
+- [x] 修复流式输出时 progress 面板挤占 assistant 生成区域的问题：工具调用长命令时，thinking/progress 指示器不应抢占 streaming text 的显示空间。需确保 assistant 消息面板拥有足够高度渲染流式输出，progress 提示不应导致对话内容被推离可视区。
+- [x] 优化 TUI 面板布局：将 tools 面板移到 codeauto 面板下方，让 user 消息和 assistant 消息在视觉上更接近，减少顶部信息面板对对话区域的割裂感。
+- [x] 修复 Ctrl+O 在工具结果返回后无法展开/折叠的问题：工具执行结束后，tool entry 的 toggle 状态未正确响应键盘事件，按 Ctrl+O 无反应。需检查 tool entry 列表的焦点/事件分发逻辑。
+- [x] 修复工具调用后 Session 框边框渲染出现缺口的问题：每次工具调用后，session 边框线出现断裂/缺口，边框字符被挤入框内。需排查面板重绘时内容更新和边框渲染的顺序/坐标计算。
+
+### 验证结果
+
+```
+Tests run: 77, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## TUI 工具条目折叠优化记录（2026-05-02）
+
+### 工具条目压缩为单行 + Ctrl+O 执行中可用
+
+- [x] 工具条目在 transcript 中默认折叠为单行，只显示 `tool <name> <status>` 和 `[+]` 展开提示，不再占用多行预览空间。
+- [x] Ctrl+O 展开/折叠在 `isBusy`（AgentLoop 执行中）也可用，不再被事件循环跳过。先前按键在忙碌时被 `continue` 吞掉，现单独识别 `0x0F` 并调用 `toggleToolExpand()`。
+- [x] 展开后显示工具完整 body（保留 diff 高亮），与之前行为一致。
+- [x] 移除不再需要的 `TOOL_PREVIEW_LINES` 和 `TOOL_COLLAPSE_CHARS` 常量。
+
+### 验证结果
+
+```
+Tests run: 77, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## TUI 状态行与工具管理优化记录（2026-05-02）
+
+### 问题
+
+1. **Ctrl+O 只能展开最后一个工具条目** — `toggleToolExpand()` 从末尾循环找第一个 tool entry 后 `break`，重复按只在同一个工具上切换。
+2. **工具调用间隙挤掉主消息** — 即使工具折叠为 1 行，10 个工具调用 + 分隔符 ≈ 20 行 transcript 空间，占满可视区后将 assistant 回复推出视图。
+3. **Assistant/Progress 消息重复** — `onProgressMessage` 和 `onAssistantMessage` 同时生效，Progress 条目残留导致看起来像消息显示了两次。
+
+### 方案
+
+#### 1. 新增 Status 条目 + 动态 spinner
+
+- 新增 `TranscriptEntry.Status` record，在 agent loop 执行期间替代 Tool/Progress 条目。
+- 每次重绘一行动态状态，格式：`<spinner> <状态文本>`，例如：
+  - `⠋ Thinking...`
+  - `⠙ Running web_search...`
+  - `⠸ Processed web_search (5 total)`
+- 使用 10 帧 spinner 动画（⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏），每 500ms 推进一帧。
+- Spinner 推进复用现有 500ms 光标闪烁线程，`isBusy` 时切换为 spinner。
+
+#### 2. 不将 Tool/Progress 条目加入 transcript
+
+- `onToolStart()` / `onToolResult()` 只更新 `statusLineText`+ tools panel，不再添加 `TranscriptEntry.Tool` 条目。
+- `onProgressMessage()` 只更新 `statusLineText`，不再添加 `TranscriptEntry.Progress` 条目。
+- 执行结束后（`finally` 块）自动清除 Status 条目。
+- Tool 状态仍然在独立的 tools panel 展示（运行中工具名、最近 5 个工具 ok/err）。
+
+#### 3. Assistant 开始时自动清除 Status
+
+- `onAssistantDelta()` 流式或 `onAssistantMessage()` 非流式路径，在添加 assistant 条目前清除 Status 条目。
+- 避免 Progress 残留导致消息重复感。
+
+#### 4. Ctrl+O 展开/折叠所有工具
+
+- `toggleToolExpand()` 改为遍历全部 tool entries：有任意折叠时展开全部，全部已展开时折叠全部。
+- 执行期间 transcript 中无 tool entries（只有 `/cmd` 快捷命令产生的和历史会话恢复的工具条目），故 Ctrl+O 对执行中无影响。
+
+### 实现清单
+
+- [x] `TranscriptEntry` 新增 `Status` record
+- [x] `TuiApp.SPINNER_FRAMES` 常量、`statusLineText`/`statusEntryId`/`spinnerFrame` 字段
+- [x] `updateStatusLine()` / `clearStatusLine()` 辅助方法
+- [x] Cursor blinker `isBusy` 时切换为 spinner 推进
+- [x] `onToolStart()` / `onToolResult()` 不再添加 Tool 条目，改为更新 status line
+- [x] `onProgressMessage()` 改为更新 status line
+- [x] `onAssistantDelta()` / `onAssistantMessage()` 清除 status line
+- [x] `submitInput()` 开始时预置 "Thinking..." status line
+- [x] `finally` 块清除 status line
+- [x] `toggleToolExpand()` 改为遍历所有工具，统一展开/折叠
+- [x] `renderTranscriptEntry()` 新增 Status 分支
+- [x] 测试：mvn test 全部通过
+
+### 验证结果
+
+```
+Tests run: 77, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
