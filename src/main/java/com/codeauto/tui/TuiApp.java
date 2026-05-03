@@ -27,6 +27,7 @@ import com.codeauto.permissions.PermissionRequest;
 import com.codeauto.permissions.PermissionResponse;
 import com.codeauto.session.SessionStore;
 import com.codeauto.skills.SkillService;
+import com.codeauto.todo.TodoStore;
 import com.codeauto.background.BackgroundTaskRegistry;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolRegistry;
@@ -151,6 +152,7 @@ public class TuiApp {
       new SlashCommand("/patch <path>::<search>::<replace>...", "Batch replace local file with review"),
       new SlashCommand("/cmd <command>", "Run local command without model call"),
       new SlashCommand("/memory", "List, add, or delete persistent memories"),
+      new SlashCommand("/todo", "List, add, update, or delete todo tasks"),
       new SlashCommand("/new", "Start a new session"),
       new SlashCommand("/resume", "Open saved session picker"),
       new SlashCommand("/fork", "Save current transcript into a new session"),
@@ -829,6 +831,7 @@ public class TuiApp {
           /memory skip Skip pending candidate
           /memory add <type>::<title>::<content> Save a memory
           /memory delete <id> Delete a memory
+          /todo       List tasks, or add/done/undo/delete/clear
           /new        Start a new session
           /resume    Open saved session picker
           /resume <id> Load a saved session by id
@@ -925,6 +928,12 @@ public class TuiApp {
 
     if (text.equals("/memory") || text.startsWith("/memory ")) {
       addEntry(new TranscriptEntry.Assistant(nextEntryId++, runMemoryCommand(text)));
+      render();
+      return;
+    }
+
+    if (text.equals("/todo") || text.startsWith("/todo ")) {
+      addEntry(new TranscriptEntry.Assistant(nextEntryId++, runTodoCommand(text)));
       render();
       return;
     }
@@ -1225,6 +1234,58 @@ public class TuiApp {
           TranscriptEntry.ToolStatus.ERROR, error.getMessage()));
     }
     return true;
+  }
+
+  private String runTodoCommand(String text) {
+    TodoStore store = new TodoStore(cwd);
+    String rest = text.equals("/todo") ? "list" : text.substring("/todo ".length()).trim();
+
+    if (rest.equals("list")) {
+      var todos = store.list(null);
+      if (todos.isEmpty()) return "(no todos)";
+      StringBuilder out = new StringBuilder();
+      int pending = 0, inProgress = 0, completed = 0;
+      for (var t : todos) {
+        String icon = switch (t.status()) {
+          case "completed" -> { completed++; yield "[x]"; }
+          case "in_progress" -> { inProgress++; yield "[>]"; }
+          default -> { pending++; yield "[ ]"; }
+        };
+        out.append(icon).append(" ").append(t.id()).append(": ").append(t.content()).append("\n");
+      }
+      out.append("--- ").append(todos.size()).append(" total (")
+          .append(pending).append(" pending, ")
+          .append(inProgress).append(" in progress, ")
+          .append(completed).append(" completed)");
+      return out.toString();
+    }
+    if (rest.startsWith("add ")) {
+      String content = rest.substring("add ".length()).trim();
+      if (content.isBlank()) return "Usage: /todo add <content>";
+      var entry = store.add(content, content);
+      return "Added todo " + entry.id() + ": " + entry.content();
+    }
+    if (rest.startsWith("done ")) {
+      String id = rest.substring("done ".length()).trim();
+      var updated = store.update(id, "completed", null);
+      if (updated == null) return "Todo not found: " + id;
+      return "Completed todo " + id + ": " + updated.content();
+    }
+    if (rest.startsWith("undo ")) {
+      String id = rest.substring("undo ".length()).trim();
+      var updated = store.update(id, "pending", null);
+      if (updated == null) return "Todo not found: " + id;
+      return "Reset todo " + id + " to pending: " + updated.content();
+    }
+    if (rest.startsWith("delete ")) {
+      String id = rest.substring("delete ".length()).trim();
+      return store.delete(id) ? "Deleted todo " + id : "Todo not found: " + id;
+    }
+    if (rest.equals("clear")) {
+      int removed = store.clearCompleted();
+      return "Cleared " + removed + " completed todo(s)";
+    }
+    return "Usage: /todo [list] | /todo add <content> | /todo done <id> | /todo undo <id> | /todo delete <id> | /todo clear";
   }
 
   private String runMemoryCommand(String text) {
@@ -2036,6 +2097,7 @@ public class TuiApp {
       badges.add(renderContextBadge(contextStats));
     }
     badges.add(metric("skills", skillCount >= 0 ? String.valueOf(skillCount) : "?", Ansi.BRIGHT_CYAN));
+    badges.add(renderTodoBadge());
 
     var badgeLine = joinBadges(badges, termWidth);
     sb.append(badgeLine);
@@ -2056,6 +2118,23 @@ public class TuiApp {
       default -> Ansi.GREEN;
     };
     return color + "ctx" + Ansi.RESET + " " + Ansi.BOLD + pct + "%" + Ansi.RESET;
+  }
+
+  private String renderTodoBadge() {
+    try {
+      var todos = new TodoStore(cwd).list(null);
+      if (todos.isEmpty()) return "";
+      long inProgress = todos.stream().filter(t -> "in_progress".equals(t.status())).count();
+      long pending = todos.stream().filter(t -> "pending".equals(t.status())).count();
+      long completed = todos.stream().filter(t -> "completed".equals(t.status())).count();
+      long active = pending + inProgress;
+      if (active == 0 && completed > 0) {
+        return Ansi.GREEN + "todos" + Ansi.RESET + " " + Ansi.BOLD + "all done" + Ansi.RESET;
+      }
+      return Ansi.BRIGHT_YELLOW + "todos" + Ansi.RESET + " " + Ansi.BOLD + active + "/" + todos.size() + Ansi.RESET;
+    } catch (Exception ignored) {
+      return "";
+    }
   }
 
   private String colorStatus(String level) {

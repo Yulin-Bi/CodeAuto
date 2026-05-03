@@ -19,6 +19,7 @@ import com.codeauto.session.SessionStore;
 import com.codeauto.skills.SkillService;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolRegistry;
+import com.codeauto.todo.TodoStore;
 import com.codeauto.tools.DefaultTools;
 import com.codeauto.tui.TuiApp;
 import java.io.Console;
@@ -167,6 +168,7 @@ public class CodeAutoCli implements Runnable {
               /compact             Compact middle conversation messages
               /config-paths        Show config home
               /permissions         Show permission storage and rule counts
+              /todo                List todos, or add/done/undo/delete/clear
               /exit                Exit
               """);
           continue;
@@ -229,6 +231,10 @@ public class CodeAutoCli implements Runnable {
         }
         if ("/model".equals(input)) {
           System.out.println(runtime.model());
+          continue;
+        }
+        if (input.startsWith("/todo")) {
+          System.out.println(runTodoCommand(input, cwd));
           continue;
         }
         if ("/status".equals(input)) {
@@ -529,6 +535,58 @@ public class CodeAutoCli implements Runnable {
     }
     var result = tools.execute(toolName, json, new ToolContext(cwd, permissions));
     return result.output();
+  }
+
+  private String runTodoCommand(String input, Path cwd) {
+    TodoStore store = new TodoStore(cwd);
+    String rest = input.equals("/todo") ? "list" : input.substring("/todo ".length()).trim();
+
+    if (rest.equals("list")) {
+      var todos = store.list(null);
+      if (todos.isEmpty()) return "(no todos)";
+      StringBuilder out = new StringBuilder();
+      int pending = 0, inProgress = 0, completed = 0;
+      for (var t : todos) {
+        String icon = switch (t.status()) {
+          case "completed" -> { completed++; yield "[x]"; }
+          case "in_progress" -> { inProgress++; yield "[>]"; }
+          default -> { pending++; yield "[ ]"; }
+        };
+        out.append(icon).append(" ").append(t.id()).append(": ").append(t.content()).append("\n");
+      }
+      out.append("--- ").append(todos.size()).append(" total (")
+          .append(pending).append(" pending, ")
+          .append(inProgress).append(" in progress, ")
+          .append(completed).append(" completed)");
+      return out.toString();
+    }
+    if (rest.startsWith("add ")) {
+      String content = rest.substring("add ".length()).trim();
+      if (content.isBlank()) return "Usage: /todo add <content>";
+      var entry = store.add(content, content);
+      return "Added todo " + entry.id() + ": " + entry.content();
+    }
+    if (rest.startsWith("done ")) {
+      String id = rest.substring("done ".length()).trim();
+      var updated = store.update(id, "completed", null);
+      if (updated == null) return "Todo not found: " + id;
+      return "Completed todo " + id + ": " + updated.content();
+    }
+    if (rest.startsWith("undo ")) {
+      String id = rest.substring("undo ".length()).trim();
+      var updated = store.update(id, "pending", null);
+      if (updated == null) return "Todo not found: " + id;
+      return "Reset todo " + id + " to pending: " + updated.content();
+    }
+    if (rest.startsWith("delete ")) {
+      String id = rest.substring("delete ".length()).trim();
+      return store.delete(id) ? "Deleted todo " + id : "Todo not found: " + id;
+    }
+    if (rest.equals("clear")) {
+      int removed = store.clearCompleted();
+      return "Cleared " + removed + " completed todo(s)";
+    }
+    return "Usage: /todo [list] | /todo add <content> | /todo done <id> | /todo undo <id> | /todo delete <id> | /todo clear";
   }
 
   private static String[] splitMemoryPayload(String payload, int limit) {

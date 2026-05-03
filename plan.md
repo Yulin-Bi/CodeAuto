@@ -586,3 +586,23 @@ CodeAuto 现有 `MemoryManager`、`save_memory/list_memory/delete_memory`、`Ins
 - [x] 运行中 progress 使用 ASCII 动态符号 `| / - \`；成功工具调用显示 `[OK]`，失败工具调用显示 `[ERR]`。
 - [x] progress 存储内容不再包含 ANSI escape code，避免终端里出现裸 `[33m` 或 `[32m`。
 - [x] 操作提示已改为 `Ctrl+O` 展开 progress，`Ctrl+Up` / `Ctrl+Down` 滚动聊天记录。
+
+## FuturePlan 优化追加记录（2026-05-03，第八批）
+
+### TodoList 功能
+
+参照现有 Memory 系统模式，添加一套 TodoList 系统，让 AI 可以在多步任务中追踪进度，同时用户也可以通过 `/todo` 命令管理任务。
+
+- [x] 新增 `TodoStore` — JSON 文件持久化到 `~/.codeauto/todos/`，按项目哈希隔离
+- [x] 新增 `TodoTool` — 注册 `todo_create`、`todo_update`、`todo_list` 三个内置工具
+- [x] `DefaultTools` 默认注册 Todo 工具
+- [x] CLI 增加 `/todo` 命令：`/todo list`、`/todo add <content>`、`/todo done <id>`、`/todo undo <id>`、`/todo delete <id>`、`/todo clear`
+- [x] TUI 增加 `/todo` 斜杠菜单和命令处理
+- [x] TUI header 区域展示当前 todo 进度（如 `3/7`）
+
+### 验证结果
+
+```
+Tests run: 83, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```

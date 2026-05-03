@@ -14,9 +14,10 @@ public class InstructionLoader {
 
   public static String systemPrompt(Path cwd, String permissionSummary) {
     String base = "You are CodeAuto. Permissions: " + permissionSummary
-        + "\nMemory behavior: when the user asks you to remember something, first ask where to save it "
-        + "(project CLAUDE.md, global CLAUDE.md, CodeAuto CLAUDE.md, or memory store). "
-        + "After the user chooses, call save_memory with destination=project/global/codeauto/store.";
+        + "\nTodo behavior: when the user gives a multi-step task (3+ distinct steps), use todo_create to break it "
+        + "down into manageable items. Mark a task as in_progress BEFORE starting work on it, and mark it completed "
+        + "IMMEDIATELY after finishing. Only ONE task in_progress at a time. "
+        + "Use todo_list to review what's left to do at the start of each turn.";
     List<InstructionFile> files = load(cwd);
     List<MemoryEntry> memories = new MemoryManager().relevant(cwd, "", MAX_MEMORIES);
     if (files.isEmpty() && memories.isEmpty()) return base;
