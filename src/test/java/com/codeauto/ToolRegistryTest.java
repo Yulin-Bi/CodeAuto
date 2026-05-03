@@ -96,6 +96,7 @@ class ToolRegistryTest {
       var context = new ToolContext(cwd, allowingPermissions(cwd));
       var save = registry.execute("save_memory",
           MAPPER.createObjectNode()
+              .put("destination", "store")
               .put("type", "project")
               .put("title", "Tool memory")
               .put("content", "Remember this from a tool."),
@@ -116,6 +117,63 @@ class ToolRegistryTest {
         System.setProperty("codeauto.home", previousHome);
       }
     }
+  }
+
+  @Test
+  void saveMemoryCanWriteProjectAndGlobalClaudeDestinations() throws Exception {
+    String previousHome = System.getProperty("codeauto.home");
+    String previousUserHome = System.getProperty("user.home");
+    java.nio.file.Path home = Files.createTempDirectory("codeauto-memory-destination-home");
+    java.nio.file.Path userHome = Files.createTempDirectory("codeauto-memory-destination-user-home");
+    java.nio.file.Path cwd = Files.createTempDirectory("codeauto-memory-destination-workspace");
+    try {
+      System.setProperty("codeauto.home", home.toString());
+      System.setProperty("user.home", userHome.toString());
+      var registry = DefaultTools.create();
+      var context = new ToolContext(cwd, allowingPermissions(cwd));
+
+      var project = registry.execute("save_memory",
+          MAPPER.createObjectNode()
+              .put("destination", "project")
+              .put("title", "Project rule")
+              .put("content", "Run mvn test before finishing."),
+          context);
+      assertTrue(project.ok(), project.output());
+      assertTrue(Files.readString(cwd.resolve("CLAUDE.md")).contains("Run mvn test"));
+
+      var global = registry.execute("save_memory",
+          MAPPER.createObjectNode()
+              .put("destination", "global")
+              .put("title", "User rule")
+              .put("content", "Answer concisely."),
+          context);
+      assertTrue(global.ok(), global.output());
+      assertTrue(Files.readString(userHome.resolve(".claude").resolve("CLAUDE.md")).contains("Answer concisely"));
+    } finally {
+      if (previousHome == null) {
+        System.clearProperty("codeauto.home");
+      } else {
+        System.setProperty("codeauto.home", previousHome);
+      }
+      if (previousUserHome == null) {
+        System.clearProperty("user.home");
+      } else {
+        System.setProperty("user.home", previousUserHome);
+      }
+    }
+  }
+
+  @Test
+  void saveMemoryRequiresExplicitDestination() throws Exception {
+    java.nio.file.Path cwd = Files.createTempDirectory("codeauto-memory-missing-destination");
+    var result = DefaultTools.create().execute("save_memory",
+        MAPPER.createObjectNode()
+            .put("title", "No destination")
+            .put("content", "Do not save implicitly."),
+        new ToolContext(cwd, allowingPermissions(cwd)));
+
+    assertTrue(!result.ok());
+    assertTrue(result.output().contains("destination is required"), result.output());
   }
 
   private static PermissionManager allowingPermissions(java.nio.file.Path root) throws Exception {

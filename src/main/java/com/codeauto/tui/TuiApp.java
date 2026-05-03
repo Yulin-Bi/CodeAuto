@@ -13,6 +13,9 @@ import com.codeauto.core.AgentLoopListener;
 import com.codeauto.core.ChatMessage;
 import com.codeauto.instructions.InstructionLoader;
 import com.codeauto.manage.ManagementStore;
+import com.codeauto.memory.ActiveMemoryCaptureService;
+import com.codeauto.memory.ActiveMemoryCaptureService.MemoryCandidate;
+import com.codeauto.memory.MemoryType;
 import com.codeauto.mcp.McpService;
 import com.codeauto.model.AnthropicModelAdapter;
 import com.codeauto.model.ModelAdapter;
@@ -34,7 +37,9 @@ import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -49,6 +54,7 @@ public class TuiApp {
   private static final int PERMISSION_TIMEOUT_SECS = 120;
   private static final int SCROLL_STEP = 5;
   private static final int SLASH_MENU_MAX_ROWS = 7;
+  private static final int LIVE_PROGRESS_MAX_LINES = 5;
 
   private final ToolRegistry tools;
   private ModelAdapter model;
@@ -81,15 +87,20 @@ public class TuiApp {
   private volatile long busyStartedAtMillis;
   private String statusText;
   private final Deque<ToolStatus> recentTools = new ArrayDeque<>();
+  private final Deque<MemoryCandidate> pendingMemoryCandidates = new ArrayDeque<>();
   private String runningToolName;
   private ContextStats contextStats;
   private final List<String> history = new ArrayList<>();
   private int historyIndex;
   private String historyDraft = "";
   private volatile PendingApproval pendingApproval;
+  private volatile PendingMemoryConfirmation pendingMemoryConfirmation;
   private volatile boolean running = true;
   private Integer streamingAssistantEntryId;
   private final StringBuilder streamingAssistantBuffer = new StringBuilder();
+  private final List<String> turnProgressTrace = new ArrayList<>();
+  private Integer progressTraceEntryId;
+  private final Set<Integer> expandedProgressEntries = new HashSet<>();
   private volatile boolean cursorBlinkVisible = true;
   private ScheduledExecutorService cursorBlinker;
 
@@ -98,7 +109,11 @@ public class TuiApp {
   private boolean transcriptAutoScroll = true;
 
   // Status line (spinner + text shown during AgentLoop execution)
-  private static final String[] SPINNER_FRAMES = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
+  private static final String[] SPINNER_FRAMES = {"|", "/", "-", "\\"};
+  private static final String PROGRESS_RUNNING = "RUNNING::";
+  private static final String PROGRESS_SUCCESS = "SUCCESS::";
+  private static final String PROGRESS_ERROR = "ERROR::";
+  private static final String PROGRESS_INFO = "INFO::";
   private volatile String statusLineText = "";
   private volatile int spinnerFrame;
 
@@ -117,6 +132,7 @@ public class TuiApp {
   private record ToolStatus(String name, boolean isError) {}
   private record PendingApproval(PermissionRequest request, CompletableFuture<PermissionResponse> future,
                                  int selectedIndex) {}
+  private record PendingMemoryConfirmation(MemoryCandidate candidate, int selectedIndex) {}
   private record SlashCommand(String usage, String description) {}
   private static final List<SlashCommand> SLASH_COMMANDS = List.of(
       new SlashCommand("/help", "Show commands"),
@@ -300,7 +316,7 @@ public class TuiApp {
     });
     cursorBlinker.scheduleAtFixedRate(() -> {
       if (!running || terminal == null || writer == null) return;
-      if (sessionPicker != null || pendingApproval != null) return;
+      if (sessionPicker != null || pendingApproval != null || pendingMemoryConfirmation != null) return;
       if (isBusy) {
         spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
         updateStatusLine();
@@ -324,6 +340,11 @@ public class TuiApp {
         continue;
       }
 
+      if (pendingMemoryConfirmation != null) {
+        handleMemoryConfirmationKey(c);
+        continue;
+      }
+
       if (sessionPicker != null) {
         handleSessionPickerKey(c);
         continue;
@@ -333,6 +354,10 @@ public class TuiApp {
         if (c == 0x03) {
           running = false;
           break;
+        }
+        if (c == 0x0F) {
+          toggleLastProgressExpanded();
+          continue;
         }
         if (c == 0x1B) {
           compactNotification = null;
@@ -372,6 +397,7 @@ public class TuiApp {
         }
         case 0x10 -> { historyUp(); render(); }
         case 0x0E -> { historyDown(); render(); }
+        case 0x0F -> toggleLastProgressExpanded();
         default -> {
           // terminal.reader() is a java.io.Reader — it already decodes UTF-8 into
           // Unicode code points. Accept any printable character (>= 0x20).
@@ -407,52 +433,16 @@ public class TuiApp {
   }
 
   private void handleTab() {
-    String lower = input.toLowerCase();
-    if (input.isEmpty() || "/".equals(input)) {
+    if (input.isEmpty()) {
       input = "/";
       cursorPos = 1;
-    } else if (lower.equals("/")) {
-      input = "/help";
-      cursorPos = input.length();
-    } else if (lower.equals("/h")) {
-      input = "/help";
-      cursorPos = input.length();
-    } else if (lower.equals("/t")) {
-      input = "/tools";
-      cursorPos = input.length();
-    } else if (lower.equals("/s")) {
-      input = "/status";
-      cursorPos = input.length();
-    } else if (lower.equals("/sk")) {
-      input = "/skills";
-      cursorPos = input.length();
-    } else if (lower.equals("/se")) {
-      input = "/sessions";
-      cursorPos = input.length();
-    } else if (lower.equals("/m")) {
-      input = "/model";
-      cursorPos = input.length();
-    } else if (lower.equals("/n")) {
-      input = "/new";
-      cursorPos = input.length();
-    } else if (lower.equals("/f")) {
-      input = "/fork";
-      cursorPos = input.length();
-    } else if (lower.equals("/re")) {
-      input = "/resume";
-      cursorPos = input.length();
-    } else if (lower.equals("/ren")) {
-      input = "/rename ";
-      cursorPos = input.length();
-    } else if (lower.equals("/c")) {
-      input = "/compact";
-      cursorPos = input.length();
-    } else if (lower.equals("/co")) {
-      input = "/config-paths";
-      cursorPos = input.length();
-    } else if (lower.equals("/e")) {
-      input = "/exit";
-      cursorPos = input.length();
+    } else {
+      var cmds = getVisibleCommands();
+      if (!cmds.isEmpty()) {
+        int idx = Math.max(0, Math.min(slashMenuSelectedIndex, cmds.size() - 1));
+        fillSlashCommand(cmds.get(idx));
+        return;
+      }
     }
     render();
   }
@@ -586,7 +576,7 @@ public class TuiApp {
     if (pa == null) return;
     var choices = pa.request().choices();
 
-    if (approvalFeedbackMode) {
+      if (approvalFeedbackMode) {
       switch (c) {
         case 0x03 -> { running = false; return; }
         case 0x0D, 0x0A -> {
@@ -728,25 +718,9 @@ public class TuiApp {
 
   /** Update or create the transient status line entry with current spinner + text. */
   private void updateStatusLine() {
-    synchronized (transcript) {
-      String text = statusLineText;
-      if (text == null || text.isBlank()) {
-        transcript.removeIf(e -> e instanceof TranscriptEntry.Status);
-        transcriptDirty = true;
-        return;
-      }
-      String body = SPINNER_FRAMES[spinnerFrame] + " " + statusWithElapsed(text);
-      for (int i = transcript.size() - 1; i >= 0; i--) {
-        if (transcript.get(i) instanceof TranscriptEntry.Status) {
-          transcript.set(i, new TranscriptEntry.Status(i, body));
-          transcriptDirty = true;
-          return;
-        }
-      }
-      // No existing status entry — add one
-      transcript.add(new TranscriptEntry.Status(transcript.size(), body));
-      transcriptDirty = true;
-    }
+    String text = statusLineText;
+    if (text == null || text.isBlank()) return;
+    materializeProgressTrace();
   }
 
   /** Remove the transient status line entry if present. */
@@ -755,6 +729,39 @@ public class TuiApp {
       if (transcript.removeIf(e -> e instanceof TranscriptEntry.Status)) {
         transcriptDirty = true;
       }
+    }
+  }
+
+  private void handleMemoryConfirmationKey(int c) throws IOException {
+    var pending = pendingMemoryConfirmation;
+    if (pending == null) return;
+    switch (c) {
+      case 0x03 -> { running = false; return; }
+      case 'p', 'P' -> { savePendingMemory("project"); return; }
+      case 'g', 'G' -> { savePendingMemory("global"); return; }
+      case 'c', 'C' -> { savePendingMemory("codeauto"); return; }
+      case 'm', 'M' -> { savePendingMemory("store"); return; }
+      case 's', 'S', 'n', 'N' -> { skipPendingMemory(); return; }
+      case '1', '2', '3', '4', '5' -> {
+        pendingMemoryConfirmation = new PendingMemoryConfirmation(pending.candidate(), c - '1');
+        confirmSelectedMemoryDestination();
+        return;
+      }
+      case 0x1B -> {
+        String es = readEscapeSequence(c);
+        if (es.equals("\033[A") || es.equals("\033OA")) {
+          pendingMemoryConfirmation = new PendingMemoryConfirmation(pending.candidate(),
+              Math.max(0, pending.selectedIndex() - 1));
+          render();
+        } else if (es.equals("\033[B") || es.equals("\033OB")) {
+          pendingMemoryConfirmation = new PendingMemoryConfirmation(pending.candidate(),
+              Math.min(4, pending.selectedIndex() + 1));
+          render();
+        } else if (es.equals("\033")) {
+          skipPendingMemory();
+        }
+      }
+      case 0x0D, 0x0A -> confirmSelectedMemoryDestination();
     }
   }
 
@@ -817,6 +824,9 @@ public class TuiApp {
           /patch <path>::<search>::<replace>... Batch replace a local file
           /cmd <command> Run a local command
           /memory list [query] List persistent memories
+          /memory pending Show captured memory candidate
+          /memory accept project|global|codeauto|store Save pending candidate
+          /memory skip Skip pending candidate
           /memory add <type>::<title>::<content> Save a memory
           /memory delete <id> Delete a memory
           /new        Start a new session
@@ -1052,11 +1062,16 @@ public class TuiApp {
     // Submit to AgentLoop
     isBusy = true;
     busyStartedAtMillis = System.currentTimeMillis();
+    progressTraceEntryId = null;
+    synchronized (turnProgressTrace) {
+      turnProgressTrace.clear();
+    }
     statusText = "Thinking...";
     statusLineText = "Thinking...";
     updateStatusLine();
     render();
 
+    int memoryCaptureStart = messages.size();
     messages.add(new ChatMessage.UserMessage(text));
 
     CompletableFuture.runAsync(() -> {
@@ -1066,14 +1081,16 @@ public class TuiApp {
         permissions.endTurn();
         messages.clear();
         messages.addAll(nextMessages);
+        queueMemoryCandidates(new ActiveMemoryCaptureService().captureCandidates(cwd, messages, memoryCaptureStart));
         sessions.save(sessionId, messages, savedCount);
         savedCount = messages.size();
       } catch (Exception e) {
         addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Error: " + e.getMessage()));
       } finally {
+        clearStatusLine();
+        materializeProgressTrace();
         isBusy = false;
         busyStartedAtMillis = 0;
-        clearStatusLine();
         transcriptAutoScroll = true;
         statusText = null;
         contextStats = TokenEstimator.compute(messages, CONTEXT_WINDOW);
@@ -1214,7 +1231,15 @@ public class TuiApp {
     String rest = text.equals("/memory") ? "list" : text.substring("/memory ".length()).trim();
     String toolName;
     ObjectNode input = MAPPER.createObjectNode();
-    if (rest.equals("list") || rest.startsWith("list ")) {
+    if (rest.equals("pending")) {
+      return pendingMemorySummary();
+    } else if (rest.startsWith("accept ")) {
+      return acceptPendingMemory(rest.substring("accept ".length()).trim());
+    } else if (rest.equals("skip")) {
+      synchronized (pendingMemoryCandidates) {
+        return pendingMemoryCandidates.pollFirst() == null ? "No pending memory candidate." : "Skipped memory candidate.";
+      }
+    } else if (rest.equals("list") || rest.startsWith("list ")) {
       toolName = "list_memory";
       String query = rest.length() > 4 ? rest.substring(4).trim() : "";
       if (!query.isBlank()) input.put("query", query);
@@ -1229,10 +1254,118 @@ public class TuiApp {
       toolName = "delete_memory";
       input.put("id", rest.substring("delete ".length()).trim());
     } else {
-      return "Usage: /memory list [query] | /memory add <type>::<title>::<content> | /memory delete <id>";
+      return "Usage: /memory list [query] | /memory pending | /memory accept project|global|codeauto|store | /memory skip | /memory add <type>::<title>::<content> | /memory delete <id>";
     }
     var result = tools.execute(toolName, input, new ToolContext(cwd, permissions));
     return result.output();
+  }
+
+  private void queueMemoryCandidates(List<MemoryCandidate> candidates) {
+    if (candidates == null || candidates.isEmpty()) return;
+    synchronized (pendingMemoryCandidates) {
+      for (MemoryCandidate candidate : candidates) {
+        if (!pendingMemoryCandidates.contains(candidate)) {
+          pendingMemoryCandidates.add(candidate);
+        }
+      }
+    }
+    showNextMemoryConfirmation();
+  }
+
+  private String pendingMemorySummary() {
+    synchronized (pendingMemoryCandidates) {
+      MemoryCandidate candidate = pendingMemoryCandidates.peekFirst();
+      if (candidate == null) return "No pending memory candidate.";
+      return "Pending memory candidate (" + pendingMemoryCandidates.size() + " total):\n"
+          + candidate.content()
+          + "\n\nUse /memory accept project|global|codeauto|store or /memory skip.";
+    }
+  }
+
+  private String acceptPendingMemory(String destination) {
+    MemoryCandidate candidate;
+    synchronized (pendingMemoryCandidates) {
+      candidate = pendingMemoryCandidates.pollFirst();
+    }
+    if (candidate == null) return "No pending memory candidate.";
+    String result = saveMemoryCandidate(candidate, destination);
+    if (result.startsWith("Usage:") || result.startsWith("Could not save")) {
+      synchronized (pendingMemoryCandidates) {
+        pendingMemoryCandidates.addFirst(candidate);
+      }
+    }
+    showNextMemoryConfirmation();
+    return result;
+  }
+
+  private void showNextMemoryConfirmation() {
+    if (pendingMemoryConfirmation != null) return;
+    synchronized (pendingMemoryCandidates) {
+      MemoryCandidate next = pendingMemoryCandidates.peekFirst();
+      if (next != null) {
+        pendingMemoryConfirmation = new PendingMemoryConfirmation(next, 0);
+      }
+    }
+  }
+
+  private void confirmSelectedMemoryDestination() {
+    var pending = pendingMemoryConfirmation;
+    if (pending == null) return;
+    switch (pending.selectedIndex()) {
+      case 0 -> savePendingMemory("project");
+      case 1 -> savePendingMemory("global");
+      case 2 -> savePendingMemory("codeauto");
+      case 3 -> savePendingMemory("store");
+      default -> skipPendingMemory();
+    }
+  }
+
+  private void savePendingMemory(String destination) {
+    var pending = pendingMemoryConfirmation;
+    if (pending == null) return;
+    pendingMemoryConfirmation = null;
+    synchronized (pendingMemoryCandidates) {
+      if (pendingMemoryCandidates.peekFirst() == pending.candidate()) {
+        pendingMemoryCandidates.pollFirst();
+      } else {
+        pendingMemoryCandidates.remove(pending.candidate());
+      }
+    }
+    String result = saveMemoryCandidate(pending.candidate(), destination);
+    addEntry(new TranscriptEntry.Assistant(nextEntryId++, result));
+    showNextMemoryConfirmation();
+    render();
+  }
+
+  private void skipPendingMemory() {
+    var pending = pendingMemoryConfirmation;
+    if (pending == null) return;
+    pendingMemoryConfirmation = null;
+    synchronized (pendingMemoryCandidates) {
+      if (pendingMemoryCandidates.peekFirst() == pending.candidate()) {
+        pendingMemoryCandidates.pollFirst();
+      } else {
+        pendingMemoryCandidates.remove(pending.candidate());
+      }
+    }
+    addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Skipped memory candidate."));
+    showNextMemoryConfirmation();
+    render();
+  }
+
+  private String saveMemoryCandidate(MemoryCandidate candidate, String destination) {
+    ActiveMemoryCaptureService service = new ActiveMemoryCaptureService();
+    try {
+      return switch (destination.toLowerCase()) {
+        case "project", "p" -> "Saved to " + service.saveToProjectClaude(cwd, candidate);
+        case "global", "g" -> "Saved to " + service.saveToGlobalClaude(candidate);
+        case "codeauto", "c" -> "Saved to " + service.saveToCodeAutoClaude(candidate);
+        case "store", "memory", "m" -> "Saved memory: " + service.saveToMemory(cwd, candidate).title();
+        default -> "Usage: /memory accept project|global|codeauto|store";
+      };
+    } catch (Exception error) {
+      return "Could not save memory candidate: " + error.getMessage();
+    }
   }
 
   private boolean shortcutUsage(String usage) {
@@ -1341,6 +1474,8 @@ public class TuiApp {
     @Override
     public void onProgressMessage(String content) {
       if (content != null && !content.isBlank()) {
+        statusText = content;
+        recordProgressTrace(content);
         statusLineText = content;
         updateStatusLine();
         render();
@@ -1353,6 +1488,7 @@ public class TuiApp {
       synchronized (transcript) {
         // Remove transient status line before showing assistant content
         transcript.removeIf(e -> e instanceof TranscriptEntry.Status);
+        materializeProgressTraceLocked();
 
         if (streamingAssistantEntryId == null) {
           streamingAssistantEntryId = nextEntryId++;
@@ -1380,6 +1516,7 @@ public class TuiApp {
           synchronized (transcript) {
             // Remove transient status line before finalizing assistant content
             transcript.removeIf(e -> e instanceof TranscriptEntry.Status);
+            materializeProgressTraceLocked();
 
             for (int i = transcript.size() - 1; i >= 0; i--) {
               var entry = transcript.get(i);
@@ -1396,6 +1533,7 @@ public class TuiApp {
           return;
         }
         clearStatusLine();
+        materializeProgressTrace();
         addEntry(new TranscriptEntry.Assistant(nextEntryId++, content));
         render();
       }
@@ -1406,6 +1544,13 @@ public class TuiApp {
       runningToolName = toolName;
       statusText = "Running " + toolName + "...";
       statusLineText = "Running " + toolName + "...";
+      recordProgressTrace(PROGRESS_RUNNING, "Running " + toolName);
+      if ("save_memory".equals(toolName) && jsonText(input, "destination", "").isBlank()) {
+        MemoryCandidate candidate = memoryCandidateFromSaveInput(input);
+        if (candidate != null) {
+          queueMemoryCandidates(List.of(candidate));
+        }
+      }
       updateStatusLine();
       render();
     }
@@ -1417,11 +1562,158 @@ public class TuiApp {
       if (recentTools.size() > 10) recentTools.removeFirst();
       statusText = "Thinking...";
       statusLineText = "Processed " + toolName + " (" + recentTools.size() + " total)";
+      completeProgressTrace(toolName, isError);
       updateStatusLine();
       transcriptDirty = true;
       render();
     }
   };
+
+  private void recordProgressTrace(String line) {
+    recordProgressTrace(PROGRESS_INFO, line);
+  }
+
+  private void recordProgressTrace(String state, String line) {
+    if (line == null || line.isBlank()) return;
+    synchronized (turnProgressTrace) {
+      String cleaned = state + normalizeProgressLine(Ansi.stripAnsi(line));
+      if (!turnProgressTrace.isEmpty() && turnProgressTrace.getLast().equals(cleaned)) return;
+      turnProgressTrace.add(cleaned);
+      if (turnProgressTrace.size() > 12) {
+        turnProgressTrace.removeFirst();
+      }
+    }
+  }
+
+  private void completeProgressTrace(String toolName, boolean isError) {
+    String runningLine = PROGRESS_RUNNING + "Running " + normalizeProgressLine(toolName);
+    String completedLine = (isError ? PROGRESS_ERROR : PROGRESS_SUCCESS)
+        + (isError ? "Failed " : "Processed ")
+        + normalizeProgressLine(toolName);
+    synchronized (turnProgressTrace) {
+      for (int i = turnProgressTrace.size() - 1; i >= 0; i--) {
+        if (turnProgressTrace.get(i).equals(runningLine)) {
+          turnProgressTrace.set(i, completedLine);
+          return;
+        }
+      }
+    }
+    recordProgressTrace(isError ? PROGRESS_ERROR : PROGRESS_SUCCESS,
+        (isError ? "Failed " : "Processed ") + toolName);
+  }
+
+  private static String normalizeProgressLine(String line) {
+    return line
+        .replace('\n', ' ')
+        .replace('\r', ' ')
+        .replaceAll("[\\t\\x0B\\f ]+", " ")
+        .trim();
+  }
+
+  private void materializeProgressTrace() {
+    synchronized (transcript) {
+      materializeProgressTraceLocked();
+    }
+  }
+
+  private void materializeProgressTraceLocked() {
+    String body;
+    synchronized (turnProgressTrace) {
+      if (turnProgressTrace.isEmpty()) return;
+      var lines = new ArrayList<>(turnProgressTrace);
+      body = String.join("\n", lines);
+    }
+    if (progressTraceEntryId == null) {
+      progressTraceEntryId = nextEntryId++;
+      transcript.add(progressInsertIndexLocked(), new TranscriptEntry.Progress(progressTraceEntryId, body));
+    } else {
+      TranscriptEntry.Progress updated = null;
+      for (int i = transcript.size() - 1; i >= 0; i--) {
+        var entry = transcript.get(i);
+        if (entry instanceof TranscriptEntry.Progress p && p.id() == progressTraceEntryId) {
+          updated = new TranscriptEntry.Progress(p.id(), body);
+          transcript.remove(i);
+          break;
+        }
+      }
+      if (updated != null) {
+        transcript.add(progressInsertIndexLocked(), updated);
+      } else {
+        transcript.add(progressInsertIndexLocked(), new TranscriptEntry.Progress(progressTraceEntryId, body));
+      }
+    }
+    transcriptDirty = true;
+  }
+
+  private int progressInsertIndexLocked() {
+    Integer targetAssistantId = streamingAssistantEntryId;
+    if (targetAssistantId == null) {
+      for (int i = transcript.size() - 1; i >= 0; i--) {
+        var entry = transcript.get(i);
+        if (entry instanceof TranscriptEntry.Assistant a) {
+          targetAssistantId = a.id();
+          break;
+        }
+      }
+    }
+    if (targetAssistantId != null) {
+      for (int i = 0; i < transcript.size(); i++) {
+        var entry = transcript.get(i);
+        if (entry instanceof TranscriptEntry.Assistant a && a.id() == targetAssistantId) {
+          return i;
+        }
+      }
+    }
+    return transcript.size();
+  }
+
+  private static MemoryCandidate memoryCandidateFromSaveInput(JsonNode input) {
+    String title = jsonText(input, "title", "Memory");
+    String content = jsonText(input, "content", "");
+    if (content.isBlank()) return null;
+    MemoryType type = MemoryType.from(jsonText(input, "type", "project"));
+    return new MemoryCandidate(type, title, content, tagsFromJson(input == null ? null : input.get("tags")));
+  }
+
+  private static List<String> tagsFromJson(JsonNode raw) {
+    if (raw == null || raw.isNull()) return List.of("tool");
+    List<String> tags = new ArrayList<>();
+    if (raw.isArray()) {
+      for (JsonNode tag : raw) {
+        if (!tag.asText("").isBlank()) tags.add(tag.asText().trim());
+      }
+    } else {
+      for (String tag : raw.asText("").split(",")) {
+        if (!tag.trim().isBlank()) tags.add(tag.trim());
+      }
+    }
+    return tags.isEmpty() ? List.of("tool") : tags;
+  }
+
+  private static String jsonText(JsonNode input, String field, String fallback) {
+    JsonNode value = input == null ? null : input.get(field);
+    return value == null || value.isNull() ? fallback : value.asText(fallback);
+  }
+
+  private void toggleLastProgressExpanded() {
+    Integer id = null;
+    synchronized (transcript) {
+      for (int i = transcript.size() - 1; i >= 0; i--) {
+        if (transcript.get(i) instanceof TranscriptEntry.Progress p) {
+          id = p.id();
+          break;
+        }
+      }
+    }
+    if (id == null) return;
+    if (expandedProgressEntries.contains(id)) {
+      expandedProgressEntries.remove(id);
+    } else {
+      expandedProgressEntries.add(id);
+    }
+    transcriptDirty = true;
+    render();
+  }
 
   // --- Permission prompt ---
 
@@ -1666,44 +1958,34 @@ public class TuiApp {
     int termWidth = terminal.getSize().getColumns();
     int termHeight = terminal.getSize().getRows();
 
-    String headerBody = buildHeaderBody();
-    String headerPanel = PanelRenderer.renderPanel("CodeAuto", headerBody, termWidth);
-
-    String toolPanel = "";
-    if (sessionPicker == null && pendingApproval == null) {
-      toolPanel = renderToolPanel(termWidth);
-    }
+    String headerPanel = buildHeaderBody(termWidth);
 
     String bottomPanel;
     if (sessionPicker != null) {
       bottomPanel = renderSessionPickerPanel(termWidth);
     } else if (pendingApproval != null) {
       bottomPanel = renderApprovalPanel(termWidth);
+    } else if (pendingMemoryConfirmation != null) {
+      bottomPanel = renderMemoryConfirmationPanel(termWidth);
     } else {
       bottomPanel = renderPromptPanel(termWidth);
     }
 
     int fixedLines = lineCount(headerPanel) + 1
-        + (toolPanel.isEmpty() ? 0 : lineCount(toolPanel) + 2)
         + lineCount(bottomPanel)
         + 1
         + 1;
-    int transcriptPanelOverhead = 4;
+    int transcriptPanelOverhead = 5;
     int transcriptMaxLines = Math.max(3, termHeight - fixedLines - transcriptPanelOverhead);
 
     String transcriptBody = buildTranscriptBody(termWidth, transcriptMaxLines);
-    String rightTitle = transcriptSize() + " events";
+    String rightTitle = transcriptSize() + " EVENTS";
     if (contextStats != null) {
-      rightTitle += " | ctx=" + contextStats.estimatedTokens() + " [" + contextStats.warningLevel() + "]";
+      rightTitle += " - CTX=" + contextStats.estimatedTokens() + " - " + colorStatus(contextStats.warningLevel());
     }
-    String transcriptPanel = PanelRenderer.renderPanel("session feed", transcriptBody, termWidth, rightTitle);
+    String transcriptPanel = PanelRenderer.renderFeedPanel("session feed", transcriptBody, termWidth, rightTitle);
 
     sb.append(headerPanel).append("\n");
-
-    if (!toolPanel.isEmpty()) {
-      sb.append(toolPanel).append("\n\n");
-    }
-
     sb.append(transcriptPanel).append("\n\n");
 
     sb.append(bottomPanel);
@@ -1713,17 +1995,15 @@ public class TuiApp {
     // Clear any leftover content after the footer
     sb.append("[J");
 
-    if (sessionPicker == null && pendingApproval == null) {
-      int promptStartRow = lineCount(headerPanel) + 1
-          + (toolPanel.isEmpty() ? 0 : lineCount(toolPanel) + 2)
-          + lineCount(transcriptPanel) + 2
-          + 1;
+    if (sessionPicker == null && pendingApproval == null && pendingMemoryConfirmation == null) {
+      int promptPanelStartRow = lineCount(headerPanel) + 1
+          + lineCount(transcriptPanel) + 2;
       int safeCursor = Math.max(0, Math.min(cursorPos, input == null ? 0 : input.length()));
-      int inputOffset = Ansi.stringDisplayWidth("codeauto> ")
+      int inputOffset = Ansi.stringDisplayWidth("CodeAuto> ")
           + Ansi.stringDisplayWidth((input == null ? "" : input).substring(0, safeCursor));
-      int innerWidth = Math.max(1, termWidth - 4);
-      int cursorRow = promptStartRow + 5 + (inputOffset / innerWidth);
-      int cursorCol = 3 + (inputOffset % innerWidth);
+      int inputWidth = Math.max(1, termWidth);
+      int cursorRow = promptPanelStartRow + 1 + (inputOffset / inputWidth);
+      int cursorCol = 1 + (inputOffset % inputWidth);
       sb.append("\033[").append(Math.max(1, cursorRow)).append(";")
           .append(Math.max(1, Math.min(termWidth, cursorCol))).append("H");
     }
@@ -1738,25 +2018,29 @@ public class TuiApp {
     }
   }
 
-  private String buildHeaderBody() {
+  private String buildHeaderBody(int termWidth) {
     var sb = new StringBuilder();
     String cwdName = cwd.getFileName().toString();
     String modelName = config != null ? config.model() : "unknown";
+    sb.append(Ansi.LIGHT_BLUE).append(Ansi.BOLD).append("CodeAuto").append(Ansi.RESET).append("  ");
     sb.append(Ansi.BLUE).append(Ansi.BOLD).append(Ansi.truncatePlain(cwdName, 24)).append(Ansi.RESET);
     sb.append(" ").append(Ansi.DIM).append(Ansi.truncatePathMiddle(cwd.toString(), 40)).append(Ansi.RESET);
     sb.append("\n");
 
     var badges = new ArrayList<String>();
-    badges.add(colorBadge("session", sessionId, Ansi.BRIGHT_YELLOW));
-    badges.add(colorBadge("model", modelName, Ansi.GREEN));
-    badges.add(colorBadge("messages", String.valueOf(messages.size()), Ansi.BRIGHT_CYAN));
-    badges.add(colorBadge("tools", String.valueOf(tools.list().size()), Ansi.MAGENTA));
+    badges.add(metric("session", sessionId, Ansi.BRIGHT_YELLOW));
+    badges.add(metric("model", modelName, Ansi.GREEN));
+    badges.add(metric("messages", String.valueOf(messages.size()), Ansi.BRIGHT_CYAN));
+    badges.add(metric("tools", String.valueOf(tools.list().size()), Ansi.MAGENTA));
     if (contextStats != null) {
       badges.add(renderContextBadge(contextStats));
     }
+    badges.add(metric("skills", skillCount >= 0 ? String.valueOf(skillCount) : "?", Ansi.BRIGHT_CYAN));
 
-    var badgeLine = joinBadges(badges, termWidth());
+    var badgeLine = joinBadges(badges, termWidth);
     sb.append(badgeLine);
+    sb.append("\n");
+    sb.append(Ansi.DARK_GRAY).append("─".repeat(Math.max(0, termWidth))).append(Ansi.RESET);
 
     return sb.toString();
   }
@@ -1771,24 +2055,36 @@ public class TuiApp {
       case "blocked" -> Ansi.BRIGHT_RED;
       default -> Ansi.GREEN;
     };
-    return color + "[ctx]" + Ansi.RESET + " " + Ansi.BOLD + pct + "%" + Ansi.RESET;
+    return color + "ctx" + Ansi.RESET + " " + Ansi.BOLD + pct + "%" + Ansi.RESET;
   }
 
-  private String colorBadge(String label, String value, String color) {
-    return color + "[" + label + "]" + Ansi.RESET + " " + Ansi.BOLD + value + Ansi.RESET;
+  private String colorStatus(String level) {
+    String normalized = level == null || level.isBlank() ? "ok" : level;
+    String color = switch (normalized) {
+      case "warning" -> Ansi.YELLOW;
+      case "critical" -> Ansi.RED;
+      case "blocked" -> Ansi.BRIGHT_RED;
+      default -> Ansi.GREEN;
+    };
+    return color + normalized.toUpperCase() + Ansi.RESET;
+  }
+
+  private String metric(String label, String value, String color) {
+    return color + label + Ansi.RESET + " " + Ansi.BOLD + value + Ansi.RESET;
   }
 
   private String joinBadges(List<String> badges, int maxWidth) {
     if (badges.isEmpty()) return "";
-    String plain = String.join("  ", badges);
+    String sep = Ansi.DARK_GRAY + " │ " + Ansi.RESET;
+    String plain = String.join(sep, badges);
     if (Ansi.stringDisplayWidth(Ansi.stripAnsi(plain)) <= maxWidth) return plain;
 
     var result = new StringBuilder();
     for (String badge : badges) {
-      String candidate = result.isEmpty() ? badge : result + "  " + badge;
+      String candidate = result.isEmpty() ? badge : result + Ansi.DARK_GRAY + " │ " + Ansi.RESET + badge;
       if (Ansi.stringDisplayWidth(Ansi.stripAnsi(candidate)) > maxWidth) break;
       if (result.isEmpty()) result.append(badge);
-      else result.append("  ").append(badge);
+      else result.append(Ansi.DARK_GRAY).append(" │ ").append(Ansi.RESET).append(badge);
     }
     if (!result.isEmpty() && result.length() < plain.length()) {
       result.append("  ").append(Ansi.DIM).append("...").append(Ansi.RESET);
@@ -1810,17 +2106,20 @@ public class TuiApp {
   }
 
   private String buildTranscriptBody(int termWidth, int maxLines) {
+    var pinnedProgress = buildPinnedProgressLines(termWidth);
+    int pinnedLines = pinnedProgress.size();
+    int transcriptBudget = Math.max(1, maxLines - pinnedLines);
     var lines = wrapDisplayLines(renderTranscriptLines(), Math.max(1, termWidth - 4));
     if (lines.isEmpty()) {
-      return "Type /help for commands.";
+      lines = List.of("Type /help for commands.");
     }
 
-    maxLines = Math.max(1, maxLines);
+    transcriptBudget = Math.max(1, transcriptBudget);
     int totalLines = lines.size();
 
-    int maxOffset = totalLines <= maxLines
+    int maxOffset = totalLines <= transcriptBudget
         ? 0
-        : Math.max(0, totalLines - Math.max(1, maxLines - 1));
+        : Math.max(0, totalLines - Math.max(1, transcriptBudget - 1));
     if (transcriptAutoScroll) {
       transcriptScrollOffset = maxOffset;
     }
@@ -1834,15 +2133,19 @@ public class TuiApp {
 
     int start = transcriptScrollOffset;
     var sb = new StringBuilder();
+    if (!pinnedProgress.isEmpty()) {
+      sb.append(String.join("\n", pinnedProgress));
+      if (transcriptBudget > 0) sb.append("\n");
+    }
 
     // Scroll-up indicator
     if (start > 0) {
       sb.append(Ansi.DIM).append("↑ ").append(start).append(" more line").append(start != 1 ? "s" : "").append(Ansi.RESET).append("\n");
     }
 
-    int end = Math.min(totalLines, start + maxLines);
+    int end = Math.min(totalLines, start + transcriptBudget);
     int scrollIndicatorLines = (start > 0 ? 1 : 0);
-    int available = maxLines - scrollIndicatorLines;
+    int available = transcriptBudget - scrollIndicatorLines;
 
     if (available > 0) {
       int endIndicatorLines = (end < totalLines ? 1 : 0);
@@ -1867,9 +2170,35 @@ public class TuiApp {
     return sb.toString();
   }
 
+  private List<String> buildPinnedProgressLines(int termWidth) {
+    if (!isBusy || progressTraceEntryId == null) return List.of();
+    String body;
+    synchronized (turnProgressTrace) {
+      if (turnProgressTrace.isEmpty()) return List.of();
+      body = String.join("\n", new ArrayList<>(turnProgressTrace));
+    }
+
+    var progress = new TranscriptEntry.Progress(
+        progressTraceEntryId == null ? -1 : progressTraceEntryId,
+        body);
+    var lines = new ArrayList<String>();
+    lines.add(Ansi.GRAY + "┄".repeat(Math.max(12, Math.min(72, termWidth - 8))) + Ansi.RESET);
+    lines.add(Ansi.YELLOW + SPINNER_FRAMES[spinnerFrame] + " " + Ansi.BOLD + "progress" + Ansi.RESET);
+    for (String line : renderProgressBody(progress).split("\n", -1)) {
+      if (!line.isBlank()) {
+        lines.add("  " + line);
+      }
+      if (lines.size() >= LIVE_PROGRESS_MAX_LINES) break;
+    }
+    while (lines.size() < LIVE_PROGRESS_MAX_LINES) {
+      lines.add("");
+    }
+    return lines;
+  }
+
   private List<String> renderTranscriptLines() {
     // Use cached lines if transcript hasn't changed
-    if (!transcriptDirty && cachedRenderLines != null) {
+    if (!hasPinnedProgress() && !transcriptDirty && cachedRenderLines != null) {
       return cachedRenderLines;
     }
 
@@ -1879,17 +2208,31 @@ public class TuiApp {
     List<TranscriptEntry> snapshot = transcriptSnapshot();
 
     for (int idx = 0; idx < snapshot.size(); idx++) {
-      // Compact separator: just a single line between entries
-      if (idx > 0) {
+      var entry = snapshot.get(idx);
+      if (hasPinnedProgress()
+          && progressTraceEntryId != null
+          && entry instanceof TranscriptEntry.Progress p
+          && p.id() == progressTraceEntryId) {
+        continue;
+      }
+      // Compact separator: just a single line between rendered entries.
+      if (!lines.isEmpty()) {
         lines.add(separator);
       }
-      var entry = snapshot.get(idx);
       lines.addAll(List.of(renderTranscriptEntry(entry).split("\n")));
     }
 
-    cachedRenderLines = lines;
-    transcriptDirty = false;
+    if (!hasPinnedProgress()) {
+      cachedRenderLines = lines;
+      transcriptDirty = false;
+    }
     return lines;
+  }
+
+  private boolean hasPinnedProgress() {
+    synchronized (turnProgressTrace) {
+      return progressTraceEntryId != null && !turnProgressTrace.isEmpty();
+    }
   }
 
   private List<String> wrapDisplayLines(List<String> inputLines, int width) {
@@ -1934,20 +2277,25 @@ public class TuiApp {
   private String renderTranscriptEntry(TranscriptEntry entry) {
     return switch (entry) {
       case TranscriptEntry.User u ->
-          Ansi.CYAN + Ansi.BOLD + "you" + Ansi.RESET + "\n" + indentBlock(u.body());
+          Ansi.GRAY + "┄".repeat(Math.max(12, Math.min(72, termWidth() - 8))) + Ansi.RESET + "\n"
+              + Ansi.CYAN + Ansi.BOLD + "you" + Ansi.RESET + "\n" + indentBlock(u.body());
       case TranscriptEntry.Assistant a -> {
         String body = a.body();
         // Highlight error messages in red
         boolean isError = body != null
             && (body.startsWith("Error:") || body.startsWith("error:") || body.startsWith("Error\n"));
         String labelColor = isError ? Ansi.RED : Ansi.GREEN;
-        yield labelColor + Ansi.BOLD + "assistant" + Ansi.RESET + "\n"
+        yield Ansi.GRAY + "┄".repeat(Math.max(12, Math.min(72, termWidth() - 8))) + Ansi.RESET + "\n"
+            + labelColor + Ansi.BOLD + "assistant" + Ansi.RESET + "\n"
             + indentBlock(MarkdownRenderer.render(body));
       }
       case TranscriptEntry.Status s ->
           Ansi.YELLOW + s.body() + Ansi.RESET;
       case TranscriptEntry.Progress p ->
-          Ansi.YELLOW + Ansi.BOLD + "progress" + Ansi.RESET + "\n" + indentBlock(p.body());
+          Ansi.GRAY + "┄".repeat(Math.max(12, Math.min(72, termWidth() - 8))) + Ansi.RESET + "\n"
+              + Ansi.YELLOW + Ansi.BOLD + "progress" + Ansi.RESET
+              + progressToggleHint(p.id())
+              + "\n" + indentBlock(renderProgressBody(p));
       case TranscriptEntry.Tool t -> {
         String statusColor = switch (t.status()) {
           case RUNNING -> Ansi.YELLOW;
@@ -1965,6 +2313,48 @@ public class TuiApp {
     };
   }
 
+  private String progressToggleHint(int id) {
+    return Ansi.DIM + (expandedProgressEntries.contains(id) ? " [-]" : " [+]") + Ansi.RESET;
+  }
+
+  private String renderProgressBody(TranscriptEntry.Progress progress) {
+    String body = progress.body() == null ? "" : progress.body();
+    List<String> lines = new ArrayList<>(List.of(body.split("\n", -1)));
+    lines.removeIf(String::isBlank);
+    lines.replaceAll(this::renderProgressLine);
+    if (expandedProgressEntries.contains(progress.id()) || lines.size() <= 4) {
+      return String.join("\n", lines);
+    }
+    List<String> compact = new ArrayList<>();
+    compact.add(lines.getFirst());
+    int historyToShow = Math.min(2, lines.size() - 1);
+    int start = Math.max(1, lines.size() - historyToShow);
+    for (int i = start; i < lines.size(); i++) {
+      compact.add(lines.get(i));
+    }
+    int hidden = lines.size() - compact.size();
+    if (hidden > 0) {
+      compact.add(Ansi.DIM + "[+" + hidden + " progress lines hidden; Ctrl+O to expand]" + Ansi.RESET);
+    }
+    return String.join("\n", compact);
+  }
+
+  private String renderProgressLine(String raw) {
+    if (raw.startsWith(PROGRESS_RUNNING)) {
+      return SPINNER_FRAMES[spinnerFrame] + " " + raw.substring(PROGRESS_RUNNING.length());
+    }
+    if (raw.startsWith(PROGRESS_SUCCESS)) {
+      return "[OK] " + raw.substring(PROGRESS_SUCCESS.length());
+    }
+    if (raw.startsWith(PROGRESS_ERROR)) {
+      return "[ERR] " + raw.substring(PROGRESS_ERROR.length());
+    }
+    if (raw.startsWith(PROGRESS_INFO)) {
+      return "· " + raw.substring(PROGRESS_INFO.length());
+    }
+    return raw;
+  }
+
   private String indentBlock(String input) {
     if (input == null || input.isEmpty()) return "";
     var sb = new StringBuilder();
@@ -1978,8 +2368,7 @@ public class TuiApp {
   }
 
   private String renderPromptPanel(int termWidth) {
-    String promptLine = Ansi.GREEN + Ansi.BOLD + "codeauto>" + Ansi.RESET;
-    String helpText = Ansi.DIM + "Enter send · Esc clear · Ctrl+C exit" + Ansi.RESET;
+    String promptLine = Ansi.LIGHT_BLUE + Ansi.BOLD + "CodeAuto>" + Ansi.RESET;
 
     String currentInput = input == null ? "" : input;
     int safeCursor = Math.max(0, Math.min(cursorPos, currentInput.length()));
@@ -2003,7 +2392,13 @@ public class TuiApp {
 
     // Slash menu: show matching commands when input starts with /
     var body = new StringBuilder();
-    body.append(helpText).append("\n\n").append(inputLine.toString());
+    body.append(Ansi.DARK_GRAY).append("─".repeat(Math.max(0, termWidth))).append(Ansi.RESET)
+        .append("\n")
+        .append(inputLine)
+        .append("\n")
+        .append(Ansi.DIM)
+        .append("Enter send | Esc clear | Ctrl+C exit | Ctrl+O progress | Ctrl+↑/↓ scroll")
+        .append(Ansi.RESET);
 
     var visCmds = getVisibleCommands();
     if (!visCmds.isEmpty()) {
@@ -2037,7 +2432,7 @@ public class TuiApp {
       }
     }
 
-    return PanelRenderer.renderPanel("prompt", body.toString(), termWidth);
+    return body.toString();
   }
 
   private String renderApprovalPanel(int termWidth) {
@@ -2063,7 +2458,7 @@ public class TuiApp {
       fb.append(before);
       fb.append(Ansi.REVERSE).append(at).append(Ansi.RESET);
 
-      return PanelRenderer.renderPanel("approval", fb.toString(), termWidth);
+      return PanelRenderer.renderLightPanel("approval", fb.toString(), termWidth);
     }
 
     var req = pa.request();
@@ -2092,7 +2487,41 @@ public class TuiApp {
 
     sb.append("\n").append(Ansi.DIM).append("Up/Down select, Enter confirm, Esc deny · y/n 1-7 shortcuts").append(Ansi.RESET);
 
-    return PanelRenderer.renderPanel("approval", sb.toString(), termWidth);
+    return PanelRenderer.renderLightPanel("approval", sb.toString(), termWidth);
+  }
+
+  private String renderMemoryConfirmationPanel(int termWidth) {
+    var pending = pendingMemoryConfirmation;
+    if (pending == null) return "";
+    String[] labels = {
+        "Project CLAUDE.md",
+        "Global ~/.claude/CLAUDE.md",
+        "CodeAuto ~/.codeauto/CLAUDE.md",
+        "Memory store",
+        "Skip"
+    };
+    String[] keys = {"p", "g", "c", "m", "s"};
+    var sb = new StringBuilder();
+    sb.append(Ansi.YELLOW).append(Ansi.BOLD).append("Memory Candidate").append(Ansi.RESET).append("\n");
+    sb.append(Ansi.DIM).append("Not saved yet. Choose where this should live.").append(Ansi.RESET).append("\n\n");
+    sb.append(indentBlock(pending.candidate().content())).append("\n\n");
+    for (int i = 0; i < labels.length; i++) {
+      String prefix = i == pending.selectedIndex()
+          ? Ansi.REVERSE + "> " + Ansi.RESET
+          : "  ";
+      sb.append(prefix)
+          .append(" ")
+          .append(i + 1)
+          .append(". [")
+          .append(keys[i])
+          .append("] ")
+          .append(labels[i])
+          .append("\n");
+    }
+    sb.append("\n").append(Ansi.DIM)
+        .append("Up/Down select, Enter confirm, Esc/s skip")
+        .append(Ansi.RESET);
+    return PanelRenderer.renderLightPanel("memory", sb.toString(), termWidth);
   }
 
   private String renderSessionPickerPanel(int termWidth) {
@@ -2105,7 +2534,10 @@ public class TuiApp {
       if (projects.isEmpty()) {
         sb.append(Ansi.DIM).append("(no other projects found)").append(Ansi.RESET);
       } else {
-        for (int i = 0; i < projects.size(); i++) {
+        int start = Math.max(0, Math.min(sp.projectIndex() - 3, Math.max(0, projects.size() - 7)));
+        int end = Math.min(projects.size(), start + 7);
+        if (start > 0) sb.append(Ansi.DIM).append("... ").append(start).append(" more projects").append(Ansi.RESET).append("\n");
+        for (int i = start; i < end; i++) {
           var p = projects.get(i);
           String prefix = i == sp.projectIndex()
               ? Ansi.REVERSE + "> " + Ansi.RESET
@@ -2114,13 +2546,17 @@ public class TuiApp {
           sb.append("  ").append(Ansi.DIM).append(p.sessionCount()).append(" sessions").append(Ansi.RESET);
           sb.append("\n");
         }
+        if (end < projects.size()) sb.append(Ansi.DIM).append("... ").append(projects.size() - end).append(" more projects").append(Ansi.RESET).append("\n");
       }
     } else {
       var sessions = sp.sessions();
       if (sessions.isEmpty()) {
         sb.append(Ansi.DIM).append("(no saved sessions)").append(Ansi.RESET);
       } else {
-        for (int i = 0; i < sessions.size(); i++) {
+        int start = Math.max(0, Math.min(sp.selectedIndex() - 3, Math.max(0, sessions.size() - 7)));
+        int end = Math.min(sessions.size(), start + 7);
+        if (start > 0) sb.append(Ansi.DIM).append("... ").append(start).append(" more sessions").append(Ansi.RESET).append("\n");
+        for (int i = start; i < end; i++) {
           var s = sessions.get(i);
           String prefix = i == sp.selectedIndex()
               ? Ansi.REVERSE + "> " + Ansi.RESET
@@ -2134,6 +2570,7 @@ public class TuiApp {
           }
           sb.append("\n");
         }
+        if (end < sessions.size()) sb.append(Ansi.DIM).append("... ").append(sessions.size() - end).append(" more sessions").append(Ansi.RESET).append("\n");
       }
     }
 
@@ -2145,7 +2582,7 @@ public class TuiApp {
     }
     sb.append(Ansi.RESET);
 
-    return PanelRenderer.renderPanel("session picker", sb.toString(), termWidth);
+    return PanelRenderer.renderLightPanel("session picker", sb.toString(), termWidth);
   }
 
   /** Render a compact tool panel showing running + recent tools. */
@@ -2177,27 +2614,18 @@ public class TuiApp {
   private String renderFooterBar(int termWidth) {
     var left = new StringBuilder();
     if (statusText != null) {
-      left.append(Ansi.YELLOW).append(Ansi.BOLD).append(statusText).append(Ansi.RESET);
+      left.append(Ansi.YELLOW)
+          .append(Ansi.BOLD)
+          .append(SPINNER_FRAMES[spinnerFrame])
+          .append(" ")
+          .append(statusWithElapsed(statusText))
+          .append(Ansi.RESET);
     } else {
       left.append(Ansi.DIM).append("Ready").append(Ansi.RESET);
     }
 
-    var right = new StringBuilder();
-    right.append(Ansi.DIM).append("tools").append(Ansi.RESET).append(" ").append(Ansi.GREEN).append("on").append(Ansi.RESET);
-
-    // Show MCP tool count
-    if (mcpToolCount > 0) {
-      right.append("  ").append(Ansi.DIM).append("mcp").append(Ansi.RESET)
-          .append(" ").append(Ansi.BRIGHT_CYAN).append(mcpToolCount).append(Ansi.RESET);
-    }
-
-    // Show skills count
-    if (skillCount > 0) {
-      right.append("  ").append(Ansi.DIM).append("skills").append(Ansi.RESET)
-          .append(" ").append(Ansi.MAGENTA).append(skillCount).append(Ansi.RESET);
-    }
-
     // Show running background tasks
+    var right = new StringBuilder();
     var bgTasks = BackgroundTaskRegistry.get().list();
     long runningCount = bgTasks.stream().filter(t -> "running".equals(t.status())).count();
     if (runningCount > 0) {
@@ -2229,6 +2657,6 @@ public class TuiApp {
     }
     int gap = Math.max(1, contentWidth - leftLen - rightLen);
 
-    return Ansi.BORDER + " " + Ansi.RESET + leftText + " ".repeat(gap) + rightText + " " + Ansi.BORDER + Ansi.RESET;
+    return leftText + " ".repeat(gap) + rightText;
   }
 }

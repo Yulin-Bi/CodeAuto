@@ -17,6 +17,9 @@ public class Ansi {
   public static final String BRIGHT_RED = "\033[91m";
   public static final String BRIGHT_CYAN = "\033[96m";
   public static final String BRIGHT_YELLOW = "\033[93m";
+  public static final String GRAY = "\033[38;5;245m";
+  public static final String DARK_GRAY = "\033[38;5;240m";
+  public static final String LIGHT_BLUE = "\033[38;5;117m";
   public static final String BORDER = "\033[38;5;31m";
 
   public static final String ENTER_ALT = "\033[?1049h";

@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public sealed interface TranscriptEntry {
+  int MAX_ASSISTANT_BODY_CHARS = 5000;
+
   int id();
 
   record User(int id, String body) implements TranscriptEntry {}
@@ -27,6 +29,8 @@ public sealed interface TranscriptEntry {
         entries.add(new TranscriptEntry.Assistant(id++, formatAssistantBody(am.content())));
       } else if (msg instanceof ChatMessage.AssistantRawMessage raw) {
         entries.add(new TranscriptEntry.Assistant(id++, formatAssistantBody(rawAssistantText(raw.content()))));
+      } else if (msg instanceof ChatMessage.AssistantProgressMessage progress) {
+        entries.add(new TranscriptEntry.Progress(id++, formatAssistantBody(progress.content())));
       } else if (msg instanceof ChatMessage.AssistantToolCallMessage tc) {
         entries.add(new TranscriptEntry.Tool(id++, tc.toolName(),
             TranscriptEntry.ToolStatus.SUCCESS, summarizeToolInput(tc.toolName(), tc.input())));
@@ -37,8 +41,19 @@ public sealed interface TranscriptEntry {
 
   private static String formatAssistantBody(String content) {
     if (content == null) return "";
-    if (content.length() > 5000) return content.substring(0, 5000) + "...\n[truncated]";
-    return content;
+    if (content.length() <= MAX_ASSISTANT_BODY_CHARS) return content;
+    int cut = content.lastIndexOf('\n', MAX_ASSISTANT_BODY_CHARS);
+    if (cut < Math.max(0, MAX_ASSISTANT_BODY_CHARS / 2)) {
+      cut = Math.min(MAX_ASSISTANT_BODY_CHARS, content.length());
+    }
+    int omittedLines = 0;
+    for (int i = cut; i < content.length(); i++) {
+      if (content.charAt(i) == '\n') omittedLines++;
+    }
+    String suffix = omittedLines > 0
+        ? "\n[truncated: " + omittedLines + " more line" + (omittedLines == 1 ? "" : "s") + "]"
+        : "\n[truncated]";
+    return content.substring(0, cut).stripTrailing() + suffix;
   }
 
   private static String summarizeToolInput(String toolName, Object input) {

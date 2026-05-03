@@ -13,7 +13,10 @@ public class InstructionLoader {
   private static final int MAX_MEMORIES = 5;
 
   public static String systemPrompt(Path cwd, String permissionSummary) {
-    String base = "You are CodeAuto. Permissions: " + permissionSummary;
+    String base = "You are CodeAuto. Permissions: " + permissionSummary
+        + "\nMemory behavior: when the user asks you to remember something, first ask where to save it "
+        + "(project CLAUDE.md, global CLAUDE.md, CodeAuto CLAUDE.md, or memory store). "
+        + "After the user chooses, call save_memory with destination=project/global/codeauto/store.";
     List<InstructionFile> files = load(cwd);
     List<MemoryEntry> memories = new MemoryManager().relevant(cwd, "", MAX_MEMORIES);
     if (files.isEmpty() && memories.isEmpty()) return base;

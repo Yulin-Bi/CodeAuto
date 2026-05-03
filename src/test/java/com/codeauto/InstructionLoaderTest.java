@@ -53,7 +53,9 @@ class InstructionLoaderTest {
       System.setProperty("user.home", userHome.toString());
       System.setProperty("codeauto.home", codeautoHome.toString());
 
-      assertEquals("You are CodeAuto. Permissions: ok", InstructionLoader.systemPrompt(project, "ok"));
+      String prompt = InstructionLoader.systemPrompt(project, "ok");
+      assertTrue(prompt.startsWith("You are CodeAuto. Permissions: ok"));
+      assertTrue(prompt.contains("Memory behavior:"));
     } finally {
       restoreProperty("codeauto.home", previousHome);
       restoreProperty("user.home", previousUserHome);

@@ -33,6 +33,53 @@ public class PanelRenderer {
     return renderPanel(title, body, termWidth, null);
   }
 
+  public static String renderFeedPanel(String title, String body, int termWidth, String rightTitle) {
+    int width = Math.max(20, termWidth);
+    int inner = Math.max(0, width - 4);
+    List<String> bodyLines = body == null || body.isEmpty()
+        ? List.of()
+        : List.of(body.split("\n", -1));
+
+    String meta = rightTitle == null || rightTitle.isBlank() ? "" : " - " + rightTitle;
+    var sb = new StringBuilder();
+    sb.append(Ansi.GRAY).append("┃ ").append(Ansi.BOLD)
+        .append(title.toUpperCase()).append(Ansi.RESET)
+        .append(Ansi.DIM).append(meta).append(Ansi.RESET).append("\n");
+    sb.append(Ansi.GRAY).append("┌").append("─".repeat(Math.max(0, width - 2))).append("┐").append(Ansi.RESET).append("\n");
+    for (String line : bodyLines) {
+      sb.append(Ansi.GRAY).append("│").append(Ansi.RESET)
+          .append(" ")
+          .append(padOrTrim(line, inner))
+          .append(" ")
+          .append(Ansi.GRAY).append("│").append(Ansi.RESET).append("\n");
+    }
+    sb.append(Ansi.GRAY).append("└").append("─".repeat(Math.max(0, width - 2))).append("┘").append(Ansi.RESET);
+    return sb.toString();
+  }
+
+  public static String renderLightPanel(String title, String body, int termWidth) {
+    int width = Math.max(20, termWidth);
+    int inner = Math.max(0, width - 4);
+    List<String> bodyLines = new ArrayList<>();
+    if (body != null && !body.isEmpty()) {
+      for (String line : body.split("\n")) {
+        bodyLines.addAll(wrapPanelBodyLine(line, width));
+      }
+    }
+    var sb = new StringBuilder();
+    sb.append(Ansi.GRAY).append("┃ ").append(Ansi.BOLD).append(title.toUpperCase()).append(Ansi.RESET).append("\n");
+    sb.append(Ansi.GRAY).append("┌").append("─".repeat(Math.max(0, width - 2))).append("┐").append(Ansi.RESET).append("\n");
+    for (String line : bodyLines) {
+      sb.append(Ansi.GRAY).append("│").append(Ansi.RESET)
+          .append(" ")
+          .append(padOrTrim(line, inner))
+          .append(" ")
+          .append(Ansi.GRAY).append("│").append(Ansi.RESET).append("\n");
+    }
+    sb.append(Ansi.GRAY).append("└").append("─".repeat(Math.max(0, width - 2))).append("┘").append(Ansi.RESET);
+    return sb.toString();
+  }
+
   private static String borderLine(String kind, int width) {
     int inner = Math.max(0, width - 2);
     if (kind.equals("top")) {
@@ -91,5 +138,11 @@ public class PanelRenderer {
       parts.add(current.toString());
     }
     return parts;
+  }
+
+  private static String padOrTrim(String line, int width) {
+    int current = Ansi.stringDisplayWidth(line);
+    if (current > width) return Ansi.truncatePlain(Ansi.stripAnsi(line), width);
+    return line + " ".repeat(Math.max(0, width - current));
   }
 }

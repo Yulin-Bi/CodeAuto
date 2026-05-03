@@ -255,3 +255,13 @@ CodeAuto 保持几个工程原则：
 - 同文件多次编辑 transcript 聚合
 - Skill 变量替换和 fork 模式
 - 更细的模型上下文窗口查询表
+
+## 最近实现状态（2026-05-03）
+
+- TUI 已经向更轻量的终端工作台收敛：顶部 CodeAuto 外框被移除，指标使用灰色分隔符，输入框外框被删除，操作提示移动到输入区下方。
+- progress 现在是查看工具活动的主要入口：执行中固定保留在 assistant 输出上方，结束后插入到对应 assistant 回复之前，并避免出现裸 ANSI 颜色片段。
+- 工具状态统一显示为运行中的动态符号、`[OK] Processed ...` 或 `[ERR] Failed ...`。
+- `Ctrl+O` 用于展开/折叠最近的 progress，`Ctrl+Up` / `Ctrl+Down` 用于滚动聊天记录。
+- 主动记忆现在只生成候选，保存前必须明确选择目的地：项目 `CLAUDE.md`、全局 `~/.claude/CLAUDE.md`、CodeAuto `~/.codeauto/CLAUDE.md`、普通 memory store，或跳过。
+- `save_memory` 必须携带 `destination=store|project|global|codeauto`，长期记忆写入不再依赖模糊默认值。
+- 当前验证基线：`Tests run: 83, Failures: 0, Errors: 0, Skipped: 0`。

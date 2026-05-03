@@ -8,6 +8,8 @@ import com.codeauto.core.AgentLoop;
 import com.codeauto.core.AgentLoopListener;
 import com.codeauto.core.ChatMessage;
 import com.codeauto.instructions.InstructionLoader;
+import com.codeauto.memory.ActiveMemoryCaptureService;
+import com.codeauto.memory.ActiveMemoryCaptureService.MemoryCandidate;
 import com.codeauto.model.AnthropicModelAdapter;
 import com.codeauto.model.ModelAdapter;
 import com.codeauto.model.MockModelAdapter;
@@ -302,10 +304,13 @@ public class CodeAutoCli implements Runnable {
           continue;
         }
         permissions.beginTurn();
+        int memoryCaptureStart = messages.size();
         messages.add(new ChatMessage.UserMessage(input));
         consoleStreamedThisTurn = false;
         messages = new ArrayList<>(loop.runTurn(messages));
         permissions.endTurn();
+        confirmMemoryCandidates(cliInput, cwd,
+            new ActiveMemoryCaptureService().captureCandidates(cwd, messages, memoryCaptureStart));
         if (saveSession(sessions, sessionId, messages, savedCount)) {
           savedCount = messages.size();
         }
@@ -384,6 +389,30 @@ public class CodeAutoCli implements Runnable {
     }
     Path current = Path.of("").toAbsolutePath().normalize();
     return projectRootForBundledBin(current);
+  }
+
+  private void confirmMemoryCandidates(CliInput cliInput, Path cwd, List<MemoryCandidate> candidates) {
+    if (candidates == null || candidates.isEmpty()) return;
+    ActiveMemoryCaptureService service = new ActiveMemoryCaptureService();
+    for (MemoryCandidate candidate : candidates) {
+      System.out.println();
+      System.out.println("Pending memory candidate (not saved yet):");
+      System.out.println(candidate.content());
+      System.out.println("Choose [p]roject CLAUDE.md, [g]lobal ~/.claude/CLAUDE.md, [c]odeauto CLAUDE.md, [m]emory store, or [s]kip.");
+      String answer = cliInput.readLine("memory> ");
+      if (answer == null) return;
+      try {
+        switch (answer.trim().toLowerCase()) {
+          case "p", "project" -> System.out.println("Saved to " + service.saveToProjectClaude(cwd, candidate));
+          case "g", "global" -> System.out.println("Saved to " + service.saveToGlobalClaude(candidate));
+          case "c", "codeauto" -> System.out.println("Saved to " + service.saveToCodeAutoClaude(candidate));
+          case "m", "memory" -> System.out.println("Saved memory: " + service.saveToMemory(cwd, candidate).title());
+          default -> System.out.println("Skipped memory candidate.");
+        }
+      } catch (Exception error) {
+        System.out.println("Warning: could not save memory candidate: " + error.getMessage());
+      }
+    }
   }
 
   public static Path projectRootForBundledBin(Path current) {

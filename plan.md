@@ -529,3 +529,60 @@ BUILD SUCCESS
 Tests run: 77, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
+
+## 主动记忆与子智能体规划（2026-05-03）
+
+### 目标
+
+CodeAuto 现有 `MemoryManager`、`save_memory/list_memory/delete_memory`、`InstructionLoader` 记忆注入和 `AgentLoop` 多步工具循环，但记忆需要显式调用，子智能体还停留在 `/fork` 会话分叉。下一阶段补齐两个能力：
+
+1. 主动记忆：在每轮结束后自动识别值得长期保留的用户偏好、项目约定、测试/构建命令和架构决策。
+2. 子智能体：通过 `delegate_task` 工具创建受限的只读子 Agent，完成分析型子任务并把报告返回主 Agent。
+
+### Phase 1：主动记忆确认式 MVP
+
+- [x] 新增 `ActiveMemoryCaptureService`，规则式捕获明显记忆信号，但只生成候选，不静默写入长期上下文。
+- [x] 支持去重和单轮限流，避免重复保存或噪音膨胀。
+- [x] CLI 在 `AgentLoop.runTurn()` 后提示用户选择保存位置：项目 `CLAUDE.md`、全局 `~/.claude/CLAUDE.md`、CodeAuto `~/.codeauto/CLAUDE.md`、普通 memory store 或跳过。
+- [x] TUI 检测到候选后弹出 `Memory Candidate` 面板，用户可用方向键/Enter 或 `p/g/c/m/s` 选择；同时保留 `/memory pending` 等命令作为补充入口。
+- [x] 测试覆盖候选生成、写入 memory store、写入项目 `CLAUDE.md`、重复记忆跳过和普通聊天不保存。
+
+### Phase 2：子智能体 MVP
+
+- [ ] 新增 `delegate_task` 工具，内部创建独立 `AgentLoop`。
+- [ ] 子智能体默认只开放 `list_files/read_file/grep_files/web_fetch/web_search`。
+- [ ] 禁止子智能体递归调用 `delegate_task`，并限制 `maxSteps`。
+- [ ] 子智能体输出结构化报告：`findings / files_read / suggested_next_steps`。
+- [ ] 测试覆盖只读委托、工具白名单和结果回填。
+
+### Phase 3：体验增强
+
+- [x] 主动记忆候选确认队列：`/memory pending`、`/memory accept ...`、`/memory skip`。
+- [ ] 子智能体 trace 持久化和 TUI 折叠展示。
+- [ ] 长任务 checkpoint/resume：把 plan、当前阶段、已完成文件和下一步写入 session metadata。
+
+## TUI 界面精简重构计划（2026-05-03）
+
+### 目标
+
+将 TUI 从“多框面板”改成更轻的终端工作台：顶部只保留工作目录和指标分隔线，移除 tools/prompt/footer 冗余信息，session feed 保留细灰边框和外置标题，progress 与对话内容视觉分隔。
+
+### 实现清单
+
+- [x] Header 去掉 CodeAuto 外框，改成浅蓝分隔线；session/model/messages/tools/ctx/skills 单行显示，用灰色竖线隔开。
+- [x] 删除独立 tools 面板；工具运行/结果合并到 progress，工具结果用红/绿实心符号标识。
+- [x] Session feed 外框改灰色细线，标题外置大写，左侧粗竖线；events/ctx/status 外置并用 `-` 分隔。
+- [x] Progress 与 user/assistant 内容之间用灰色虚线分隔；progress 默认折叠，Ctrl+O 展开最后一个。
+- [x] 删除 prompt 外框，输入区下移；操作提示移动到聊天输入下方。
+- [x] 修正长回复高度预留，避免 assistant 长流式回复把顶部 UI 挤出屏幕。
+- [x] 修正 progress 截断时的 ANSI 处理，避免显示裸 `[33m` / `[32m`。
+- [x] 删除右下角 tools on / skills 计数，仅保留左下角黄色动态思考状态。
+
+## TUI Progress 最终行为记录（2026-05-03）
+
+- [x] 执行中 progress 固定显示在 assistant 流式输出上方，并预留少量空间，避免长回复把它挤走。
+- [x] 执行结束后的 progress 会作为普通 transcript 条目保留，并插入到对应 assistant 回复之前。
+- [x] 已移除单独的 `Thinking...` progress 头部；实时状态直接显示在当前 Running/Processed 行上。
+- [x] 运行中 progress 使用 ASCII 动态符号 `| / - \`；成功工具调用显示 `[OK]`，失败工具调用显示 `[ERR]`。
+- [x] progress 存储内容不再包含 ANSI escape code，避免终端里出现裸 `[33m` 或 `[32m`。
+- [x] 操作提示已改为 `Ctrl+O` 展开 progress，`Ctrl+Up` / `Ctrl+Down` 滚动聊天记录。

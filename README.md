@@ -219,17 +219,32 @@ CodeAuto 支持跨会话记忆，默认存储在：
 
 ```text
 /memory list [query]
+/memory pending
+/memory accept project|global|codeauto|store
+/memory skip
 /memory add <type>::<title>::<content>
 /memory delete <id>
 ```
 
+当用户输入中出现明确的“记住”、项目约定、测试命令或架构决策时，CodeAuto 会先生成记忆候选，不会静默写入长期上下文。CLI 会在当前轮结束后询问保存位置；TUI 会把候选放入 pending 队列：
+
+- `project`：写入当前 workspace 的 `CLAUDE.md`
+- `global`：写入 `~/.claude/CLAUDE.md`
+- `codeauto`：写入 `~/.codeauto/CLAUDE.md`
+- `store`：写入 `~/.codeauto/memory/`
+- `skip`：丢弃候选
+
+TUI 检测到候选后会弹出 `Memory Candidate` 面板，可用方向键选择并按 Enter，或直接按 `p/g/c/m/s` 快捷键。
+
 模型也可以通过工具主动调用：
 
 ```text
-save_memory
+save_memory destination=store|project|global|codeauto
 list_memory
 delete_memory
 ```
+
+如果用户让模型“记住”某条信息，系统提示会要求模型先询问保存位置；用户确认后，模型可用 `save_memory` 的 `destination` 参数写入对应位置。
 
 ## 多级指令加载
 
@@ -436,5 +451,28 @@ CodeAuto 已在 CLI 入口默认设置 `org.jline.terminal.disableDeprecatedProv
 ```powershell
 $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 ```
+
+## 最近更新（2026-05-03）
+
+### TUI progress 与布局
+
+- 顶部 CodeAuto 外框已经移除，只保留工作目录、session/model/messages/tools/ctx/skills 等指标，并用灰色分隔符连接。
+- 独立 tools 面板已经删除，工具调用状态统一进入 progress 区域展示。
+- 当前轮还在执行时，progress 会在 assistant 输出上方预留一小块固定区域，避免长流式回复把状态挤走。
+- 当前轮结束后，progress 会作为普通 transcript 条目保留下来，并插入到对应 assistant 回复之前。
+- progress 内部存储不再带 ANSI 颜色码，运行中使用 ASCII 动态符号 `| / - \`，成功显示 `[OK] Processed ...`，失败显示 `[ERR] Failed ...`。
+- `Ctrl+O` 用于展开/折叠最近一个 progress；`Ctrl+Up` / `Ctrl+Down` 用于滚动聊天记录。
+- 斜杠菜单的 `Tab` 补全已经改为复用当前可见命令列表。
+
+### 主动记忆
+
+- 当用户明确说“记住”、给出项目约定、长期偏好或架构决策时，系统会先生成记忆候选，不会静默写入长期上下文。
+- 保存前必须由用户选择位置：项目 `CLAUDE.md`、全局 `~/.claude/CLAUDE.md`、CodeAuto `~/.codeauto/CLAUDE.md`、普通 memory store，或跳过。
+- `save_memory` 工具现在必须传入 `destination=store|project|global|codeauto`，避免模型在目的地不明确时自动保存。
+- CLI 和 TUI 都支持 pending memory 的确认流程。
+
+### 验证状态
+
+- 最近一次完整测试结果：`Tests run: 83, Failures: 0, Errors: 0, Skipped: 0`。
 
 如果地址包含 `{query}`，工具会替换为 URL 编码后的搜索词；否则会自动追加 `q=<query>` 参数。

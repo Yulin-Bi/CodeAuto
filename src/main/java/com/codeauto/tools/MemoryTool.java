@@ -2,6 +2,8 @@ package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.codeauto.memory.ActiveMemoryCaptureService;
+import com.codeauto.memory.ActiveMemoryCaptureService.MemoryCandidate;
 import com.codeauto.memory.MemoryManager;
 import com.codeauto.memory.MemoryType;
 import com.codeauto.tool.ToolContext;
@@ -29,7 +31,7 @@ public class MemoryTool implements ToolDefinition {
   @Override
   public String description() {
     return switch (kind) {
-      case SAVE -> "Save a persistent Markdown memory for future sessions.";
+      case SAVE -> "Save a memory after the user chooses destination: store, project, global, or codeauto.";
       case LIST -> "List persistent memories relevant to the workspace.";
       case DELETE -> "Delete a persistent memory by id.";
     };
@@ -44,8 +46,10 @@ public class MemoryTool implements ToolDefinition {
         props.set("title", JsonSchemas.stringProp("Memory title"));
         props.set("content", JsonSchemas.stringProp("Memory content (Markdown)"));
         props.set("type", JsonSchemas.stringProp("Memory type: user/feedback/project/reference (default: project)"));
+        props.set("destination", JsonSchemas.stringProp(
+            "Where to save: store (default), project, global, or codeauto. Ask the user before choosing."));
         props.set("tags", JsonSchemas.arrayProp("string", "Tags for this memory"));
-        yield JsonSchemas.required(schema, "title", "content");
+        yield JsonSchemas.required(schema, "title", "content", "destination");
       }
       case LIST -> {
         ObjectNode schema = JsonSchemas.schema();
@@ -79,8 +83,29 @@ public class MemoryTool implements ToolDefinition {
     if (title.isBlank()) return ToolResult.error("title is required");
     if (content.isBlank()) return ToolResult.error("content is required");
     MemoryType type = MemoryType.from(JsonSchemas.text(input, "type", "project"));
-    var entry = manager.save(type, title, context.cwd(), tags(input), content);
-    return ToolResult.ok("Saved memory " + entry.id() + " at " + entry.path());
+    String destination = JsonSchemas.text(input, "destination", "").toLowerCase();
+    if (destination.isBlank()) {
+      return ToolResult.error("destination is required: store, project, global, or codeauto");
+    }
+    MemoryCandidate candidate = new MemoryCandidate(type, title, content, tags(input));
+    ActiveMemoryCaptureService activeMemory = new ActiveMemoryCaptureService(manager);
+    try {
+      return switch (destination) {
+        case "project", "claude_project" ->
+            ToolResult.ok("Saved memory instruction to " + activeMemory.saveToProjectClaude(context.cwd(), candidate));
+        case "global", "user", "claude_global" ->
+            ToolResult.ok("Saved memory instruction to " + activeMemory.saveToGlobalClaude(candidate));
+        case "codeauto", "app", "claude_codeauto" ->
+            ToolResult.ok("Saved memory instruction to " + activeMemory.saveToCodeAutoClaude(candidate));
+        case "store", "memory" -> {
+          var entry = activeMemory.saveToMemory(context.cwd(), candidate);
+          yield ToolResult.ok("Saved memory " + entry.id() + " at " + entry.path());
+        }
+        default -> ToolResult.error("destination must be one of: store, project, global, codeauto");
+      };
+    } catch (Exception error) {
+      return ToolResult.error("Failed to save memory: " + error.getMessage());
+    }
   }
 
   private static ToolResult list(JsonNode input, ToolContext context, MemoryManager manager) {
