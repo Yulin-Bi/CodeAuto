@@ -19,7 +19,8 @@ class ConfigLoaderTest {
           "https://example.test",
           "token",
           2048,
-          2);
+          2,
+          900);
 
       ConfigLoader.writeUserSettings(config);
 
@@ -29,6 +30,7 @@ class ConfigLoaderTest {
       assertEquals("token", loaded.authToken());
       assertEquals(2048, loaded.maxOutputTokens());
       assertEquals(2, loaded.maxRetries());
+      assertEquals(900, loaded.modelTimeoutSeconds());
     } finally {
       if (previousHome == null) {
         System.clearProperty("codeauto.home");

@@ -78,6 +78,7 @@ public class TuiApp {
   private String input = "";
   private int cursorPos;
   private volatile boolean isBusy;
+  private volatile long busyStartedAtMillis;
   private String statusText;
   private final Deque<ToolStatus> recentTools = new ArrayDeque<>();
   private String runningToolName;
@@ -734,7 +735,7 @@ public class TuiApp {
         transcriptDirty = true;
         return;
       }
-      String body = SPINNER_FRAMES[spinnerFrame] + " " + text;
+      String body = SPINNER_FRAMES[spinnerFrame] + " " + statusWithElapsed(text);
       for (int i = transcript.size() - 1; i >= 0; i--) {
         if (transcript.get(i) instanceof TranscriptEntry.Status) {
           transcript.set(i, new TranscriptEntry.Status(i, body));
@@ -755,6 +756,20 @@ public class TuiApp {
         transcriptDirty = true;
       }
     }
+  }
+
+  private String statusWithElapsed(String text) {
+    if (!isBusy || busyStartedAtMillis <= 0) return text;
+    long elapsed = Math.max(0, System.currentTimeMillis() - busyStartedAtMillis);
+    long seconds = elapsed / 1000;
+    if (seconds < 3) return text;
+    return text + " (" + formatElapsed(seconds) + ")";
+  }
+
+  private static String formatElapsed(long seconds) {
+    long minutes = seconds / 60;
+    long rest = seconds % 60;
+    return minutes > 0 ? minutes + "m " + rest + "s" : rest + "s";
   }
 
   private void submitInput() {
@@ -1036,6 +1051,7 @@ public class TuiApp {
 
     // Submit to AgentLoop
     isBusy = true;
+    busyStartedAtMillis = System.currentTimeMillis();
     statusText = "Thinking...";
     statusLineText = "Thinking...";
     updateStatusLine();
@@ -1056,6 +1072,7 @@ public class TuiApp {
         addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Error: " + e.getMessage()));
       } finally {
         isBusy = false;
+        busyStartedAtMillis = 0;
         clearStatusLine();
         transcriptAutoScroll = true;
         statusText = null;
@@ -1262,6 +1279,7 @@ public class TuiApp {
       return;
     }
     isBusy = true;
+    busyStartedAtMillis = System.currentTimeMillis();
     statusText = "Compressing...";
     render();
 
@@ -1291,6 +1309,7 @@ public class TuiApp {
         addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Compression failed: " + e.getMessage()));
       } finally {
         isBusy = false;
+        busyStartedAtMillis = 0;
         statusText = null;
         render();
       }

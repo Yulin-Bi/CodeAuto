@@ -51,6 +51,7 @@ public class ConfigLoader {
     json.put("authToken", config.authToken());
     json.put("maxOutputTokens", config.maxOutputTokens());
     json.put("maxRetries", config.maxRetries());
+    json.put("modelTimeoutSeconds", config.modelTimeoutSeconds());
     Files.writeString(path, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(json) + "\n");
   }
 
@@ -62,7 +63,8 @@ public class ConfigLoader {
     return RuntimeConfig.DEFAULTS
         .withModel(env("CODEAUTO_MODEL"))
         .withBaseUrl(env("CODEAUTO_BASE_URL"))
-        .withAuthToken(env("CODEAUTO_AUTH_TOKEN"));
+        .withAuthToken(env("CODEAUTO_AUTH_TOKEN"))
+        .withModelTimeoutSeconds(envInt("CODEAUTO_MODEL_TIMEOUT_SECONDS", 0));
   }
 
   private static String env(String name) {
@@ -81,7 +83,8 @@ public class ConfigLoader {
           text(json, "baseUrl", null),
           text(json, "authToken", null),
           integer(json, "maxOutputTokens", 0),
-          integer(json, "maxRetries", -1));
+          integer(json, "maxRetries", -1),
+          integer(json, "modelTimeoutSeconds", 0));
     } catch (Exception error) {
       return RuntimeConfig.DEFAULTS;
     }
@@ -95,5 +98,15 @@ public class ConfigLoader {
   private static int integer(JsonNode json, String field, int fallback) {
     JsonNode value = json.get(field);
     return value == null || !value.canConvertToInt() ? fallback : value.asInt();
+  }
+
+  private static int envInt(String name, int fallback) {
+    String value = env(name);
+    if (value == null) return fallback;
+    try {
+      return Integer.parseInt(value);
+    } catch (NumberFormatException ignored) {
+      return fallback;
+    }
   }
 }

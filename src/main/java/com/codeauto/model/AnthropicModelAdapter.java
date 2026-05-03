@@ -102,7 +102,7 @@ public class AnthropicModelAdapter implements ModelAdapter {
     for (int attempt = 1; attempt <= attempts; attempt++) {
       HttpRequest request = HttpRequest.newBuilder()
           .uri(URI.create(config.baseUrl().replaceAll("/+$", "") + "/v1/messages"))
-          .timeout(Duration.ofMinutes(2))
+          .timeout(modelTimeout())
           .header("content-type", "application/json")
           .header("anthropic-version", "2023-06-01")
           .header("x-api-key", config.authToken())
@@ -125,7 +125,7 @@ public class AnthropicModelAdapter implements ModelAdapter {
     for (int attempt = 1; attempt <= attempts; attempt++) {
       HttpRequest request = HttpRequest.newBuilder()
           .uri(URI.create(config.baseUrl().replaceAll("/+$", "") + "/v1/messages"))
-          .timeout(Duration.ofMinutes(2))
+          .timeout(modelTimeout())
           .header("content-type", "application/json")
           .header("accept", "text/event-stream")
           .header("anthropic-version", "2023-06-01")
@@ -143,6 +143,10 @@ public class AnthropicModelAdapter implements ModelAdapter {
       Thread.sleep(retryDelayMs(attempt, response.headers().firstValue("retry-after").orElse(null)));
     }
     throw new IllegalStateException("Model request failed after retries");
+  }
+
+  private Duration modelTimeout() {
+    return Duration.ofSeconds(Math.max(30, config.modelTimeoutSeconds()));
   }
 
   private AgentStep parseStreamingResponse(InputStream stream, AgentLoopListener listener) throws Exception {

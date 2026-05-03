@@ -112,7 +112,8 @@ export CODEAUTO_MODEL="your-model-name"
   "authToken": "your-api-key",
   "model": "your-model-name",
   "maxOutputTokens": 4096,
-  "maxRetries": 4
+  "maxRetries": 4,
+  "modelTimeoutSeconds": 600
 }
 ```
 
@@ -430,7 +431,7 @@ CodeAuto 已在 CLI 入口默认设置 `org.jline.terminal.disableDeprecatedProv
 
 ### web_search 没有结果
 
-需要配置搜索代理：
+`web_search` 默认会尝试使用 DuckDuckGo HTML 搜索，无需 API Key。如果你的网络环境无法访问默认搜索页，或想接入自己的搜索代理，可以配置：
 
 ```powershell
 $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
