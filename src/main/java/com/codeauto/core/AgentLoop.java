@@ -22,6 +22,7 @@ public class AgentLoop {
   private final ToolResultStorage toolResultStorage;
   private final AgentLoopListener listener;
   private final int contextWindow;
+  private volatile boolean cancelled;
 
   public AgentLoop(ModelAdapter model, ToolRegistry tools, ToolContext toolContext, int maxSteps) {
     this(model, tools, toolContext, maxSteps, AgentLoopListener.NOOP, DEFAULT_CONTEXT_WINDOW);
@@ -45,10 +46,15 @@ public class AgentLoop {
   }
 
   public List<ChatMessage> runTurn(List<ChatMessage> initialMessages) throws Exception {
+    cancelled = false;
     List<ChatMessage> messages = new ArrayList<>(initialMessages);
     int emptyRetries = 0;
 
     for (int step = 0; step < maxSteps; step++) {
+      if (cancelled) {
+        messages.add(new ChatMessage.AssistantMessage("(Interrupted)"));
+        return messages;
+      }
       messages = new ArrayList<>(MicroCompactService.microcompact(messages, contextWindow));
       ContextStats stats = TokenEstimator.compute(messages, contextWindow);
       listener.onContextStats(stats);
@@ -60,6 +66,10 @@ public class AgentLoop {
           listener.onAutoCompact(compact);
           listener.onContextStats(TokenEstimator.compute(messages, contextWindow));
         }
+      }
+      if (cancelled) {
+        messages.add(new ChatMessage.AssistantMessage("(Interrupted)"));
+        return messages;
       }
       AgentStep next = model.next(List.copyOf(messages), listener);
 
@@ -106,6 +116,10 @@ public class AgentLoop {
       List<ExecutedToolResult> executed = new ArrayList<>();
       List<ChatMessage.ToolResultMessage> pendingResults = new ArrayList<>();
       for (ToolCall call : toolCalls.calls()) {
+        if (cancelled) {
+          messages.add(new ChatMessage.AssistantMessage("(Interrupted)"));
+          return messages;
+        }
         listener.onToolStart(call.toolName(), call.input());
         ToolResult result = tools.execute(call.toolName(), call.input(), toolContext);
         listener.onToolResult(call.toolName(), result.output(), !result.ok());
@@ -139,6 +153,14 @@ public class AgentLoop {
 
     messages.add(new ChatMessage.AssistantMessage("Reached maximum tool step limit; stopped current turn."));
     return messages;
+  }
+
+  public void cancel() {
+    cancelled = true;
+  }
+
+  public boolean isCancelled() {
+    return cancelled;
   }
 
   private record ExecutedToolResult(ToolCall call, ToolResult result) {

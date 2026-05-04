@@ -83,6 +83,7 @@ public class TuiApp {
   private int cursorPos;
   private volatile boolean isBusy;
   private volatile long busyStartedAtMillis;
+  private volatile CompletableFuture<?> agentFuture;
   private String statusText;
   private final Deque<ToolStatus> recentTools = new ArrayDeque<>();
   private String runningToolName;
@@ -238,6 +239,13 @@ public class TuiApp {
       writer.write(Ansi.ENABLE_SGR_MOUSE);
       writer.flush();
 
+      terminal.handle(Terminal.Signal.INT, signal -> {
+        if (isBusy) {
+          cancelAgent();
+        } else {
+          running = false;
+        }
+      });
       terminal.handle(Terminal.Signal.WINCH, signal -> handleResize());
       handleResize();
       startCursorBlinker();
@@ -343,8 +351,8 @@ public class TuiApp {
 
       if (isBusy) {
         if (c == 0x03) {
-          running = false;
-          break;
+          cancelAgent();
+          continue;
         }
         if (c == 0x0F) {
           toggleLastProgressExpanded();
@@ -1035,7 +1043,7 @@ public class TuiApp {
 
     messages.add(new ChatMessage.UserMessage(text));
 
-    CompletableFuture.runAsync(() -> {
+    agentFuture = CompletableFuture.runAsync(() -> {
       try {
         permissions.beginTurn();
         var nextMessages = new ArrayList<>(loop.runTurn(messages));
@@ -1045,18 +1053,49 @@ public class TuiApp {
         sessions.save(sessionId, messages, savedCount);
         savedCount = messages.size();
       } catch (Exception e) {
-        addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Error: " + e.getMessage()));
+        if (loop.isCancelled()) {
+          messages.add(new ChatMessage.AssistantMessage("(Interrupted)"));
+          try {
+            sessions.save(sessionId, messages, savedCount);
+            savedCount = messages.size();
+          } catch (Exception ignored) {}
+        } else {
+          addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Error: " + e.getMessage()));
+        }
       } finally {
         clearStatusLine();
         materializeProgressTrace();
         isBusy = false;
         busyStartedAtMillis = 0;
+        agentFuture = null;
         transcriptAutoScroll = true;
         statusText = null;
         contextStats = TokenEstimator.compute(messages, CONTEXT_WINDOW);
         render();
       }
     });
+  }
+
+  private void cancelAgent() {
+    loop.cancel();
+    var f = agentFuture;
+    if (f != null) {
+      f.cancel(true);
+    }
+    streamingAssistantEntryId = null;
+    streamingAssistantBuffer.setLength(0);
+    materializeProgressTrace();
+    progressTraceEntryId = null;
+    synchronized (turnProgressTrace) {
+      turnProgressTrace.clear();
+    }
+    runningToolName = null;
+    recentTools.clear();
+    clearStatusLine();
+    statusText = "Interrupted";
+    statusLineText = null;
+    addEntry(new TranscriptEntry.Assistant(nextEntryId++, "(Interrupted)"));
+    render();
   }
 
   private void switchModel(String modelName) {
@@ -1312,7 +1351,7 @@ public class TuiApp {
     statusText = "Compressing...";
     render();
 
-    CompletableFuture.runAsync(() -> {
+    agentFuture = CompletableFuture.runAsync(() -> {
       try {
         int before = messages.size();
         var result = CompactService.compactWithStats(messages, 8);
@@ -1339,6 +1378,7 @@ public class TuiApp {
       } finally {
         isBusy = false;
         busyStartedAtMillis = 0;
+        agentFuture = null;
         statusText = null;
         render();
       }
@@ -2275,7 +2315,7 @@ public class TuiApp {
         .append(inputLine)
         .append("\n")
         .append(Ansi.DIM)
-        .append("Enter send | Esc clear | Ctrl+C exit | Ctrl+O progress | Ctrl+↑/↓ scroll")
+        .append("Enter send | Esc clear | Ctrl+C interrupt/exit | Ctrl+O progress | Ctrl+↑/↓ scroll")
         .append(Ansi.RESET);
 
     var visCmds = getVisibleCommands();
