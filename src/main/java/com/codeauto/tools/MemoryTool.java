@@ -2,15 +2,18 @@ package com.codeauto.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.codeauto.memory.ActiveMemoryCaptureService;
-import com.codeauto.memory.ActiveMemoryCaptureService.MemoryCandidate;
+import com.codeauto.config.RuntimeConfig;
 import com.codeauto.memory.MemoryManager;
 import com.codeauto.memory.MemoryType;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class MemoryTool implements ToolDefinition {
   private final Kind kind;
@@ -31,7 +34,7 @@ public class MemoryTool implements ToolDefinition {
   @Override
   public String description() {
     return switch (kind) {
-      case SAVE -> "Save a memory after the user chooses destination: store, project, global, or codeauto.";
+      case SAVE -> "Save a persistent memory. Before saving, call list_memory to check for contradictory or outdated memories on the same topic, and delete_memory them first. Then ask the user which destination they prefer: store, project, global, or codeauto.";
       case LIST -> "List persistent memories relevant to the workspace.";
       case DELETE -> "Delete a persistent memory by id.";
     };
@@ -87,25 +90,48 @@ public class MemoryTool implements ToolDefinition {
     if (destination.isBlank()) {
       return ToolResult.error("destination is required: store, project, global, or codeauto");
     }
-    MemoryCandidate candidate = new MemoryCandidate(type, title, content, tags(input));
-    ActiveMemoryCaptureService activeMemory = new ActiveMemoryCaptureService(manager);
     try {
       return switch (destination) {
-        case "project", "claude_project" ->
-            ToolResult.ok("Saved memory instruction to " + activeMemory.saveToProjectClaude(context.cwd(), candidate));
-        case "global", "user", "claude_global" ->
-            ToolResult.ok("Saved memory instruction to " + activeMemory.saveToGlobalClaude(candidate));
-        case "codeauto", "app", "claude_codeauto" ->
-            ToolResult.ok("Saved memory instruction to " + activeMemory.saveToCodeAutoClaude(candidate));
         case "store", "memory" -> {
-          var entry = activeMemory.saveToMemory(context.cwd(), candidate);
+          var entry = manager.save(type, title, context.cwd(), tags(input), content);
           yield ToolResult.ok("Saved memory " + entry.id() + " at " + entry.path());
+        }
+        case "project", "claude_project" -> {
+          Path path = context.cwd().resolve("CLAUDE.md");
+          appendClaudeMemory(path, content);
+          yield ToolResult.ok("Saved memory instruction to " + path);
+        }
+        case "global", "user", "claude_global" -> {
+          Path path = Path.of(System.getProperty("user.home"), ".claude", "CLAUDE.md");
+          appendClaudeMemory(path, content);
+          yield ToolResult.ok("Saved memory instruction to " + path);
+        }
+        case "codeauto", "app", "claude_codeauto" -> {
+          Path path = RuntimeConfig.homeDir().resolve("CLAUDE.md");
+          appendClaudeMemory(path, content);
+          yield ToolResult.ok("Saved memory instruction to " + path);
         }
         default -> ToolResult.error("destination must be one of: store, project, global, codeauto");
       };
     } catch (Exception error) {
       return ToolResult.error("Failed to save memory: " + error.getMessage());
     }
+  }
+
+  private static void appendClaudeMemory(Path path, String content) throws Exception {
+    Files.createDirectories(path.getParent());
+    String existing = Files.isRegularFile(path) ? Files.readString(path) : "";
+    String normalized = content.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+    String existingNorm = existing.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+    if (!normalized.isBlank() && !existingNorm.isBlank()
+        && (existingNorm.equals(normalized) || existingNorm.contains(normalized) || normalized.contains(existingNorm))) {
+      return;
+    }
+    StringBuilder entry = new StringBuilder();
+    if (!existing.isBlank() && !existing.endsWith("\n")) entry.append("\n");
+    entry.append("\n## CodeAuto Memory\n\n");
+    entry.append("- ").append(content).append("\n");
+    Files.writeString(path, entry.toString(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
   }
 
   private static ToolResult list(JsonNode input, ToolContext context, MemoryManager manager) {

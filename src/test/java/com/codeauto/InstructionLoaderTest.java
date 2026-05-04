@@ -55,7 +55,7 @@ class InstructionLoaderTest {
 
       String prompt = InstructionLoader.systemPrompt(project, "ok");
       assertTrue(prompt.startsWith("You are CodeAuto. Permissions: ok"));
-      assertTrue(prompt.contains("Memory behavior:"));
+      assertTrue(prompt.contains("Todo behavior:"));
     } finally {
       restoreProperty("codeauto.home", previousHome);
       restoreProperty("user.home", previousUserHome);

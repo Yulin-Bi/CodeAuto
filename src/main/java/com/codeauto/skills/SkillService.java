@@ -34,6 +34,35 @@ public class SkillService {
     return discover().stream().filter(skill -> skill.name().equals(name)).findFirst();
   }
 
+  public record SkillIndexEntry(String name, String description) {}
+
+  public List<SkillIndexEntry> index() {
+    List<SkillIndexEntry> entries = new ArrayList<>();
+    for (SkillSummary skill : discover()) {
+      String description = readDescription(skill.skillFile());
+      entries.add(new SkillIndexEntry(skill.name(), description));
+    }
+    return entries;
+  }
+
+  private static String readDescription(Path skillFile) {
+    try {
+      String raw = Files.readString(skillFile);
+      if (!raw.startsWith("---\n")) return "";
+      int end = raw.indexOf("\n---", 4);
+      if (end < 0) return "";
+      for (String line : raw.substring(4, end).split("\\R")) {
+        int colon = line.indexOf(':');
+        if (colon > 0 && "description".equals(line.substring(0, colon).trim())) {
+          return line.substring(colon + 1).trim();
+        }
+      }
+      return "";
+    } catch (Exception ignored) {
+      return "";
+    }
+  }
+
   public String load(String name) throws Exception {
     Optional<SkillSummary> skill = find(name);
     if (skill.isEmpty()) {

@@ -3,6 +3,9 @@ package com.codeauto.instructions;
 import com.codeauto.config.RuntimeConfig;
 import com.codeauto.memory.MemoryEntry;
 import com.codeauto.memory.MemoryManager;
+import com.codeauto.skills.SessionSkills;
+import com.codeauto.skills.SkillService;
+import com.codeauto.todo.TodoStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -17,10 +20,23 @@ public class InstructionLoader {
         + "\nTodo behavior: when the user gives a multi-step task (3+ distinct steps), use todo_create to break it "
         + "down into manageable items. Mark a task as in_progress BEFORE starting work on it, and mark it completed "
         + "IMMEDIATELY after finishing. Only ONE task in_progress at a time. "
-        + "Use todo_list to review what's left to do at the start of each turn.";
+        + "Use todo_list to review what's left to do at the start of each turn."
+        + "\nMemory behavior: when the user explicitly asks you to remember something, call save_memory immediately. "
+        + "Also proactively save when the user states a preference (\"I prefer...\", \"I don't like...\", "
+        + "\"always use...\", \"never use...\"), a project fact (build commands, conventions, tech stack), "
+        + "or a decision (\"let's use X instead of Y\"). Before saving, call list_memory to check for "
+        + "contradictory or outdated memories on the same topic and delete_memory them. "
+        + "Always ask the user which destination they prefer: store, project, global, or codeauto.";
     List<InstructionFile> files = load(cwd);
     List<MemoryEntry> memories = new MemoryManager().relevant(cwd, "", MAX_MEMORIES);
-    if (files.isEmpty() && memories.isEmpty()) return base;
+    String todoSummary = cwd != null ? new TodoStore(cwd).summary() : "";
+    var skillIndex = cwd != null
+        ? new SkillService(cwd).index() : List.<com.codeauto.skills.SkillService.SkillIndexEntry>of();
+    var loadedSkills = cwd != null ? SessionSkills.getLoaded(cwd) : java.util.Map.<String, String>of();
+
+    boolean hasReminders = !files.isEmpty() || !memories.isEmpty()
+        || !todoSummary.isEmpty() || !skillIndex.isEmpty() || !loadedSkills.isEmpty();
+    if (!hasReminders) return base;
 
     StringBuilder prompt = new StringBuilder(base);
     prompt.append("\n\n<system-reminder>\n");
@@ -30,6 +46,30 @@ public class InstructionLoader {
       for (InstructionFile file : files) {
         prompt.append("\n# ").append(file.label()).append(" (").append(file.path()).append(")\n");
         prompt.append(file.content().trim()).append("\n");
+      }
+    }
+    if (!todoSummary.isEmpty()) {
+      prompt.append("\n# Todo summary\n").append(todoSummary).append("\n");
+    }
+    if (!skillIndex.isEmpty()) {
+      prompt.append("\n# Available skills (").append(skillIndex.size()).append(")\n");
+      prompt.append("Call load_skill <name> to load full instructions for a skill when you need it.\n");
+      var loadedNames = SessionSkills.getLoadedNames(cwd);
+      for (var entry : skillIndex) {
+        prompt.append("- ").append(entry.name());
+        if (loadedNames.contains(entry.name())) prompt.append(" [loaded]");
+        prompt.append("\n");
+        if (entry.description() != null && !entry.description().isBlank()) {
+          prompt.append("  ").append(entry.description()).append("\n");
+        }
+      }
+    }
+    if (!loadedSkills.isEmpty()) {
+      prompt.append("\n# Loaded skill instructions\n");
+      prompt.append("These skills have been loaded and their instructions apply for the rest of this session.\n");
+      for (var entry : loadedSkills.entrySet()) {
+        prompt.append("\n## ").append(entry.getKey()).append("\n");
+        prompt.append(entry.getValue().trim()).append("\n");
       }
     }
     if (!memories.isEmpty()) {
