@@ -27,13 +27,13 @@ CodeAuto 的目标不是做一个庞大的 IDE，而是做一个清晰、可审�
 | CLI | Picocli + JLine 输入 |
 | TUI | JLine 3 + ANSI |
 | 模型 | Anthropic Messages API + Mock |
-| 工具 | 20 个默认内置工具 |
+| 工具 | 23 个默认内置工具 |
 | 会话 | JSONL append-only，按 workspace 隔离 |
 | 权限 | 命令/路径/编辑权限，支持通配规则 |
 | 记忆 | frontmatter Markdown 持久化记忆 |
 | 指令 | 多级 CLAUDE.md 加载 |
 | MCP | stdio + Streamable HTTP |
-| 测试 | 75 个测试通过 |
+| 测试 | 79 个测试通过 |
 
 ## 架构模块
 
@@ -53,6 +53,7 @@ com.codeauto
   session        会话保存、恢复、fork、compact boundary
   skills         Skills 发现和加载
   tool           工具接口、注册表和结果类型
+  todo           TodoList 任务追踪
   tools          内置工具实现
   tui            全屏终端 UI
 ```
@@ -102,6 +103,7 @@ com.codeauto
 - 命令执行和后台任务
 - Web fetch/search
 - Skill 加载
+- TodoList 任务创建、更新、列表
 - MCP resources/prompts helper
 - 持久化记忆保存、列表、删除
 
@@ -125,7 +127,7 @@ CodeAuto 的权限层由 `PermissionManager` 和 `PermissionStore` 组成。
 
 ## 记忆系统
 
-记忆系统由 `MemoryManager`、`MemoryEntry`、`MemoryType` 和 `MemoryTool` 组成。
+记忆系统由 `MemoryManager`、`MemoryEntry`、`MemoryType` 和 `MemoryTool` 组成。记忆保存完全由 AI 驱动——system prompt 指导 AI 在用户表达偏好、约定或决策时主动调用 `save_memory`，并在保存前检查矛盾/过时记忆。
 
 特点：
 
@@ -135,6 +137,7 @@ CodeAuto 的权限层由 `PermissionManager` 和 `PermissionStore` 组成。
 - 支持保存、列表、删除、相关性检索
 - 相关记忆会注入 system prompt
 - 24 小时以上未更新的记忆会标记为 stale
+- AI 保存前会 `list_memory` 检查矛盾项并 `delete_memory` 清理
 - 用户可通过 `/memory` 管理，模型可通过 `save_memory` 等工具管理
 
 ## 指令加载
@@ -175,7 +178,8 @@ Skills：
 
 - 项目级 `.code-auto/skills`
 - 用户级 `.claude/skills`
-- `load_skill` 工具
+- `load_skill` 工具，加载后会话每轮注入 skill 指令
+- `SessionSkills` 进程内注册表，per-cwd 跟踪已加载 skill
 - `skills list/add/remove` CLI 子命令
 
 MCP：
@@ -192,7 +196,7 @@ MCP：
 当前测试状态：
 
 ```text
-Tests run: 76, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 79, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -256,12 +260,13 @@ CodeAuto 保持几个工程原则：
 - Skill 变量替换和 fork 模式
 - 更细的模型上下文窗口查询表
 
-## 最近实现状态（2026-05-03）
+## 最近实现状态（2026-05-04）
 
 - TUI 已经向更轻量的终端工作台收敛：顶部 CodeAuto 外框被移除，指标使用灰色分隔符，输入框外框被删除，操作提示移动到输入区下方。
-- progress 现在是查看工具活动的主要入口：执行中固定保留在 assistant 输出上方，结束后插入到对应 assistant 回复之前，并避免出现裸 ANSI 颜色片段。
-- 工具状态统一显示为运行中的动态符号、`[OK] Processed ...` 或 `[ERR] Failed ...`。
-- `Ctrl+O` 用于展开/折叠最近的 progress，`Ctrl+Up` / `Ctrl+Down` 用于滚动聊天记录。
-- 主动记忆现在只生成候选，保存前必须明确选择目的地：项目 `CLAUDE.md`、全局 `~/.claude/CLAUDE.md`、CodeAuto `~/.codeauto/CLAUDE.md`、普通 memory store，或跳过。
-- `save_memory` 必须携带 `destination=store|project|global|codeauto`，长期记忆写入不再依赖模糊默认值。
-- 当前验证基线：`Tests run: 83, Failures: 0, Errors: 0, Skipped: 0`。
+- progress 是查看工具活动的主要入口：执行中固定保留在 assistant 输出上方，结束后插入到对应 assistant 回复之前，使用 ASCII 动态符号和 `[OK]`/`[ERR]` 标识。
+- `Ctrl+O` 展开/折叠 progress，`Ctrl+Up` / `Ctrl+Down` 滚动聊天记录。
+- 记忆系统简化为纯 AI 驱动：移除 `ActiveMemoryCaptureService` 和弹窗，system prompt 指导 AI 主动识别记忆信号，保存前自动检查矛盾项。
+- Skills 支持会话级持久注入：`load_skill` 后内容在每轮 system prompt 中注入，标记 `[loaded]`。
+- `save_memory` 携带 `destination=store|project|global|codeauto`，长期记忆写入不依赖模糊默认值。
+- 新增 TodoList 功能：`todo_create`/`todo_update`/`todo_list` 工具，TUI header 展示进度。
+- 当前验证基线：`Tests run: 79, Failures: 0, Errors: 0, Skipped: 0`。

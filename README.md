@@ -148,13 +148,14 @@ TUI 和 CLI 中可以直接切换并持久化模型：
 
 ### 内置工具
 
-默认注册 20 个内置工具：
+默认注册 23 个内置工具：
 
 - 文件：`list_files`、`grep_files`、`read_file`、`write_file`、`edit_file`、`patch_file`、`modify_file`
 - 命令和交互：`run_command`、`ask_user`、`background_tasks`
 - 网络：`web_fetch`、`web_search`
 - 扩展：`load_skill`
 - 记忆：`save_memory`、`list_memory`、`delete_memory`
+- 任务：`todo_create`、`todo_update`、`todo_list`
 - MCP helper：`list_mcp_resources`、`read_mcp_resource`、`list_mcp_prompts`、`get_mcp_prompt`
 
 TUI 还支持直接绕过模型的本地快捷命令：
@@ -219,32 +220,24 @@ CodeAuto 支持跨会话记忆，默认存储在：
 
 ```text
 /memory list [query]
-/memory pending
-/memory accept project|global|codeauto|store
-/memory skip
 /memory add <type>::<title>::<content>
 /memory delete <id>
 ```
 
-当用户输入中出现明确的“记住”、项目约定、测试命令或架构决策时，CodeAuto 会先生成记忆候选，不会静默写入长期上下文。CLI 会在当前轮结束后询问保存位置；TUI 会把候选放入 pending 队列：
+记忆保存由 AI 驱动：system prompt 会提示 AI 在用户表达偏好、项目约定、架构决策时主动调用 `save_memory`。保存前 AI 会先 `list_memory` 检查是否有矛盾或过时的旧记忆，有则 `delete_memory` 清理。AI 会询问用户选择保存位置：
 
 - `project`：写入当前 workspace 的 `CLAUDE.md`
 - `global`：写入 `~/.claude/CLAUDE.md`
 - `codeauto`：写入 `~/.codeauto/CLAUDE.md`
 - `store`：写入 `~/.codeauto/memory/`
-- `skip`：丢弃候选
 
-TUI 检测到候选后会弹出 `Memory Candidate` 面板，可用方向键选择并按 Enter，或直接按 `p/g/c/m/s` 快捷键。
-
-模型也可以通过工具主动调用：
+模型通过内置工具管理记忆：
 
 ```text
 save_memory destination=store|project|global|codeauto
 list_memory
 delete_memory
 ```
-
-如果用户让模型“记住”某条信息，系统提示会要求模型先询问保存位置；用户确认后，模型可用 `save_memory` 的 `destination` 参数写入对应位置。
 
 ## 多级指令加载
 
@@ -285,7 +278,7 @@ Edit(secret/*)
 
 ## Skills
 
-Skills 会从项目级目录发现，也支持用户级管理配置：
+Skills 会从项目级目录发现，也支持用户级管理配置。通过 `load_skill` 加载后，skill 的完整指令会在当前会话的每一轮 system prompt 中注入，确保 AI 在整个会话中遵循 skill 指令。
 
 ```text
 .code-auto/skills          # 项目级 skills 目录
@@ -378,6 +371,7 @@ src/main/java/com/codeauto/
   session/        会话存储
   skills/         Skills 发现
   tool/           工具接口和注册表
+  todo/           TodoList 任务追踪
   tools/          内置工具
   tui/            全屏终端界面
 ```
@@ -387,23 +381,24 @@ src/main/java/com/codeauto/
 当前测试：
 
 ```text
-Tests run: 76, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 79, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
 主要覆盖：
 
-- AgentLoop
-- ToolRegistry 和内置工具
+- AgentLoop + 流式输出
+- ToolRegistry 和内置工具（含参数兼容性）
 - SessionStore
 - Context 压缩
-- PermissionManager
+- PermissionManager + 通配规则
 - MCP client/service
 - MemoryManager
-- InstructionLoader
+- InstructionLoader + 多级指令加载
+- TodoStore
 - CLI 编码和 workspace 解析
 - Assistant 流式输出事件
-- TUI escape sequence
+- TUI escape sequence + diff 高亮
 
 ## 常见问题
 
@@ -452,27 +447,39 @@ CodeAuto 已在 CLI 入口默认设置 `org.jline.terminal.disableDeprecatedProv
 $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 ```
 
-## 最近更新（2026-05-03）
+## 最近更新（2026-05-04）
+
+### 记忆系统简化
+
+- 移除主动记忆自动捕获弹窗（`ActiveMemoryCaptureService` + TUI popup + CLI 确认流程），记忆保存完全由 AI 驱动。
+- system prompt 增强 `Memory behavior:` 指引，AI 会在用户表达偏好、约定、决策时主动调用 `save_memory`。
+- `save_memory` 工具要求 AI 保存前先检查矛盾/过时记忆并清理。
+- 用户仍可通过 `/memory` 命令管理记忆。
+
+### Skills 会话注入
+
+- `load_skill` 加载后，skill 完整指令在当前会话的每轮 system prompt 中注入，标记 `[loaded]`。
+- system prompt 中 skill 列表现在展示名称和描述，AI 无需先调用 `list_skills` 即可判断何时加载。
+- 新增 `SessionSkills` 进程内注册表，per-cwd 跟踪已加载 skill。
 
 ### TUI progress 与布局
 
-- 顶部 CodeAuto 外框已经移除，只保留工作目录、session/model/messages/tools/ctx/skills 等指标，并用灰色分隔符连接。
-- 独立 tools 面板已经删除，工具调用状态统一进入 progress 区域展示。
-- 当前轮还在执行时，progress 会在 assistant 输出上方预留一小块固定区域，避免长流式回复把状态挤走。
-- 当前轮结束后，progress 会作为普通 transcript 条目保留下来，并插入到对应 assistant 回复之前。
-- progress 内部存储不再带 ANSI 颜色码，运行中使用 ASCII 动态符号 `| / - \`，成功显示 `[OK] Processed ...`，失败显示 `[ERR] Failed ...`。
-- `Ctrl+O` 用于展开/折叠最近一个 progress；`Ctrl+Up` / `Ctrl+Down` 用于滚动聊天记录。
-- 斜杠菜单的 `Tab` 补全已经改为复用当前可见命令列表。
+- 顶部 CodeAuto 外框已经移除，只保留工作目录和指标分隔线。
+- 工具调用状态统一进入 progress 区域，使用 ASCII 动态符号和 `[OK]`/`[ERR]` 标识。
+- progress 执行中固定在 assistant 输出上方，结束后插入到对应回复之前。
+- `Ctrl+O` 展开/折叠 progress；`Ctrl+Up` / `Ctrl+Down` 滚动聊天记录。
 
-### 主动记忆
+### TodoList 功能
 
-- 当用户明确说“记住”、给出项目约定、长期偏好或架构决策时，系统会先生成记忆候选，不会静默写入长期上下文。
-- 保存前必须由用户选择位置：项目 `CLAUDE.md`、全局 `~/.claude/CLAUDE.md`、CodeAuto `~/.codeauto/CLAUDE.md`、普通 memory store，或跳过。
-- `save_memory` 工具现在必须传入 `destination=store|project|global|codeauto`，避免模型在目的地不明确时自动保存。
-- CLI 和 TUI 都支持 pending memory 的确认流程。
+- 新增 `todo_create`、`todo_update`、`todo_list` 工具，AI 可在多步任务中追踪进度。
+- TUI header 展示当前 todo 进度（如 `3/7`）。
+- CLI/TUI 支持 `/todo` 命令管理任务。
 
 ### 验证状态
 
-- 最近一次完整测试结果：`Tests run: 83, Failures: 0, Errors: 0, Skipped: 0`。
+```
+Tests run: 79, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
 
 如果地址包含 `{query}`，工具会替换为 URL 编码后的搜索词；否则会自动追加 `q=<query>` 参数。

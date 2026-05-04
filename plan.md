@@ -5,9 +5,9 @@
 | 指标 | 数值 |
 |------|------|
 | Java 源文件 | 66 个 |
-| 测试文件 | 14 个 |
-| 测试数量 | 50 个（全部通过 ✅） |
-| 代码行数 | ~6664 行 |
+| 测试文件 | 20 个 |
+| 测试数量 | 79 个（全部通过 ✅） |
+| 代码行数 | ~7000 行 |
 | TUI 源文件 | 5 个（Ansi/PanelRenderer/MarkdownRenderer/TranscriptEntry/TuiApp） |
 | 技术栈 | Java 21 + Maven + Jackson + Picocli + JLine + java-diff-utils |
 
@@ -162,7 +162,7 @@
 ## 测试状态
 
 ```
-Tests run: 50, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 79, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -170,12 +170,13 @@ BUILD SUCCESS
 
 | 测试 | 测试数 | 覆盖内容 |
 |------|--------|---------|
-| AgentLoopTest | 3 | 完整工具调用闭环 + 自动压缩 + 监听器事件 |
-| ToolRegistryTest | 3 | 注册、查找、列表 |
+| AgentLoopTest | 5 | 完整工具调用闭环 + 自动压缩 + 监听器事件 + 流式输出 |
+| ToolRegistryTest | 6 | 注册、查找、列表、记忆/Todo 工具 |
+| ToolParameterCompatibilityTest | 6 | 所有工具 inputSchema 参数校验 |
 | SessionStoreTest | 9 | save/load/list/rename/compact/cleanup/transcript + 多压缩边界 |
 | ContextTest | 5 | TokenEstimator + CompactService + MicroCompact + ToolResultStorage |
-| RunCommandToolTest | 7 | 命令执行、引号解析、shell 片段、超时控制、反馈拒绝 |
-| PermissionManagerTest | 3 | 决策流程 |
+| RunCommandToolTest | 8 | 命令执行、引号解析、shell 片段、超时控制、反馈拒绝、跨平台 |
+| PermissionManagerTest | 7 | 决策流程 + 通配规则 + 权限摘要 |
 | FileReviewServiceTest | 1 | unified diff 生成 |
 | McpClientTest | 2 | JSON-RPC 帧读写 |
 | McpServiceTest | 7 | 服务发现与协议协商 |
@@ -184,6 +185,12 @@ BUILD SUCCESS
 | BackgroundTaskTest | 3 | 后台任务启动/列表/取消/不存在检查 |
 | ManagementStoreTest | 3 | 配置读写 |
 | SkillServiceTest | 1 | skills 发现 |
+| InstructionLoaderTest | 4 | 多级指令加载、记忆注入、skill 索引、stale 标记 |
+| MemoryManagerTest | 2 | 记忆保存/读取/删除、项目相关检索 |
+| ConfigLoaderTest | 1 | 用户 settings 写回和重载 |
+| CodeAutoCliEncodingTest | 3 | CLI 编码策略 + workspace 解析 |
+| WebSearchToolTest | 1 | 搜索 URL 构建 |
+| TuiAppEscapeSequenceTest | 2 | TUI escape sequence 处理 + diff 高亮边界 |
 
 ## 技术选型
 
@@ -530,36 +537,42 @@ Tests run: 77, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
-## 主动记忆与子智能体规划（2026-05-03）
+## 主动记忆重构与 Skills 会话注入（2026-05-04）
 
 ### 目标
 
-CodeAuto 现有 `MemoryManager`、`save_memory/list_memory/delete_memory`、`InstructionLoader` 记忆注入和 `AgentLoop` 多步工具循环，但记忆需要显式调用，子智能体还停留在 `/fork` 会话分叉。下一阶段补齐两个能力：
+重新审视主动记忆系统的设计，从"关键词自动捕获 + 弹窗确认"改为纯 AI 驱动的记忆保存，同时补齐 Skills 会话级持久注入能力。
 
-1. 主动记忆：在每轮结束后自动识别值得长期保留的用户偏好、项目约定、测试/构建命令和架构决策。
-2. 子智能体：通过 `delegate_task` 工具创建受限的只读子 Agent，完成分析型子任务并把报告返回主 Agent。
+### 背景
 
-### Phase 1：主动记忆确认式 MVP
+Phase 1 主动记忆 MVP（`ActiveMemoryCaptureService` + TUI popup + CLI 确认）虽已完成，但关键词规则式捕获准确率有限，弹窗打断用户工作流。决定移除整条自动捕获链路，将记忆保存完全交给 AI 判断。
 
-- [x] 新增 `ActiveMemoryCaptureService`，规则式捕获明显记忆信号，但只生成候选，不静默写入长期上下文。
-- [x] 支持去重和单轮限流，避免重复保存或噪音膨胀。
-- [x] CLI 在 `AgentLoop.runTurn()` 后提示用户选择保存位置：项目 `CLAUDE.md`、全局 `~/.claude/CLAUDE.md`、CodeAuto `~/.codeauto/CLAUDE.md`、普通 memory store 或跳过。
-- [x] TUI 检测到候选后弹出 `Memory Candidate` 面板，用户可用方向键/Enter 或 `p/g/c/m/s` 选择；同时保留 `/memory pending` 等命令作为补充入口。
-- [x] 测试覆盖候选生成、写入 memory store、写入项目 `CLAUDE.md`、重复记忆跳过和普通聊天不保存。
+### 实现清单
 
-### Phase 2：子智能体 MVP
+- [x] 删除 `ActiveMemoryCaptureService` 及其测试（4 个测试移除）
+- [x] 从 `TuiApp.java` 移除所有记忆弹窗代码（imports、字段、record、11 个方法、UI 分支）
+- [x] 从 `CodeAutoCli.java` 移除 CLI 记忆确认逻辑
+- [x] `MemoryTool.save()` 重写，直接处理所有 destination，不再依赖 `ActiveMemoryCaptureService`
+- [x] 增强 system prompt 基座，加入 `Memory behavior:` 行，指导 AI 主动识别记忆信号并调用 `save_memory`
+- [x] `save_memory` 工具描述要求 AI 在保存前先 `list_memory` 检查矛盾/过时记忆并 `delete_memory`
+- [x] 新增 `SessionSkills` — 进程内 `ConcurrentHashMap`，记录 per-cwd 已加载 skill
+- [x] `LoadSkillTool.load()` 在加载成功后调用 `SessionSkills.markLoaded()` 持久化到会话
+- [x] `InstructionLoader.systemPrompt()` 注入已加载 skill 的完整内容到 `<system-reminder>`，后续每轮都带
+- [x] Skill 索引从仅名称改为名称+描述，减少 `list_skills` 调用
+- [x] 已加载 skill 在 system prompt 中标记 `[loaded]`
 
-- [ ] 新增 `delegate_task` 工具，内部创建独立 `AgentLoop`。
-- [ ] 子智能体默认只开放 `list_files/read_file/grep_files/web_fetch/web_search`。
-- [ ] 禁止子智能体递归调用 `delegate_task`，并限制 `maxSteps`。
-- [ ] 子智能体输出结构化报告：`findings / files_read / suggested_next_steps`。
-- [ ] 测试覆盖只读委托、工具白名单和结果回填。
+### 设计决策
 
-### Phase 3：体验增强
+- **为什么删除弹窗**：关键词规则命中率不稳定，弹窗打断 TUI 工作流；Claude Code 本身也没有自动弹窗捕获，记忆完全由 AI 判断+用户显式请求驱动
+- **为什么保留 AI 主动保存**：system prompt 指导 + 工具描述引导，AI 在识别到偏好/约定/决策时主动保存，用户可通过 `/memory` 管理
+- **为什么 Skill 会话注入**：参照 Claude Code 行为，加载后的 skill 内容在每轮 system prompt 中注入，确保 AI 在整个会话中遵循 skill 指令
 
-- [x] 主动记忆候选确认队列：`/memory pending`、`/memory accept ...`、`/memory skip`。
-- [ ] 子智能体 trace 持久化和 TUI 折叠展示。
-- [ ] 长任务 checkpoint/resume：把 plan、当前阶段、已完成文件和下一步写入 session metadata。
+### 验证结果
+
+```
+Tests run: 79, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
 
 ## TUI 界面精简重构计划（2026-05-03）
 
