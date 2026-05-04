@@ -27,7 +27,7 @@ CodeAuto 的目标不是做一个庞大的 IDE，而是做一个清晰、可审�
 | CLI | Picocli + JLine 输入 |
 | TUI | JLine 3 + ANSI |
 | 模型 | Anthropic Messages API + Mock |
-| 工具 | 23 个默认内置工具 |
+| 工具 | 23 个默认内置工具 + Skills/MCP 扩展 |
 | 会话 | JSONL append-only，按 workspace 隔离 |
 | 权限 | 命令/路径/编辑权限，支持通配规则 |
 | 记忆 | frontmatter Markdown 持久化记忆 |
@@ -262,11 +262,10 @@ CodeAuto 保持几个工程原则：
 
 ## 最近实现状态（2026-05-04）
 
-- TUI 已经向更轻量的终端工作台收敛：顶部 CodeAuto 外框被移除，指标使用灰色分隔符，输入框外框被删除，操作提示移动到输入区下方。
-- progress 是查看工具活动的主要入口：执行中固定保留在 assistant 输出上方，结束后插入到对应 assistant 回复之前，使用 ASCII 动态符号和 `[OK]`/`[ERR]` 标识。
-- `Ctrl+O` 展开/折叠 progress，`Ctrl+Up` / `Ctrl+Down` 滚动聊天记录。
+- **Ctrl+C 打断对话**：AgentLoop 内置取消检查点，Ctrl+C 在工具执行中或等待 API 时均可中断，JLine INT 信号处理器提供 OS 层兜底。打断后状态完全重置，下一轮对话不受影响。
+- **上下文压缩产物**：压缩时完整消息保存到 `.codeauto/compacted/compact-<timestamp>.md`，摘要末尾注入路径指针，AI 可自行 `read_file` 查阅完整上下文。
+- TUI 已经向更轻量的终端工作台收敛：顶部 CodeAuto 外框被移除，指标使用灰色分隔符，progress 是查看工具活动的主要入口。
 - 记忆系统简化为纯 AI 驱动：移除 `ActiveMemoryCaptureService` 和弹窗，system prompt 指导 AI 主动识别记忆信号，保存前自动检查矛盾项。
 - Skills 支持会话级持久注入：`load_skill` 后内容在每轮 system prompt 中注入，标记 `[loaded]`。
-- `save_memory` 携带 `destination=store|project|global|codeauto`，长期记忆写入不依赖模糊默认值。
-- 新增 TodoList 功能：`todo_create`/`todo_update`/`todo_list` 工具，TUI header 展示进度。
+- TodoList 功能：`todo_create`/`todo_update`/`todo_list` 工具，TUI header 展示进度。
 - 当前验证基线：`Tests run: 79, Failures: 0, Errors: 0, Skipped: 0`。

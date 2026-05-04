@@ -25,14 +25,13 @@
   --accent-cyan: #22d3ee;
   --accent-purple: #a78bfa;
   --accent-orange: #fb923c;
+  --accent-rose: #fb7185;
   --glow-green: rgba(0, 255, 65, 0.08);
   --glow-blue: rgba(56, 189, 248, 0.06);
   --radius: 12px;
   --radius-sm: 8px;
   --radius-lg: 16px;
 }
-
-/* ─── Light theme ─── */
 [data-theme="light"] {
   --bg-primary: #f4f6f9;
   --bg-secondary: #e8ecf2;
@@ -51,6 +50,7 @@
   --accent-cyan: #06b6d4;
   --accent-purple: #8b5cf6;
   --accent-orange: #f59e0b;
+  --accent-rose: #f43f5e;
   --glow-green: rgba(16, 185, 129, 0.07);
   --glow-blue: rgba(59, 130, 246, 0.05);
   --glow-spot-green: rgba(16, 185, 129, 0.06);
@@ -58,9 +58,7 @@
 }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
 html { scroll-behavior: smooth; font-size: 16px; }
-
 body {
   font-family: 'DM Sans', sans-serif;
   background: var(--bg-primary);
@@ -69,26 +67,15 @@ body {
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
-
-/* ─── Noise overlay ─── */
 body::before {
   content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  opacity: 0.035;
+  position: fixed; inset: 0; z-index: -1; opacity: 0.035;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 256px 256px;
-  pointer-events: none;
-  transition: opacity 0.4s;
+  background-size: 256px 256px; pointer-events: none; transition: opacity 0.4s;
 }
 [data-theme="light"] body::before { opacity: 0.015; }
-
-/* ─── Grid background ─── */
 .grid-bg {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
+  position: fixed; inset: 0; z-index: -1;
   background-image:
     linear-gradient(rgba(30, 40, 50, 0.12) 1px, transparent 1px),
     linear-gradient(90deg, rgba(30, 40, 50, 0.12) 1px, transparent 1px);
@@ -96,332 +83,68 @@ body::before {
   mask-image: radial-gradient(ellipse 70% 60% at 50% 15%, black 20%, transparent 70%);
   -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 15%, black 20%, transparent 70%);
 }
+.glow-spot { position: fixed; border-radius: 50%; filter: blur(100px); pointer-events: none; z-index: -1; }
+.glow-spot--green { width: 600px; height: 600px; background: var(--glow-spot-green, rgba(0, 255, 65, 0.04)); top: -200px; left: -100px; }
+.glow-spot--blue { width: 500px; height: 500px; background: var(--glow-spot-blue, rgba(56, 189, 248, 0.03)); bottom: -150px; right: -100px; }
 
-/* ─── Glow spots ─── */
-.glow-spot {
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(100px);
-  pointer-events: none;
-  z-index: -1;
-}
-.glow-spot--green {
-  width: 600px; height: 600px;
-  background: var(--glow-spot-green, rgba(0, 255, 65, 0.04));
-  top: -200px; left: -100px;
-}
-.glow-spot--blue {
-  width: 500px; height: 500px;
-  background: var(--glow-spot-blue, rgba(56, 189, 248, 0.03));
-  bottom: -150px; right: -100px;
-}
-
-/* ─── Nav ─── */
-nav {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: 100;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  background: var(--nav-bg);
-  border-bottom: 1px solid var(--border-color);
-  transition: border-color 0.3s;
-}
+/* Nav */
+nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); background: var(--nav-bg); border-bottom: 1px solid var(--border-color); transition: border-color 0.3s; }
 nav.scrolled { border-color: var(--border-active); }
-.nav-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 24px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.nav-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 700;
-  font-size: 1.1rem;
-  text-decoration: none;
-  color: var(--text-primary);
-}
-.nav-logo .logo-dot {
-  display: inline-block;
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: var(--accent-green);
-  box-shadow: 0 0 12px rgba(0, 255, 65, 0.4);
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(0.85); }
-}
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.nav-links a {
-  padding: 6px 16px;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  text-decoration: none;
-  color: var(--text-secondary);
-  transition: all 0.2s;
-}
+.nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 24px; height: 60px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1.1rem; text-decoration: none; color: var(--text-primary); }
+.nav-logo .logo-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-green); box-shadow: 0 0 12px rgba(0, 255, 65, 0.4); animation: pulse-dot 2s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.85); } }
+.nav-links { display: flex; align-items: center; gap: 6px; }
+.nav-links a { padding: 6px 16px; border-radius: 6px; font-size: 0.875rem; font-weight: 500; text-decoration: none; color: var(--text-secondary); transition: all 0.2s; }
 .nav-links a:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
-.nav-links .btn-gh {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  text-decoration: none;
-  transition: all 0.2s;
-}
-.nav-links .btn-gh:hover {
-  border-color: var(--accent-green);
-  color: var(--accent-green);
-  background: var(--glow-green);
-}
+.nav-links .btn-gh { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.875rem; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; }
+.nav-links .btn-gh:hover { border-color: var(--accent-green); color: var(--accent-green); background: var(--glow-green); }
 .nav-links .btn-gh svg { width: 16px; height: 16px; fill: currentColor; }
-
-/* ─── Lang toggle ─── */
-.lang-toggle {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background: rgba(255,255,255,0.02);
-  margin: 0 4px;
-}
-.lang-btn {
-  padding: 3px 8px;
-  border-radius: 4px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.72rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.lang-btn.active {
-  background: var(--accent-green);
-  color: #0a0c0e;
-}
+.lang-toggle { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); margin: 0 4px; }
+.lang-btn { padding: 3px 8px; border-radius: 4px; border: none; background: transparent; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.lang-btn.active { background: var(--accent-green); color: #0a0c0e; }
 .lang-btn:not(.active):hover { color: var(--text-secondary); }
-
-/* ─── Theme toggle ─── */
-.theme-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background: transparent;
-  cursor: pointer;
-  color: var(--text-muted);
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-.theme-toggle:hover {
-  color: var(--accent-green);
-  border-color: var(--accent-green);
-  background: var(--glow-green);
-}
-.theme-toggle svg {
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  transition: transform 0.4s ease;
-}
+.theme-toggle { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border-color); background: transparent; cursor: pointer; color: var(--text-muted); transition: all 0.2s; flex-shrink: 0; }
+.theme-toggle:hover { color: var(--accent-green); border-color: var(--accent-green); background: var(--glow-green); }
+.theme-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.4s ease; }
 .theme-toggle .sun-icon { display: none; }
 .theme-toggle .moon-icon { display: block; }
 [data-theme="light"] .theme-toggle .sun-icon { display: block; }
 [data-theme="light"] .theme-toggle .moon-icon { display: none; }
 
-/* ─── Sections ─── */
+/* Sections */
 section { padding: 100px 24px; }
-.section-inner {
-  max-width: 1100px;
-  margin: 0 auto;
-}
+.section-inner { max-width: 1100px; margin: 0 auto; }
 
-/* ─── Hero ─── */
-.hero {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  padding-top: 80px;
-  position: relative;
-}
-.hero .section-inner {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 60px;
-  align-items: center;
-}
-.hero-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 100px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  background: rgba(0, 255, 65, 0.06);
-  color: var(--accent-green);
-  border: 1px solid rgba(0, 255, 65, 0.15);
-  margin-bottom: 24px;
-}
-.hero-tag .live-dot {
-  display: inline-block;
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--accent-green);
-  animation: pulse-dot 1.5s ease-in-out infinite;
-}
-.hero h1 {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: clamp(2rem, 5vw, 3.6rem);
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  margin-bottom: 20px;
-}
-.hero h1 .highlight {
-  background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.hero p {
-  font-size: 1.05rem;
-  color: var(--text-secondary);
-  max-width: 480px;
-  line-height: 1.7;
-  margin-bottom: 32px;
-}
-.hero-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 28px;
-  border-radius: var(--radius-sm);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.25s;
-  cursor: pointer;
-  border: none;
-}
-.btn--primary {
-  background: var(--accent-green);
-  color: #0a0c0e;
-  box-shadow: 0 0 24px rgba(0, 255, 65, 0.15);
-}
-.btn--primary:hover {
-  background: var(--accent-green-dim);
-  box-shadow: 0 0 40px rgba(0, 255, 65, 0.25);
-  transform: translateY(-1px);
-}
-.btn--gh {
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  background: transparent;
-}
-.btn--gh:hover {
-  border-color: var(--accent-green);
-  color: var(--accent-green);
-  background: var(--glow-green);
-  transform: translateY(-1px);
-}
+/* Hero */
+.hero { min-height: 100vh; display: flex; align-items: center; padding-top: 80px; position: relative; }
+.hero .section-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
+.hero-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 100px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; background: rgba(0, 255, 65, 0.06); color: var(--accent-green); border: 1px solid rgba(0, 255, 65, 0.15); margin-bottom: 24px; }
+.hero-tag .live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-green); animation: pulse-dot 1.5s ease-in-out infinite; }
+.hero h1 { font-family: 'JetBrains Mono', monospace; font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; margin-bottom: 20px; }
+.hero h1 .highlight { background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.hero p { font-size: 1.05rem; color: var(--text-secondary); max-width: 480px; line-height: 1.7; margin-bottom: 32px; }
+.hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 28px; border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; font-weight: 600; text-decoration: none; transition: all 0.25s; cursor: pointer; border: none; }
+.btn--primary { background: var(--accent-green); color: #0a0c0e; box-shadow: 0 0 24px rgba(0, 255, 65, 0.15); }
+.btn--primary:hover { background: var(--accent-green-dim); box-shadow: 0 0 40px rgba(0, 255, 65, 0.25); transform: translateY(-1px); }
+.btn--gh { border: 1px solid var(--border-color); color: var(--text-secondary); background: transparent; }
+.btn--gh:hover { border-color: var(--accent-green); color: var(--accent-green); background: var(--glow-green); transform: translateY(-1px); }
 .btn--gh svg { width: 18px; height: 18px; fill: currentColor; }
 
-/* ─── Terminal mockup ─── */
+/* Terminal */
 .terminal-wrapper { position: relative; }
-.terminal {
-  background: var(--bg-terminal);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow:
-    0 0 60px rgba(0, 255, 65, 0.04),
-    0 20px 80px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  position: relative;
-}
-.terminal::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: var(--radius-lg);
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(0,255,65,0.15), transparent 40%, transparent 60%, rgba(56,189,248,0.1));
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-.terminal-header {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(255,255,255,0.02);
-  border-bottom: 1px solid var(--border-color);
-  gap: 8px;
-}
+.terminal { background: var(--bg-terminal); border: 1px solid var(--border-color); border-radius: var(--radius-lg); overflow: hidden; box-shadow: 0 0 60px rgba(0, 255, 65, 0.04), 0 20px 80px rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); position: relative; }
+.terminal::before { content: ''; position: absolute; inset: -1px; border-radius: var(--radius-lg); padding: 1px; background: linear-gradient(135deg, rgba(0,255,65,0.15), transparent 40%, transparent 60%, rgba(56,189,248,0.1)); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
+.terminal-header { display: flex; align-items: center; padding: 12px 16px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-color); gap: 8px; }
 .terminal-dots { display: flex; gap: 6px; }
 .terminal-dot { width: 10px; height: 10px; border-radius: 50%; }
 .terminal-dot--r { background: #ff5f56; }
 .terminal-dot--y { background: #ffbd2e; }
 .terminal-dot--g { background: #27c93f; }
-.terminal-title {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-left: 8px;
-}
-.terminal-body {
-  padding: 20px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8rem;
-  line-height: 1.7;
-  min-height: 280px;
-  color: var(--text-secondary);
-}
-.terminal-line {
-  opacity: 0;
-  animation: term-fade-in 0.4s ease-out forwards;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
+.terminal-title { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-muted); margin-left: 8px; }
+.terminal-body { padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; line-height: 1.7; min-height: 280px; color: var(--text-secondary); }
+.terminal-line { opacity: 0; animation: term-fade-in 0.4s ease-out forwards; white-space: pre-wrap; word-break: break-all; }
 .terminal-line .prompt { color: var(--accent-green); }
 .terminal-line .cmd { color: var(--text-primary); }
 .terminal-line .output { color: var(--text-secondary); }
@@ -430,66 +153,19 @@ section { padding: 100px 24px; }
 .terminal-line .output-purple { color: var(--accent-purple); }
 .terminal-line .output-orange { color: var(--accent-orange); }
 .terminal-line .dim { color: var(--text-muted); }
-.terminal-cursor {
-  display: inline-block;
-  width: 8px;
-  height: 16px;
-  background: var(--accent-green);
-  animation: blink 1s step-end infinite;
-  vertical-align: text-bottom;
-  margin-left: 2px;
-}
+.terminal-cursor { display: inline-block; width: 8px; height: 16px; background: var(--accent-green); animation: blink 1s step-end infinite; vertical-align: text-bottom; margin-left: 2px; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 @keyframes term-fade-in { to { opacity: 1; } }
 
-/* ─── Section headers ─── */
-.section-label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-}
-.section-title {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: clamp(1.6rem, 3vw, 2.4rem);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-bottom: 16px;
-}
-.section-desc {
-  font-size: 1.05rem;
-  color: var(--text-secondary);
-  max-width: 600px;
-  line-height: 1.7;
-}
+/* Section headers */
+.section-label { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; }
+.section-title { font-family: 'JetBrains Mono', monospace; font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 700; letter-spacing: -0.02em; margin-bottom: 16px; }
+.section-desc { font-size: 1.05rem; color: var(--text-secondary); max-width: 600px; line-height: 1.7; }
 
-/* ─── Features ─── */
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-top: 48px;
-}
-.feature-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: 28px;
-  transition: all 0.3s;
-  position: relative;
-  overflow: hidden;
-}
-.feature-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
+/* Features */
+.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px; }
+.feature-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 28px; transition: all 0.3s; position: relative; overflow: hidden; }
+.feature-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; opacity: 0; transition: opacity 0.3s; }
 .feature-card:hover::before { opacity: 1; }
 .feature-card:nth-child(1)::before { background: var(--accent-green); }
 .feature-card:nth-child(2)::before { background: var(--accent-blue); }
@@ -497,250 +173,101 @@ section { padding: 100px 24px; }
 .feature-card:nth-child(4)::before { background: var(--accent-orange); }
 .feature-card:nth-child(5)::before { background: var(--accent-cyan); }
 .feature-card:nth-child(6)::before { background: var(--accent-green); }
-
-.feature-card:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-active);
-  transform: translateY(-2px);
-}
-.feature-icon {
-  width: 40px; height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
-  font-size: 1.15rem;
-  border: 1px solid var(--border-color);
-}
+.feature-card:hover { background: var(--bg-card-hover); border-color: var(--border-active); transform: translateY(-2px); }
+.feature-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; font-size: 1.15rem; border: 1px solid var(--border-color); }
 .feature-card:nth-child(1) .feature-icon { background: rgba(0,255,65,0.06); color: var(--accent-green); }
 .feature-card:nth-child(2) .feature-icon { background: rgba(56,189,248,0.06); color: var(--accent-blue); }
 .feature-card:nth-child(3) .feature-icon { background: rgba(167,139,250,0.06); color: var(--accent-purple); }
 .feature-card:nth-child(4) .feature-icon { background: rgba(251,146,60,0.06); color: var(--accent-orange); }
 .feature-card:nth-child(5) .feature-icon { background: rgba(34,211,238,0.06); color: var(--accent-cyan); }
 .feature-card:nth-child(6) .feature-icon { background: rgba(0,255,65,0.06); color: var(--accent-green); }
+.feature-card h3 { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
+.feature-card p { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; }
+.feature-card .feature-tags { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.feature-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-muted); }
 
-.feature-card h3 {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-.feature-card p {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-.feature-card .feature-tags {
-  display: flex;
-  gap: 6px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
-.feature-tag {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.65rem;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border-color);
-  color: var(--text-muted);
-}
+/* ─── Highlights section ─── */
+#highlights { background: var(--bg-secondary); }
+.highlight-card { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; margin-top: 48px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); overflow: hidden; transition: all 0.3s; }
+.highlight-card:hover { border-color: var(--border-active); box-shadow: 0 8px 40px rgba(0,0,0,0.3); }
+.highlight-card + .highlight-card { margin-top: 24px; }
+.highlight-visual { padding: 32px; display: flex; align-items: center; justify-content: center; min-height: 280px; background: var(--bg-terminal); border-right: 1px solid var(--border-color); position: relative; overflow: hidden; }
+.highlight-visual::after { content: ''; position: absolute; inset: 0; opacity: 0.04; background: radial-gradient(circle at 50% 50%, currentColor, transparent 70%); pointer-events: none; }
+.highlight-visual.agent { color: var(--accent-green); }
+.highlight-visual.todo { color: var(--accent-orange); }
+.highlight-visual.mcp { color: var(--accent-blue); }
+.highlight-visual.memory { color: var(--accent-purple); }
+.highlight-text { padding: 32px 32px 32px 0; }
+.highlight-text .hl-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; font-size: 1.2rem; border: 1px solid var(--border-color); }
+.highlight-text .hl-icon.agent { background: rgba(0,255,65,0.06); color: var(--accent-green); }
+.highlight-text .hl-icon.todo { background: rgba(251,146,60,0.06); color: var(--accent-orange); }
+.highlight-text .hl-icon.mcp { background: rgba(56,189,248,0.06); color: var(--accent-blue); }
+.highlight-text .hl-icon.memory { background: rgba(167,139,250,0.06); color: var(--accent-purple); }
+.highlight-text h3 { font-family: 'JetBrains Mono', monospace; font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; }
+.highlight-text .hl-subtitle { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px; }
+.highlight-text .hl-desc { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.7; margin-bottom: 16px; }
+.highlight-text .hl-features { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.highlight-text .hl-features li { font-size: 0.82rem; color: var(--text-secondary); padding-left: 18px; position: relative; }
+.highlight-text .hl-features li::before { content: '>'; position: absolute; left: 0; color: var(--accent-green); font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.highlight-text .hl-tags { display: flex; gap: 6px; flex-wrap: wrap; }
 
-/* ─── Quick Start ─── */
+/* ASCII diagram in visual */
+.ascii-diagram { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; line-height: 1.35; white-space: pre; color: var(--text-secondary); user-select: none; }
+.ascii-diagram .fg { color: var(--accent-green); }
+.ascii-diagram .fb { color: var(--accent-blue); }
+.ascii-diagram .fp { color: var(--accent-purple); }
+.ascii-diagram .fo { color: var(--accent-orange); }
+.ascii-diagram .fc { color: var(--accent-cyan); }
+.ascii-diagram .fr { color: var(--accent-rose); }
+.ascii-diagram .b { font-weight: 700; }
+
+/* Stats bar */
+.stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border-color); border-radius: var(--radius); overflow: hidden; margin-top: 48px; }
+.stat-item { background: var(--bg-card); padding: 24px; text-align: center; }
+.stat-number { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; font-weight: 700; color: var(--accent-green); margin-bottom: 4px; }
+.stat-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+
+/* Quick Start */
 #quickstart { background: var(--bg-secondary); }
-.quickstart-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 40px;
-  margin-top: 40px;
-  align-items: start;
-}
-.code-block {
-  background: var(--bg-terminal);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.code-block-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: rgba(255,255,255,0.015);
-}
-.code-block-label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-.code-block-copy {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
+.quickstart-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; align-items: start; }
+.code-block { background: var(--bg-terminal); border: 1px solid var(--border-color); border-radius: var(--radius); overflow: hidden; }
+.code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border-color); background: rgba(255,255,255,0.015); }
+.code-block-label { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-muted); font-weight: 500; }
+.code-block-copy { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: all 0.2s; }
 .code-block-copy:hover { color: var(--accent-green); background: var(--glow-green); }
-.code-block-body {
-  padding: 16px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.78rem;
-  line-height: 1.8;
-  color: var(--text-secondary);
-  overflow-x: auto;
-}
+.code-block-body { padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; line-height: 1.8; color: var(--text-secondary); overflow-x: auto; }
 .code-block-body .comment { color: var(--text-muted); font-style: italic; }
 .code-block-body .keyword { color: var(--accent-purple); }
 .code-block-body .string { color: var(--accent-orange); }
 .code-block-body .fn { color: var(--accent-blue); }
-
-/* ─── Stats / commands ─── */
-.quickstart-info {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.quickstart-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: 20px 24px;
-  transition: all 0.2s;
-}
+.quickstart-info { display: flex; flex-direction: column; gap: 16px; }
+.quickstart-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px 24px; transition: all 0.2s; }
 .quickstart-card:hover { border-color: var(--border-active); }
-.quickstart-card .qs-label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-}
-.quickstart-card .qs-title {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.quickstart-card .qs-desc {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-.quickstart-card .qs-cmd {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8rem;
-  color: var(--accent-green);
-  margin-top: 8px;
-  padding: 6px 12px;
-  background: rgba(0,255,65,0.03);
-  border-radius: 4px;
-  display: inline-block;
-}
-
-/* ─── Stats bar ─── */
-.stats-bar {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1px;
-  background: var(--border-color);
-  border-radius: var(--radius);
-  overflow: hidden;
-  margin-top: 48px;
-}
-.stat-item {
-  background: var(--bg-card);
-  padding: 24px;
-  text-align: center;
-}
-.stat-number {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: var(--accent-green);
-  margin-bottom: 4px;
-}
-.stat-label {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-/* ─── Commands showcase ─── */
-.commands-showcase {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin-top: 32px;
-}
-.cmd-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8rem;
-  transition: all 0.2s;
-}
-.cmd-item:hover {
-  border-color: var(--border-active);
-  background: var(--bg-card-hover);
-}
-.cmd-key {
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border-color);
-  color: var(--accent-green);
-  font-weight: 600;
-  white-space: nowrap;
-}
+.quickstart-card .qs-label { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px; }
+.quickstart-card .qs-title { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; }
+.quickstart-card .qs-desc { font-size: 0.85rem; color: var(--text-secondary); }
+.quickstart-card .qs-cmd { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--accent-green); margin-top: 8px; padding: 6px 12px; background: rgba(0,255,65,0.03); border-radius: 4px; display: inline-block; }
+.commands-showcase { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 32px; }
+.cmd-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; transition: all 0.2s; }
+.cmd-item:hover { border-color: var(--border-active); background: var(--bg-card-hover); }
+.cmd-key { padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--accent-green); font-weight: 600; white-space: nowrap; }
 .cmd-desc { color: var(--text-secondary); }
 
-/* ─── Footer ─── */
-footer {
-  border-top: 1px solid var(--border-color);
-  padding: 40px 24px;
-}
-.footer-inner {
-  max-width: 1100px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.footer-copy {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-.footer-links {
-  display: flex;
-  gap: 20px;
-}
-.footer-links a {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  text-decoration: none;
-  transition: color 0.2s;
-}
+/* Footer */
+footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
+.footer-inner { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+.footer-copy { font-size: 0.8rem; color: var(--text-muted); }
+.footer-links { display: flex; gap: 20px; }
+.footer-links a { font-size: 0.8rem; color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
 .footer-links a:hover { color: var(--text-secondary); }
 
-/* ─── Responsive ─── */
+/* Responsive */
 @media (max-width: 900px) {
-  .hero .section-inner { grid-template-columns: 1fr; gap: 40px; }
+  .hero .section-inner, .highlight-card, .quickstart-layout { grid-template-columns: 1fr; }
   .hero h1 { font-size: 1.8rem; }
   .features-grid { grid-template-columns: repeat(2, 1fr); }
-  .quickstart-layout { grid-template-columns: 1fr; }
+  .highlight-visual { border-right: none; border-bottom: 1px solid var(--border-color); min-height: 180px; }
+  .highlight-text { padding: 24px; }
 }
 @media (max-width: 640px) {
   section { padding: 60px 16px; }
@@ -758,27 +285,21 @@ footer {
 <div class="glow-spot glow-spot--blue"></div>
 <div class="grid-bg"></div>
 
-<!-- ─── Nav ─── -->
 <nav id="navbar">
   <div class="nav-inner">
-    <a href="#" class="nav-logo">
-      <span class="logo-dot"></span>
-      CodeAuto
-    </a>
+    <a href="#" class="nav-logo"><span class="logo-dot"></span>CodeAuto</a>
     <div class="nav-links">
-      <a href="#features" data-i18n="nav.features">功能特性</a>
-      <a href="#quickstart" data-i18n="nav.quickstart">快速开始</a>
-
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#highlights" data-i18n="nav.highlights">Highlights</a>
+      <a href="#quickstart" data-i18n="nav.quickstart">Quick Start</a>
       <div class="lang-toggle" id="langToggle">
-        <button class="lang-btn active" data-lang="zh" onclick="switchLang('zh')">中</button>
+        <button class="lang-btn active" data-lang="zh" onclick="switchLang('zh')">Cn</button>
         <button class="lang-btn" data-lang="en" onclick="switchLang('en')">EN</button>
       </div>
-
-      <button class="theme-toggle" onclick="switchTheme()" title="切换主题">
+      <button class="theme-toggle" onclick="switchTheme()" title="Toggle theme">
         <svg class="moon-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="sun-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       </button>
-
       <a href="https://github.com/Yulin-Bi/CodeAuto" target="_blank" rel="noopener" class="btn-gh">
         <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         <span data-i18n="nav.github">GitHub</span>
@@ -787,175 +308,312 @@ footer {
   </div>
 </nav>
 
-<!-- ─── Hero ─── -->
+<!-- Hero -->
 <section class="hero">
   <div class="section-inner">
     <div class="hero-text">
-      <div class="hero-tag"><span class="live-dot"></span> <span data-i18n="hero.tag">轻量级 JVM 编程代理运行时</span></div>
-      <h1 data-i18n-html="hero.title">
-        CodeAuto，<br>
-        <span class="highlight">基于 Java 构建的轻量级编程代理</span>
-      </h1>
-      <p data-i18n="hero.desc">
-        主流 AI Coding 工具几乎全用 TS 或 Python 实现，
-        Java 开发者学习门槛极高。CodeAuto 参考 Claude Code 的设计思路，
-        用纯 Java 21 打造了一个轻量、可扩展的 AI 编程代理运行时 ——
-        CLI + TUI、工具调用、MCP、权限控制、会话管理，全部在终端本地运行。
-      </p>
+      <div class="hero-tag"><span class="live-dot"></span> <span data-i18n="hero.tag">Lightweight JVM Coding Agent Runtime</span></div>
+      <h1 data-i18n-html="hero.title">CodeAuto,<br><span class="highlight">A Lightweight Coding Agent Built in Java</span></h1>
+      <p data-i18n="hero.desc">Most AI coding tools are built with TypeScript or Python, creating a high barrier for Java developers. CodeAuto draws from Claude Code's design and uses pure Java 21 to deliver a lightweight, extensible AI coding agent runtime — CLI + TUI, tool calling, MCP, permission control, session management, all running locally in your terminal.</p>
       <div class="hero-actions">
         <a href="#quickstart" class="btn btn--primary">
-          <span data-i18n="hero.quickstart">快速开始</span>
+          <span data-i18n="hero.quickstart">Quick Start</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </a>
         <a href="https://github.com/Yulin-Bi/CodeAuto" target="_blank" rel="noopener" class="btn btn--gh">
           <svg viewBox="0 0 16 16" style="width:16px;height:16px;fill:currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-          <span data-i18n="hero.viewgh">查看 GitHub</span>
+          <span data-i18n="hero.viewgh">View on GitHub</span>
         </a>
       </div>
     </div>
     <div class="terminal-wrapper">
       <div class="terminal">
         <div class="terminal-header">
-          <div class="terminal-dots">
-            <span class="terminal-dot terminal-dot--r"></span>
-            <span class="terminal-dot terminal-dot--y"></span>
-            <span class="terminal-dot terminal-dot--g"></span>
-          </div>
-          <span class="terminal-title">bash — codeauto</span>
+          <div class="terminal-dots"><span class="terminal-dot terminal-dot--r"></span><span class="terminal-dot terminal-dot--y"></span><span class="terminal-dot terminal-dot--g"></span></div>
+          <span class="terminal-title">bash -- codeauto</span>
         </div>
-        <div class="terminal-body" id="terminalBody">
-          <div class="terminal-line" style="animation-delay:0.1s"><span class="prompt">$</span> <span class="cmd">mvn exec:java "-Dexec.args=--tui"</span></div>
-          <div class="terminal-line" style="animation-delay:0.5s"></div>
-          <div class="terminal-line" style="animation-delay:0.7s"><span class="output-green">  ⚡ CodeAuto v0.1.0</span></div>
-          <div class="terminal-line" style="animation-delay:0.9s"><span class="dim">  ───────────────────────────────────</span></div>
-          <div class="terminal-line" style="animation-delay:1.1s"><span class="output">  Model: </span><span class="output-orange">claude-sonnet-4-6</span></div>
-          <div class="terminal-line" style="animation-delay:1.3s"><span class="output">  Tools: </span><span class="output-blue">20 built-in · 0 MCP</span></div>
-          <div class="terminal-line" style="animation-delay:1.5s"><span class="output">  Session: </span><span class="output-purple">active</span></div>
-          <div class="terminal-line" style="animation-delay:1.7s"><span class="dim">  ───────────────────────────────────</span></div>
-          <div class="terminal-line" style="animation-delay:2.0s"></div>
-          <div class="terminal-line" style="animation-delay:2.2s"><span class="prompt">codeauto&gt;</span> <span class="cmd">/status</span></div>
-          <div class="terminal-line" style="animation-delay:2.6s"><span class="output">  ✓ All systems ready</span></div>
-          <div class="terminal-line" style="animation-delay:2.9s"><span class="prompt">codeauto&gt;</span><span class="terminal-cursor"></span></div>
+        <div class="terminal-body">
+          <div class="terminal-line" style="animation-delay:0.1s"><span class="prompt">$</span> <span class="cmd">codeauto --tui</span></div>
+          <div class="terminal-line" style="animation-delay:0.4s"></div>
+          <div class="terminal-line" style="animation-delay:0.6s"><span class="output-green">  CodeAuto v0.1.0</span></div>
+          <div class="terminal-line" style="animation-delay:0.8s"><span class="dim">  -------------------------------</span></div>
+          <div class="terminal-line" style="animation-delay:1.0s"><span class="output">  Model: </span><span class="output-orange">claude-sonnet-4-6</span></div>
+          <div class="terminal-line" style="animation-delay:1.2s"><span class="output">  Tools: </span><span class="output-blue">23 built-in + MCP</span></div>
+          <div class="terminal-line" style="animation-delay:1.4s"><span class="output">  Session: </span><span class="output-purple">active</span></div>
+          <div class="terminal-line" style="animation-delay:1.6s"><span class="dim">  -------------------------------</span></div>
+          <div class="terminal-line" style="animation-delay:1.8s"></div>
+          <div class="terminal-line" style="animation-delay:2.0s"><span class="prompt">codeauto></span> <span class="cmd">/todo</span></div>
+          <div class="terminal-line" style="animation-delay:2.3s"><span class="output">  Todo: 3/7 tasks remaining</span></div>
+          <div class="terminal-line" style="animation-delay:2.6s"><span class="prompt">codeauto></span><span class="terminal-cursor"></span></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ─── Features ─── -->
+<!-- Features -->
 <section id="features">
   <div class="section-inner">
-    <div class="section-label" data-i18n="features.label">核心能力</div>
-    <h2 class="section-title" data-i18n="features.title">用 AI 构建，所需一切</h2>
-    <p class="section-desc" data-i18n="features.desc">
-      CodeAuto 将一个全功能代理运行时打包在单一 JAR 中 ——
-      从交互式 TUI 到自动化工具编排，一应俱全。
-    </p>
-
+    <div class="section-label" data-i18n="features.label">Core Capabilities</div>
+    <h2 class="section-title" data-i18n="features.title">Everything You Need to Build with AI</h2>
+    <p class="section-desc" data-i18n="features.desc">CodeAuto packs a full-featured agent runtime into a single JAR -- from interactive TUI to automated tool orchestration.</p>
     <div class="features-grid">
       <div class="feature-card">
-        <div class="feature-icon">⌨</div>
+        <div class="feature-icon">T</div>
         <h3 data-i18n="features.card1.title">CLI + TUI</h3>
-        <p data-i18n="features.card1.desc">双模界面 —— 基于 JLine 3 的全屏 TUI 或经典 CLI。支持 Markdown 转 ANSI 渲染、CJK 文字、鼠标滚轮和 Tab 补全。</p>
-        <div class="feature-tags"><span class="feature-tag">JLine 3</span><span class="feature-tag">Markdown</span></div>
+        <p data-i18n="features.card1.desc">Dual-mode interface -- full-screen TUI with JLine 3 or classic CLI. Markdown-to-ANSI rendering, CJK support, mouse scroll, streaming output, and tab completion.</p>
+        <div class="feature-tags"><span class="feature-tag">JLine 3</span><span class="feature-tag">Markdown</span><span class="feature-tag">Streaming</span></div>
       </div>
-
       <div class="feature-card">
-        <div class="feature-icon">🔧</div>
-        <h3 data-i18n="features.card2.title">20 个内置工具</h3>
-        <p data-i18n="features.card2.desc">文件操作、命令执行、网络抓取/搜索、记忆管理、MCP 辅助 —— 通过 ToolRegistry 和 Skills 可扩展。</p>
-        <div class="feature-tags"><span class="feature-tag">ToolRegistry</span><span class="feature-tag">Skills</span></div>
+        <div class="feature-icon">*</div>
+        <h3 data-i18n="features.card2.title">23 Built-in Tools</h3>
+        <p data-i18n="features.card2.desc">File ops, command execution, web fetch/search, memory management, Todo tasks, MCP helpers -- extensible via ToolRegistry and Skills.</p>
+        <div class="feature-tags"><span class="feature-tag">ToolRegistry</span><span class="feature-tag">Skills</span><span class="feature-tag">Todo</span></div>
       </div>
-
       <div class="feature-card">
-        <div class="feature-icon">🔗</div>
-        <h3 data-i18n="features.card3.title">MCP 支持</h3>
-        <p data-i18n="features.card3.desc">通过 stdio 或 Streamable HTTP MCP 连接外部工具。自动协议检测、Bearer 认证、全生命周期管理。</p>
-        <div class="feature-tags"><span class="feature-tag">stdio</span><span class="feature-tag">HTTP</span></div>
+        <div class="feature-icon">@</div>
+        <h3 data-i18n="features.card3.title">MCP + Skills</h3>
+        <p data-i18n="features.card3.desc">Connect external tools via stdio or Streamable HTTP MCP. Skills with session-level injection keep AI on track throughout the session.</p>
+        <div class="feature-tags"><span class="feature-tag">stdio</span><span class="feature-tag">HTTP</span><span class="feature-tag">Session</span></div>
       </div>
-
       <div class="feature-card">
-        <div class="feature-icon">🛡</div>
-        <h3 data-i18n="features.card4.title">权限控制</h3>
-        <p data-i18n="features.card4.desc">细粒度的命令和文件编辑允许/拒绝策略。写入前生成 unified diff 审查。支持通配符的持久化规则。</p>
-        <div class="feature-tags"><span class="feature-tag">Diff 审查</span><span class="feature-tag">通配符</span></div>
+        <div class="feature-icon">!</div>
+        <h3 data-i18n="features.card4.title">Permission Control</h3>
+        <p data-i18n="features.card4.desc">Granular allow/deny for commands and file edits. Unified diff review before write. Wildcard-based persistent rules with allow-once/always/turn.</p>
+        <div class="feature-tags"><span class="feature-tag">Diff Review</span><span class="feature-tag">Wildcards</span><span class="feature-tag">TUI Modal</span></div>
       </div>
-
       <div class="feature-card">
-        <div class="feature-icon">📂</div>
-        <h3 data-i18n="features.card5.title">会话管理</h3>
-        <p data-i18n="features.card5.desc">基于工作空间隔离的会话，支持保存/恢复/分叉。针对长对话的自动上下文压缩和微压缩。</p>
-        <div class="feature-tags"><span class="feature-tag">保存/恢复</span><span class="feature-tag">压缩</span></div>
+        <div class="feature-icon">~</div>
+        <h3 data-i18n="features.card5.title">Session Management</h3>
+        <p data-i18n="features.card5.desc">Workspace-isolated sessions with save/resume/fork. Auto context compression with artifact persistence. Micro-compaction clears stale tool results.</p>
+        <div class="feature-tags"><span class="feature-tag">Save/Resume</span><span class="feature-tag">Compact</span><span class="feature-tag">Artifact</span></div>
       </div>
-
       <div class="feature-card">
-        <div class="feature-icon">🧠</div>
-        <h3 data-i18n="features.card6.title">持久化记忆</h3>
-        <p data-i18n="features.card6.desc">跨会话记忆，支持分类条目（用户、反馈、项目、参考）。自动过期检测和 system prompt 注入。</p>
-        <div class="feature-tags"><span class="feature-tag">Frontmatter</span><span class="feature-tag">过期标记</span></div>
+        <div class="feature-icon">#</div>
+        <h3 data-i18n="features.card6.title">Persistent Memory</h3>
+        <p data-i18n="features.card6.desc">AI-driven cross-session memory with typed entries. Auto staleness detection, contradiction checking, and system-prompt injection.</p>
+        <div class="feature-tags"><span class="feature-tag">Frontmatter MD</span><span class="feature-tag">Stale Mark</span><span class="feature-tag">AI-Driven</span></div>
       </div>
     </div>
-
     <div class="stats-bar">
-      <div class="stat-item"><div class="stat-number">20</div><div class="stat-label" data-i18n="stats.tools">内置工具</div></div>
-      <div class="stat-item"><div class="stat-number">76</div><div class="stat-label" data-i18n="stats.tests">测试通过</div></div>
-      <div class="stat-item"><div class="stat-number">4</div><div class="stat-label" data-i18n="stats.models">模型适配</div></div>
-      <div class="stat-item"><div class="stat-number">0</div><div class="stat-label" data-i18n="stats.deps">外部依赖</div></div>
+      <div class="stat-item"><div class="stat-number">23</div><div class="stat-label" data-i18n="stats.tools">Built-in Tools</div></div>
+      <div class="stat-item"><div class="stat-number">79</div><div class="stat-label" data-i18n="stats.tests">Tests Passing</div></div>
+      <div class="stat-item"><div class="stat-number">5</div><div class="stat-label" data-i18n="stats.models">Core Systems</div></div>
+      <div class="stat-item"><div class="stat-number">2</div><div class="stat-label" data-i18n="stats.deps">MCP Protocols</div></div>
     </div>
   </div>
 </section>
 
-<!-- ─── Quick Start ─── -->
+<!-- Highlights -->
+<section id="highlights">
+  <div class="section-inner">
+    <div class="section-label" data-i18n="highlights.label">Technical Highlights</div>
+    <h2 class="section-title" data-i18n="highlights.title">Four Pillars of the Agent Runtime</h2>
+    <p class="section-desc" data-i18n="highlights.desc">The core systems that make CodeAuto a capable, safe, and extensible coding agent.</p>
+
+    <!-- Agent Loop -->
+    <div class="highlight-card">
+      <div class="highlight-visual agent">
+        <div class="ascii-diagram">
+   <span class="fg b">  AgentLoop.runTurn()</span>
+   <span class="dim">  ====================</span>
+   <span class="fb">  for step 0..maxSteps:</span>
+   <span class="dim">    |</span>
+   <span class="fb">    +-- microcompact()</span>
+   <span class="dim">    |</span>
+   <span class="fb">    +-- auto compact?</span>
+   <span class="fb">    |     |-> compactWithStats()</span>
+   <span class="fb">    |     |-> save artifact .md</span>
+   <span class="dim">    |</span>
+   <span class="fb">    +-- model.next()</span>
+   <span class="dim">    |     |-> API call (SSE stream)</span>
+   <span class="dim">    |</span>
+   <span class="fb">    +-- final? return messages</span>
+   <span class="dim">    |</span>
+   <span class="fb">    +-- tool calls?</span>
+   <span class="fb">          |-> execute each tool</span>
+   <span class="fb">          |-> result backfill</span>
+   <span class="fb">          +-> loop</span>
+   <span class="dim">  ====================</span>
+   <span class="fr">  cancel() at any checkpoint</span></div>
+      </div>
+      <div class="highlight-text">
+        <div class="hl-icon agent">L</div>
+        <h3 data-i18n="hl.agent.title">Agent Loop -- The Execution Engine</h3>
+        <div class="hl-subtitle" data-i18n="hl.agent.subtitle">Multi-step tool calling with automatic context management</div>
+        <p class="hl-desc" data-i18n="hl.agent.desc">The Agent Loop drives every conversation turn: sending messages to the model, parsing tool calls, executing them, and feeding results back -- up to 32 steps per turn. Streaming SSE deltas update the TUI in real time. Three-layer token management keeps context under control.</p>
+        <ul class="hl-features">
+          <li data-i18n="hl.agent.f1">Streaming AssistantMessage via SSE text_delta, TUI renders in-place without flicker</li>
+          <li data-i18n="hl.agent.f2">Micro-compact clears old tool results at 50% context utilization, keeps last 3</li>
+          <li data-i18n="hl.agent.f3">Full compact at 80%: summarizes middle messages, saves artifact to .codeauto/compacted/</li>
+          <li data-i18n="hl.agent.f4">Cancellable at any step -- cancel() flag checked before API calls and tool execution</li>
+          <li data-i18n="hl.agent.f5">JLine Signal.INT handler ensures Ctrl+C works even when raw mode signal suppression fails</li>
+        </ul>
+        <div class="hl-tags"><span class="feature-tag">maxSteps: 32</span><span class="feature-tag">SSE Streaming</span><span class="feature-tag">Cancellable</span><span class="feature-tag">3-Layer Context</span></div>
+      </div>
+    </div>
+
+    <!-- Todo -->
+    <div class="highlight-card">
+      <div class="highlight-visual todo">
+        <div class="ascii-diagram">
+   <span class="fo b">  TodoList System</span>
+   <span class="dim">  ====================</span>
+   <span class="fo">  TodoStore</span>
+   <span class="dim">    ~/.codeauto/todos/</span>
+   <span class="dim">    per-project hash isolation</span>
+   <span class="dim">  ====================</span>
+   <span class="fo">  TodoTool (3 actions)</span>
+   <span class="dim">    |</span>
+   <span class="fo">    +-- todo_create</span>
+   <span class="fo">    +-- todo_update</span>
+   <span class="fo">    +-- todo_list</span>
+   <span class="dim">  ====================</span>
+   <span class="fo">  TUI Header: 3/7 tasks</span>
+   <span class="dim">  CLI: /todo list|add|done</span>
+   <span class="dim">       |undo|delete|clear</span></div>
+      </div>
+      <div class="highlight-text">
+        <div class="hl-icon todo">=</div>
+        <h3 data-i18n="hl.todo.title">TodoList -- Multi-Step Task Tracking</h3>
+        <div class="hl-subtitle" data-i18n="hl.todo.subtitle">AI and user collaboratively track complex task progress</div>
+        <p class="hl-desc" data-i18n="hl.todo.desc">When the user gives a 3+ step task, the AI breaks it down with todo_create. The TUI header shows live progress (3/7). The AI updates status as it works, and users can manage tasks directly via /todo commands.</p>
+        <ul class="hl-features">
+          <li data-i18n="hl.todo.f1">JSON persistence at ~/.codeauto/todos/, per-project hash isolation</li>
+          <li data-i18n="hl.todo.f2">AI auto-creates tasks when prompted with multi-step requests</li>
+          <li data-i18n="hl.todo.f3">TUI header live badge: "Todo: 3/7" updates as tasks complete</li>
+          <li data-i18n="hl.todo.f4">CLI/TUI /todo commands: list, add, done, undo, delete, clear</li>
+        </ul>
+        <div class="hl-tags"><span class="feature-tag">JSON Store</span><span class="feature-tag">AI Auto-Create</span><span class="feature-tag">TUI Badge</span></div>
+      </div>
+    </div>
+
+    <!-- MCP + Skills -->
+    <div class="highlight-card">
+      <div class="highlight-visual mcp">
+        <div class="ascii-diagram">
+   <span class="fb b">  MCP + Skills</span>
+   <span class="dim">  ====================</span>
+   <span class="fb">  MCP Protocols</span>
+   <span class="dim">    |</span>
+   <span class="fb">    +-- stdio (content-length</span>
+   <span class="fb">    |         / newline-json)</span>
+   <span class="fb">    +-- Streamable HTTP</span>
+   <span class="dim">    |</span>
+   <span class="fb">    +-- auto-negotiation</span>
+   <span class="fb">    +-- bearer token injection</span>
+   <span class="fb">    +-- env var interpolation</span>
+   <span class="dim">  ====================</span>
+   <span class="fc">  Skills</span>
+   <span class="dim">    |</span>
+   <span class="fc">    +-- .code-auto/skills/</span>
+   <span class="fc">    +-- .claude/skills/</span>
+   <span class="fc">    +-- load_skill -> SessionSkills</span>
+   <span class="fc">    +-- inject each turn [loaded]</span></div>
+      </div>
+      <div class="highlight-text">
+        <div class="hl-icon mcp">+</div>
+        <h3 data-i18n="hl.mcp.title">MCP + Skills -- Open Extension System</h3>
+        <div class="hl-subtitle" data-i18n="hl.mcp.subtitle">Connect any tool, embed any domain knowledge</div>
+        <p class="hl-desc" data-i18n="hl.mcp.desc">MCP brings external tools into the agent: connect databases, APIs, or custom servers via stdio or HTTP. Skills embed domain-specific instructions that persist through the entire session via system prompt injection.</p>
+        <ul class="hl-features">
+          <li data-i18n="hl.mcp.f1">Dual MCP transport: stdio (Content-Length / newline-json auto-negotiation) + Streamable HTTP</li>
+          <li data-i18n="hl.mcp.f2">MCP tools auto-discovered and registered as native ToolDefinitions in ToolRegistry</li>
+          <li data-i18n="hl.mcp.f3">Skills discovered from .code-auto/skills + .claude/skills with 3-tier resolution</li>
+          <li data-i18n="hl.mcp.f4">load_skill -> SessionSkills in-memory registry -> injected into every subsequent system prompt</li>
+          <li data-i18n="hl.mcp.f5">Skill index shows name + description in system prompt, reducing unnecessary list_skills calls</li>
+        </ul>
+        <div class="hl-tags"><span class="feature-tag">stdio</span><span class="feature-tag">HTTP</span><span class="feature-tag">Auto-Discovery</span><span class="feature-tag">Session Injection</span></div>
+      </div>
+    </div>
+
+    <!-- Memory + Context Compression -->
+    <div class="highlight-card">
+      <div class="highlight-visual memory">
+        <div class="ascii-diagram">
+   <span class="fp b">  Multi-Layer Memory</span>
+   <span class="dim">  ====================</span>
+   <span class="fp">  L1: System Prompt</span>
+   <span class="dim">    InstructionLoader</span>
+   <span class="dim">    + CLAUDE.md x4 levels</span>
+   <span class="dim">    + SessionSkills loaded</span>
+   <span class="dim">    + Memory entries (top 5)</span>
+   <span class="fp">  L2: Persistent Memory</span>
+   <span class="dim">    MemoryManager</span>
+   <span class="dim">    ~/.codeauto/memory/*.md</span>
+   <span class="dim">    frontmatter + stale mark</span>
+   <span class="fp">  L3: Context Compression</span>
+   <span class="dim">    CompactService</span>
+   <span class="dim">    .codeauto/compacted/*.md</span>
+   <span class="dim">    summary + full artifact</span>
+   <span class="fp">  L4: Micro-Compact</span>
+   <span class="dim">    clear stale tool results</span>
+   <span class="dim">    keep last 3 recent</span></div>
+      </div>
+      <div class="highlight-text">
+        <div class="hl-icon memory">#</div>
+        <h3 data-i18n="hl.memory.title">Multi-Layer Memory & Dynamic Context Compression</h3>
+        <div class="hl-subtitle" data-i18n="hl.memory.subtitle">From persistent cross-session memory to real-time token management</div>
+        <p class="hl-desc" data-i18n="hl.memory.desc">Four layers of memory work together: L1 injects CLAUDE.md instructions + loaded skills + relevant memories into every system prompt. L2 persists AI-driven memories as frontmatter Markdown with contradiction detection. L3 compresses long conversations with full artifact persistence. L4 micro-compacts stale tool results at 50% utilization.</p>
+        <ul class="hl-features">
+          <li data-i18n="hl.memory.f1">InstructionLoader: 4-level CLAUDE.md chain (user > codeauto > project > project-local), later wins</li>
+          <li data-i18n="hl.memory.f2">MemoryManager: frontmatter Markdown files, typed entries, relevance scoring (project +8, global +1, term +2)</li>
+          <li data-i18n="hl.memory.f3">AI-driven save: system prompt guides AI to check contradictions before saving, stale after 24h</li>
+          <li data-i18n="hl.memory.f4">CompactService: saves full pre-compaction context to .codeauto/compacted/compact-*.md with pointer in summary</li>
+          <li data-i18n="hl.memory.f5">Token budget: 200K context window, local estimation as fallback, provider usage priority</li>
+        </ul>
+        <div class="hl-tags"><span class="feature-tag">4-Layer</span><span class="feature-tag">Frontmatter MD</span><span class="feature-tag">AI-Driven</span><span class="feature-tag">200K Window</span><span class="feature-tag">Artifact Save</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Quick Start -->
 <section id="quickstart">
   <div class="section-inner">
-    <div class="section-label" data-i18n="quickstart.label">快速开始</div>
-    <h2 class="section-title" data-i18n="quickstart.title">秒级启动</h2>
-    <p class="section-desc" data-i18n="quickstart.desc">
-      只需 Java 21 + Maven。从离线 Mock 模式起步（无需 API Key），
-      或接入你自己的模型。
-    </p>
-
+    <div class="section-label" data-i18n="quickstart.label">Get Started</div>
+    <h2 class="section-title" data-i18n="quickstart.title">Running in Seconds</h2>
+    <p class="section-desc" data-i18n="quickstart.desc">Java 21 + Maven is all you need. Start with offline mock mode (no API key), or bring your own model. Add bin/ to PATH to run from anywhere.</p>
     <div class="quickstart-layout">
       <div>
         <div class="code-block">
           <div class="code-block-header">
-            <span class="code-block-label" data-i18n="quickstart.codeLabel">安装与运行（Mock 模式）</span>
-            <button class="code-block-copy" onclick="copyCode(this)"><span data-i18n="quickstart.copy">复制</span></button>
+            <span class="code-block-label" data-i18n="quickstart.codeLabel">Install & Run (Mock Mode)</span>
+            <button class="code-block-copy" onclick="copyCode(this)"><span data-i18n="quickstart.copy">Copy</span></button>
           </div>
           <div class="code-block-body">
-            <span class="comment"># 克隆并运行测试</span><br>
+            <span class="comment"># Clone and run tests</span><br>
             git clone https://github.com/Yulin-Bi/CodeAuto.git<br>
             <span class="fn">cd</span> CodeAuto<br>
-            mvn test<br>
-            <br>
-            <span class="comment"># 启动 TUI —— 无需 API Key</span><br>
-            mvn exec:java <span class="string">"-Dexec.args=--mock --tui"</span><br>
-            <br>
-            <span class="comment"># 构建独立 JAR 并运行</span><br>
+            mvn test<br><br>
+            <span class="comment"># Start TUI -- no API key needed</span><br>
+            mvn exec:java <span class="string">"-Dexec.args=--mock --tui"</span><br><br>
+            <span class="comment"># Build standalone JAR and run</span><br>
             mvn package <span class="keyword">-DskipTests</span><br>
             java -jar target/codeauto-<span class="string">0.1.0</span>-SNAPSHOT-shaded.jar <span class="keyword">--tui</span>
           </div>
         </div>
       </div>
-
       <div class="quickstart-info">
         <div class="quickstart-card">
-          <div class="qs-label" data-i18n="quickstart.card1.label">配置指南</div>
-          <div class="qs-title" data-i18n="quickstart.card1.title">模型设置</div>
-          <div class="qs-desc" data-i18n="quickstart.card1.desc">通过环境变量或 JSON 配置文件设置。优先级：默认 &lt; 环境变量 &lt; 项目 &lt; 用户 &lt; CLI 参数。</div>
+          <div class="qs-label" data-i18n="quickstart.card1.label">Configuration</div>
+          <div class="qs-title" data-i18n="quickstart.card1.title">Model Setup</div>
+          <div class="qs-desc" data-i18n="quickstart.card1.desc">Configure via environment variables or JSON. Priority: default &lt; env &lt; project &lt; user &lt; CLI flags.</div>
           <div class="qs-cmd">export CODEAUTO_AUTH_TOKEN="sk-..."</div>
         </div>
         <div class="quickstart-card">
-          <div class="qs-label" data-i18n="quickstart.card2.label">速查手册</div>
-          <div class="qs-title" data-i18n="quickstart.card2.title">斜杠命令</div>
-          <div class="qs-desc" data-i18n="quickstart.card2.desc">日常操作所需的完整 TUI 命令集。</div>
+          <div class="qs-label" data-i18n="quickstart.card2.label">Quick Reference</div>
+          <div class="qs-title" data-i18n="quickstart.card2.title">Slash Commands</div>
+          <div class="qs-desc" data-i18n="quickstart.card2.desc">Full TUI command set for everyday tasks. Press / for the interactive menu.</div>
           <div class="commands-showcase">
-            <div class="cmd-item"><span class="cmd-key">/help</span><span class="cmd-desc" data-i18n="cmd.help">显示帮助</span></div>
-            <div class="cmd-item"><span class="cmd-key">/sessions</span><span class="cmd-desc" data-i18n="cmd.sessions">会话管理</span></div>
-            <div class="cmd-item"><span class="cmd-key">/memory</span><span class="cmd-desc" data-i18n="cmd.memory">记忆命令</span></div>
-            <div class="cmd-item"><span class="cmd-key">/model</span><span class="cmd-desc" data-i18n="cmd.model">切换模型</span></div>
-            <div class="cmd-item"><span class="cmd-key">/compact</span><span class="cmd-desc" data-i18n="cmd.compact">压缩上下文</span></div>
-            <div class="cmd-item"><span class="cmd-key">/mcp</span><span class="cmd-desc" data-i18n="cmd.mcp">MCP 状态</span></div>
+            <div class="cmd-item"><span class="cmd-key">/help</span><span class="cmd-desc" data-i18n="cmd.help">Show help</span></div>
+            <div class="cmd-item"><span class="cmd-key">/sessions</span><span class="cmd-desc" data-i18n="cmd.sessions">Manage sessions</span></div>
+            <div class="cmd-item"><span class="cmd-key">/memory</span><span class="cmd-desc" data-i18n="cmd.memory">Memory commands</span></div>
+            <div class="cmd-item"><span class="cmd-key">/model</span><span class="cmd-desc" data-i18n="cmd.model">Switch model</span></div>
+            <div class="cmd-item"><span class="cmd-key">/compact</span><span class="cmd-desc" data-i18n="cmd.compact">Compress context</span></div>
+            <div class="cmd-item"><span class="cmd-key">/mcp</span><span class="cmd-desc" data-i18n="cmd.mcp">MCP status</span></div>
+            <div class="cmd-item"><span class="cmd-key">/todo</span><span class="cmd-desc" data-i18n="cmd.todo">Task tracking</span></div>
+            <div class="cmd-item"><span class="cmd-key">/permissions</span><span class="cmd-desc" data-i18n="cmd.perms">Permission rules</span></div>
           </div>
         </div>
       </div>
@@ -963,12 +621,9 @@ footer {
   </div>
 </section>
 
-<!-- ─── Footer ─── -->
 <footer>
   <div class="footer-inner">
-    <div class="footer-copy" data-i18n="footer.copy">
-      CodeAuto — JVM 原生 AI 编程代理运行时
-    </div>
+    <div class="footer-copy" data-i18n="footer.copy">CodeAuto -- JVM-native AI coding assistant runtime</div>
     <div class="footer-links">
       <a href="https://github.com/Yulin-Bi/CodeAuto" target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/Yulin-Bi/CodeAuto/issues" target="_blank" rel="noopener">Issues</a>
@@ -978,14 +633,14 @@ footer {
 </footer>
 
 <script>
-// ─── i18n data ───
 const I18N = {
   zh: {
     'nav.features': '功能特性',
+    'nav.highlights': '技术亮点',
     'nav.quickstart': '快速开始',
     'nav.github': 'GitHub',
     'hero.tag': '轻量级 JVM 编程代理运行时',
-    'hero.title': 'CodeAuto，<br>\n        <span class="highlight">基于 Java 构建的轻量级编程代理</span>',
+    'hero.title': 'CodeAuto，<br><span class="highlight">基于 Java 构建的轻量级编程代理</span>',
     'hero.desc': '主流 AI Coding 工具几乎全用 TS 或 Python 实现，Java 开发者学习门槛极高。CodeAuto 参考 Claude Code 的设计思路，用纯 Java 21 打造了一个轻量、可扩展的 AI 编程代理运行时 —— CLI + TUI、工具调用、MCP、权限控制、会话管理，全部在终端本地运行。',
     'hero.quickstart': '快速开始',
     'hero.viewgh': '查看 GitHub',
@@ -993,24 +648,58 @@ const I18N = {
     'features.title': '用 AI 构建，所需一切',
     'features.desc': 'CodeAuto 将一个全功能代理运行时打包在单一 JAR 中 —— 从交互式 TUI 到自动化工具编排，一应俱全。',
     'features.card1.title': 'CLI + TUI',
-    'features.card1.desc': '双模界面 —— 基于 JLine 3 的全屏 TUI 或经典 CLI。支持 Markdown 转 ANSI 渲染、CJK 文字、鼠标滚轮和 Tab 补全。',
-    'features.card2.title': '20 个内置工具',
-    'features.card2.desc': '文件操作、命令执行、网络抓取/搜索、记忆管理、MCP 辅助 —— 通过 ToolRegistry 和 Skills 可扩展。',
-    'features.card3.title': 'MCP 支持',
-    'features.card3.desc': '通过 stdio 或 Streamable HTTP MCP 连接外部工具。自动协议检测、Bearer 认证、全生命周期管理。',
+    'features.card1.desc': '双模界面 —— 基于 JLine 3 的全屏 TUI 或经典 CLI。支持 Markdown 转 ANSI 渲染、CJK 文字、鼠标滚轮、流式输出和 Tab 补全。',
+    'features.card2.title': '23 个内置工具',
+    'features.card2.desc': '文件操作、命令执行、网络抓取/搜索、记忆管理、Todo 任务、MCP 辅助 —— 通过 ToolRegistry 和 Skills 可扩展。',
+    'features.card3.title': 'MCP + Skills',
+    'features.card3.desc': '通过 stdio 或 Streamable HTTP MCP 连接外部工具。Skills 会话级注入确保 AI 在整个会话中遵循领域指令。',
     'features.card4.title': '权限控制',
-    'features.card4.desc': '细粒度的命令和文件编辑允许/拒绝策略。写入前生成 unified diff 审查。支持通配符的持久化规则。',
+    'features.card4.desc': '细粒度的命令和文件编辑允许/拒绝策略。写入前 unified diff 审查。通配符持久化规则，支持 allow-once/always/turn。',
     'features.card5.title': '会话管理',
-    'features.card5.desc': '基于工作空间隔离的会话，支持保存/恢复/分叉。针对长对话的自动上下文压缩和微压缩。',
+    'features.card5.desc': '基于工作空间隔离的会话，支持保存/恢复/分叉。自动上下文压缩并落盘完整产物。微压缩清理过期工具结果。',
     'features.card6.title': '持久化记忆',
-    'features.card6.desc': '跨会话记忆，支持分类条目（用户、反馈、项目、参考）。自动过期检测和 system prompt 注入。',
+    'features.card6.desc': 'AI 驱动的跨会话记忆，支持分类条目。自动过期检测、矛盾检查和 system prompt 注入。保存前 AI 自动检查重复。',
     'stats.tools': '内置工具',
     'stats.tests': '测试通过',
-    'stats.models': '模型适配',
-    'stats.deps': '外部依赖',
+    'stats.models': '核心系统',
+    'stats.deps': 'MCP 协议',
+    'highlights.label': '技术亮点',
+    'highlights.title': '四大核心系统支撑 Agent 运行时',
+    'highlights.desc': 'Agent Loop、TodoList、MCP/Skills、多层记忆与动态上下文压缩 —— 构成了 CodeAuto 的能力、安全性和可扩展性基础。',
+    'hl.agent.title': 'Agent Loop —— 执行引擎',
+    'hl.agent.subtitle': '多步工具调用 + 自动上下文管理',
+    'hl.agent.desc': 'Agent Loop 驱动每轮对话：将消息发送到模型，解析工具调用，执行工具，结果回填 —— 最多 32 步。SSE 流式输出实时更新 TUI。三层 token 管理确保上下文受控。',
+    'hl.agent.f1': 'SSE text_delta 流式 AssistantMessage，TUI 原地刷新不闪屏',
+    'hl.agent.f2': '微压缩在 50% 利用率时清理旧工具结果，保留最近 3 个',
+    'hl.agent.f3': '全压缩在 80% 时触发：摘要中段消息，完整产物落盘 .codeauto/compacted/',
+    'hl.agent.f4': '任意检查点可取消 —— cancel() 在 API 调用前、工具执行前检查',
+    'hl.agent.f5': 'JLine Signal.INT 处理器确保 raw mode 信号抑制失败时 Ctrl+C 仍有效',
+    'hl.todo.title': 'TodoList —— 多步任务追踪',
+    'hl.todo.subtitle': 'AI 与用户协作追踪复杂任务进度',
+    'hl.todo.desc': '用户提出 3+ 步骤任务时，AI 自动用 todo_create 拆解。TUI header 实时显示进度（3/7）。AI 完成步骤后更新状态，用户也可通过 /todo 命令直接管理。',
+    'hl.todo.f1': 'JSON 持久化至 ~/.codeauto/todos/，按项目哈希隔离',
+    'hl.todo.f2': 'AI 在收到多步任务时自动创建 todo 条目',
+    'hl.todo.f3': 'TUI header 实时徽章： "Todo: 3/7" 随任务完成动态更新',
+    'hl.todo.f4': 'CLI/TUI /todo 命令： list, add, done, undo, delete, clear',
+    'hl.mcp.title': 'MCP + Skills —— 开放扩展系统',
+    'hl.mcp.subtitle': '连接任意工具，嵌入任意领域知识',
+    'hl.mcp.desc': 'MCP 将外部工具引入代理：通过 stdio 或 HTTP 连接数据库、API 或自定义服务。Skills 将领域专属指令嵌入会话的每轮 system prompt 中。',
+    'hl.mcp.f1': '双 MCP 传输： stdio（Content-Length / newline-json 自动协商）+ Streamable HTTP',
+    'hl.mcp.f2': 'MCP 工具自动发现并注册为原生 ToolDefinition，纳入 ToolRegistry',
+    'hl.mcp.f3': 'Skills 从 .code-auto/skills + .claude/skills 三层发现',
+    'hl.mcp.f4': 'load_skill -> SessionSkills 内存注册表 -> 后续每轮 system prompt 注入',
+    'hl.mcp.f5': 'Skill 索引在 system prompt 中展示名称+描述，减少不必要的 list_skills',
+    'hl.memory.title': '多层记忆与动态上下文压缩',
+    'hl.memory.subtitle': '从跨会话持久记忆到实时 token 管理',
+    'hl.memory.desc': '四层记忆协同工作：L1 注入 CLAUDE.md 指令+已加载 skills+相关记忆到每轮 system prompt。L2 将 AI 驱动的记忆持久化为 frontmatter Markdown 并自动矛盾检测。L3 压缩长对话并将完整产物落盘。L4 在 50% 利用率时微压缩过期工具结果。',
+    'hl.memory.f1': 'InstructionLoader: 4 级 CLAUDE.md 加载链（user > codeauto > project > project-local），后者优先',
+    'hl.memory.f2': 'MemoryManager: frontmatter Markdown 文件，分类条目，相关性评分（project +8, global +1, term +2）',
+    'hl.memory.f3': 'AI 驱动保存: system prompt 指导 AI 在保存前检查矛盾，超过 24 小时标记 stale',
+    'hl.memory.f4': 'CompactService: 压缩时保存完整上下文至 .codeauto/compacted/compact-*.md，摘要含文件指针',
+    'hl.memory.f5': 'Token 预算: 200K 上下文窗口，本地估算作为 fallback，provider usage 优先使用',
     'quickstart.label': '快速开始',
     'quickstart.title': '秒级启动',
-    'quickstart.desc': '只需 Java 21 + Maven。从离线 Mock 模式起步（无需 API Key），或接入你自己的模型。支持 --cwd 参数指定工作目录，将 bin/ 加入 PATH 即可随处运行。',
+    'quickstart.desc': '只需 Java 21 + Maven。从离线 Mock 模式起步（无需 API Key），或接入你自己的模型。将 bin/ 加入 PATH 即可随处运行。',
     'quickstart.codeLabel': '安装与运行（Mock 模式）',
     'quickstart.copy': '复制',
     'quickstart.card1.label': '配置指南',
@@ -1018,61 +707,100 @@ const I18N = {
     'quickstart.card1.desc': '通过环境变量或 JSON 配置文件设置。优先级：默认 < 环境变量 < 项目 < 用户 < CLI 参数。',
     'quickstart.card2.label': '速查手册',
     'quickstart.card2.title': '斜杠命令',
-    'quickstart.card2.desc': '日常操作所需的完整 TUI 命令集。',
+    'quickstart.card2.desc': '日常操作所需的完整 TUI 命令集。输入 / 弹出交互式菜单。',
     'cmd.help': '显示帮助',
     'cmd.sessions': '会话管理',
     'cmd.memory': '记忆命令',
     'cmd.model': '切换模型',
     'cmd.compact': '压缩上下文',
     'cmd.mcp': 'MCP 状态',
-    'footer.copy': 'CodeAuto — JVM 原生 AI 编程代理运行时',
+    'cmd.todo': '任务追踪',
+    'cmd.perms': '权限规则',
+    'footer.copy': 'CodeAuto — JVM 原生 AI 编程代理运行时'
   },
   en: {
     'nav.features': 'Features',
+    'nav.highlights': 'Highlights',
     'nav.quickstart': 'Quick Start',
     'nav.github': 'GitHub',
     'hero.tag': 'Lightweight JVM Coding Agent Runtime',
-    'hero.title': 'CodeAuto,<br>\n        <span class="highlight">A lightweight Java-based coding agent</span>',
-    'hero.desc': 'Most AI coding tools are written in TypeScript or Python — Java developers face a steep learning curve. Inspired by Claude Code and built with pure Java 21, CodeAuto is a lightweight, extensible AI coding agent runtime: CLI + TUI, tool calling, MCP, permission control, session management — all running locally in your terminal.',
+    'hero.title': 'CodeAuto,<br><span class="highlight">A Lightweight Coding Agent Built in Java</span>',
+    'hero.desc': 'Most AI coding tools are built with TypeScript or Python, creating a high barrier for Java developers. CodeAuto draws from Claude Code\'s design and uses pure Java 21 to deliver a lightweight, extensible AI coding agent runtime -- CLI + TUI, tool calling, MCP, permission control, session management, all running locally in your terminal.',
     'hero.quickstart': 'Quick Start',
     'hero.viewgh': 'View on GitHub',
     'features.label': 'Core Capabilities',
-    'features.title': 'Everything you need to build with AI',
-    'features.desc': 'CodeAuto packs a full-featured agent runtime into a single JAR — from interactive TUI to automated tool orchestration.',
+    'features.title': 'Everything You Need to Build with AI',
+    'features.desc': 'CodeAuto packs a full-featured agent runtime into a single JAR -- from interactive TUI to automated tool orchestration.',
     'features.card1.title': 'CLI + TUI',
-    'features.card1.desc': 'Dual-mode interface — full-screen TUI with JLine 3 or classic CLI. Markdown-to-ANSI rendering, CJK support, mouse scroll, and tab completion.',
-    'features.card2.title': '20 Built-in Tools',
-    'features.card2.desc': 'File ops, command execution, web fetch/search, memory management, MCP helpers — extensible via ToolRegistry and Skills.',
-    'features.card3.title': 'MCP Support',
-    'features.card3.desc': 'Connect external tools via stdio or Streamable HTTP MCP. Auto-detect protocol, bearer auth, and full lifecycle management.',
+    'features.card1.desc': 'Dual-mode interface -- full-screen TUI with JLine 3 or classic CLI. Markdown-to-ANSI rendering, CJK support, mouse scroll, streaming output, and tab completion.',
+    'features.card2.title': '23 Built-in Tools',
+    'features.card2.desc': 'File ops, command execution, web fetch/search, memory management, Todo tasks, MCP helpers -- extensible via ToolRegistry and Skills.',
+    'features.card3.title': 'MCP + Skills',
+    'features.card3.desc': 'Connect external tools via stdio or Streamable HTTP MCP. Skills with session-level injection keep AI on track throughout the session.',
     'features.card4.title': 'Permission Control',
-    'features.card4.desc': 'Granular allow/deny for commands and file edits. Unified diff review before write. Persistent configurable rules with wildcard support.',
+    'features.card4.desc': 'Granular allow/deny for commands and file edits. Unified diff review before write. Wildcard-based persistent rules with allow-once/always/turn.',
     'features.card5.title': 'Session Management',
-    'features.card5.desc': 'Workspace-isolated sessions with save/resume/fork. Automatic context compression and micro-compression for long-running conversations.',
+    'features.card5.desc': 'Workspace-isolated sessions with save/resume/fork. Auto context compression with artifact persistence. Micro-compaction clears stale tool results.',
     'features.card6.title': 'Persistent Memory',
-    'features.card6.desc': 'Cross-session memory with typed entries (user, feedback, project, reference). Auto-staleness detection and system-prompt injection.',
+    'features.card6.desc': 'AI-driven cross-session memory with typed entries. Auto staleness detection, contradiction checking, and system-prompt injection.',
     'stats.tools': 'Built-in Tools',
     'stats.tests': 'Tests Passing',
-    'stats.models': 'Model Providers',
-    'stats.deps': 'Dependencies',
+    'stats.models': 'Core Systems',
+    'stats.deps': 'MCP Protocols',
+    'highlights.label': 'Technical Highlights',
+    'highlights.title': 'Four Pillars of the Agent Runtime',
+    'highlights.desc': 'Agent Loop, TodoList, MCP/Skills, and Multi-Layer Memory with Dynamic Context Compression form the foundation of CodeAuto\'s capability, safety, and extensibility.',
+    'hl.agent.title': 'Agent Loop -- The Execution Engine',
+    'hl.agent.subtitle': 'Multi-step tool calling with automatic context management',
+    'hl.agent.desc': 'The Agent Loop drives every conversation turn: sending messages to the model, parsing tool calls, executing them, and feeding results back -- up to 32 steps per turn. Streaming SSE deltas update the TUI in real time. Three-layer token management keeps context under control.',
+    'hl.agent.f1': 'Streaming AssistantMessage via SSE text_delta, TUI renders in-place without flicker',
+    'hl.agent.f2': 'Micro-compact clears old tool results at 50% context utilization, keeps last 3',
+    'hl.agent.f3': 'Full compact at 80%: summarizes middle messages, saves artifact to .codeauto/compacted/',
+    'hl.agent.f4': 'Cancellable at any step -- cancel() flag checked before API calls and tool execution',
+    'hl.agent.f5': 'JLine Signal.INT handler ensures Ctrl+C works even when raw mode signal suppression fails',
+    'hl.todo.title': 'TodoList -- Multi-Step Task Tracking',
+    'hl.todo.subtitle': 'AI and user collaboratively track complex task progress',
+    'hl.todo.desc': 'When the user gives a 3+ step task, the AI breaks it down with todo_create. The TUI header shows live progress (3/7). The AI updates status as it works, and users can manage tasks directly via /todo commands.',
+    'hl.todo.f1': 'JSON persistence at ~/.codeauto/todos/, per-project hash isolation',
+    'hl.todo.f2': 'AI auto-creates tasks when prompted with multi-step requests',
+    'hl.todo.f3': 'TUI header live badge: "Todo: 3/7" updates as tasks complete',
+    'hl.todo.f4': 'CLI/TUI /todo commands: list, add, done, undo, delete, clear',
+    'hl.mcp.title': 'MCP + Skills -- Open Extension System',
+    'hl.mcp.subtitle': 'Connect any tool, embed any domain knowledge',
+    'hl.mcp.desc': 'MCP brings external tools into the agent: connect databases, APIs, or custom servers via stdio or HTTP. Skills embed domain-specific instructions that persist through the entire session via system prompt injection.',
+    'hl.mcp.f1': 'Dual MCP transport: stdio (Content-Length / newline-json auto-negotiation) + Streamable HTTP',
+    'hl.mcp.f2': 'MCP tools auto-discovered and registered as native ToolDefinitions in ToolRegistry',
+    'hl.mcp.f3': 'Skills discovered from .code-auto/skills + .claude/skills with 3-tier resolution',
+    'hl.mcp.f4': 'load_skill -> SessionSkills in-memory registry -> injected into every subsequent system prompt',
+    'hl.mcp.f5': 'Skill index shows name + description in system prompt, reducing unnecessary list_skills calls',
+    'hl.memory.title': 'Multi-Layer Memory & Dynamic Context Compression',
+    'hl.memory.subtitle': 'From persistent cross-session memory to real-time token management',
+    'hl.memory.desc': 'Four layers of memory work together: L1 injects CLAUDE.md instructions + loaded skills + relevant memories into every system prompt. L2 persists AI-driven memories as frontmatter Markdown with contradiction detection. L3 compresses long conversations with full artifact persistence. L4 micro-compacts stale tool results at 50% utilization.',
+    'hl.memory.f1': 'InstructionLoader: 4-level CLAUDE.md chain (user > codeauto > project > project-local), later wins',
+    'hl.memory.f2': 'MemoryManager: frontmatter Markdown files, typed entries, relevance scoring (project +8, global +1, term +2)',
+    'hl.memory.f3': 'AI-driven save: system prompt guides AI to check contradictions before saving, stale after 24h',
+    'hl.memory.f4': 'CompactService: saves full pre-compaction context to .codeauto/compacted/compact-*.md with pointer in summary',
+    'hl.memory.f5': 'Token budget: 200K context window, local estimation as fallback, provider usage priority',
     'quickstart.label': 'Get Started',
-    'quickstart.title': 'Running in seconds',
-    'quickstart.desc': 'Java 21 + Maven is all you need. Start with offline mock mode (no API key required), or connect your own model. Use --cwd to set working directory, add bin/ to PATH to run from anywhere.',
+    'quickstart.title': 'Running in Seconds',
+    'quickstart.desc': 'Java 21 + Maven is all you need. Start with offline mock mode (no API key), or bring your own model. Add bin/ to PATH to run from anywhere.',
     'quickstart.codeLabel': 'Install & Run (Mock Mode)',
     'quickstart.copy': 'Copy',
     'quickstart.card1.label': 'Configuration',
     'quickstart.card1.title': 'Model Setup',
-    'quickstart.card1.desc': 'Configure via environment variables or JSON settings files. Priority: default < env < project < user < CLI.',
+    'quickstart.card1.desc': 'Configure via environment variables or JSON. Priority: default < env < project < user < CLI flags.',
     'quickstart.card2.label': 'Quick Reference',
     'quickstart.card2.title': 'Slash Commands',
-    'quickstart.card2.desc': 'Full set of TUI commands for everyday tasks.',
+    'quickstart.card2.desc': 'Full TUI command set for everyday tasks. Press / for the interactive menu.',
     'cmd.help': 'Show help',
     'cmd.sessions': 'Manage sessions',
     'cmd.memory': 'Memory commands',
     'cmd.model': 'Switch model',
     'cmd.compact': 'Compress context',
     'cmd.mcp': 'MCP status',
-    'footer.copy': 'CodeAuto — JVM-native AI coding assistant runtime',
+    'cmd.todo': 'Task tracking',
+    'cmd.perms': 'Permission rules',
+    'footer.copy': 'CodeAuto -- JVM-native AI coding assistant runtime'
   }
 };
 
@@ -1084,8 +812,6 @@ function switchTheme() {
   document.documentElement.setAttribute('data-theme', currentTheme === 'light' ? 'light' : '');
   try { localStorage.setItem('codeauto-theme', currentTheme); } catch(_) {}
 }
-
-// Apply saved theme on load (light is the HTML default)
 if (currentTheme !== 'light') {
   document.documentElement.setAttribute('data-theme', '');
 }
@@ -1093,42 +819,26 @@ if (currentTheme !== 'light') {
 function switchLang(lang) {
   currentLang = lang;
   const dict = I18N[lang];
-
-  // Update all [data-i18n] elements
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
-    if (dict[key] !== undefined) {
-      el.textContent = dict[key];
-    }
+    if (dict[key] !== undefined) el.textContent = dict[key];
   });
-
-  // Update all [data-i18n-html] elements (for HTML content)
   document.querySelectorAll('[data-i18n-html]').forEach(el => {
     const key = el.getAttribute('data-i18n-html');
-    if (dict[key] !== undefined) {
-      el.innerHTML = dict[key];
-    }
+    if (dict[key] !== undefined) el.innerHTML = dict[key];
   });
-
-  // Update lang toggle buttons
   document.querySelectorAll('.lang-btn').forEach(btn => {
     btn.classList.toggle('active', btn.getAttribute('data-lang') === lang);
   });
-
-  // Update html lang attribute
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
-
-  // Persist preference
   try { localStorage.setItem('codeauto-lang', lang); } catch(_) {}
 }
 
-// ─── Navbar scroll effect ───
 const navbar = document.getElementById('navbar');
 window.addEventListener('scroll', () => {
   navbar.classList.toggle('scrolled', window.scrollY > 20);
 });
 
-// ─── Copy code ───
 function copyCode(btn) {
   const block = btn.closest('.code-block');
   const body = block.querySelector('.code-block-body');
@@ -1138,32 +848,27 @@ function copyCode(btn) {
     .trim();
   navigator.clipboard.writeText(text).then(() => {
     const copySpan = btn.querySelector('[data-i18n]');
-    const orig = copySpan ? copySpan.textContent : btn.textContent;
     if (copySpan) {
-      copySpan.textContent = currentLang === 'zh' ? '已复制!' : 'Copied!';
+      copySpan.textContent = currentLang === 'zh' ? 'Copied!' : 'Copied!';
     } else {
       btn.textContent = 'Copied!';
     }
     btn.style.color = 'var(--accent-green)';
     setTimeout(() => {
       if (copySpan) {
-        const dict = I18N[currentLang];
-        copySpan.textContent = dict['quickstart.copy'] || 'Copy';
+        copySpan.textContent = I18N[currentLang]['quickstart.copy'] || 'Copy';
       } else {
-        btn.textContent = orig;
+        btn.textContent = 'Copy';
       }
       btn.style.color = '';
     }, 1800);
   });
 }
 
-// ─── Restore saved language preference ───
 (function() {
   try {
     const saved = localStorage.getItem('codeauto-lang');
-    if (saved === 'en' || saved === 'zh') {
-      switchLang(saved);
-    }
+    if (saved === 'en' || saved === 'zh') switchLang(saved);
   } catch(_) {}
 })();
 </script>

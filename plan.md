@@ -619,3 +619,28 @@ BUILD SUCCESS
 Tests run: 83, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
+
+## Bug 修复记录（2026-05-04）
+
+### Ctrl+C 打断对话
+
+- [x] 新增 `AgentLoop.cancel()` / `isCancelled()` — volatile 标志 + 关键检查点（每轮开头、API 调用前、工具执行前）
+- [x] `runTurn()` 开头自动重置 `cancelled = false`，避免打断后永久失效
+- [x] `cancelAgent()` 调用 `loop.cancel()` + `future.cancel(true)` 双重保障
+- [x] JLine `Terminal.Signal.INT` 信号处理器，OS 层信号也能拦截
+- [x] 打断时清理全部状态：`streamingAssistantEntryId`、`streamingAssistantBuffer`、progress trace/entry ID、`runningToolName`、`recentTools`
+- [x] session 正常保存打断标记 `(Interrupted)`，下一次对话从干净状态开始
+
+### 压缩上下文持久化
+
+- [x] `CompactService` 保存压缩前完整消息到 `<workspace>/.codeauto/compacted/compact-<timestamp>.md`
+- [x] 摘要末尾自动注入文件路径指针，AI 可按需 `read_file` 查阅完整上下文
+- [x] AgentLoop 自动压缩和 TUI `/compact` 手动压缩均写文件
+- [x] `.gitignore` 排除 `.codeauto/compacted/`
+
+### 验证结果
+
+```
+Tests run: 79, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```

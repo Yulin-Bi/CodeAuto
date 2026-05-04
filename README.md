@@ -387,17 +387,16 @@ BUILD SUCCESS
 
 主要覆盖：
 
-- AgentLoop + 流式输出
+- AgentLoop + 流式输出 + 取消打断
 - ToolRegistry 和内置工具（含参数兼容性）
-- SessionStore
-- Context 压缩
+- SessionStore + 压缩边界
+- Context 压缩 + 微压缩 + 压缩产物落盘
 - PermissionManager + 通配规则
 - MCP client/service
 - MemoryManager
-- InstructionLoader + 多级指令加载
+- InstructionLoader + 多级指令加载 + Skill 会话注入
 - TodoStore
 - CLI 编码和 workspace 解析
-- Assistant 流式输出事件
 - TUI escape sequence + diff 高亮
 
 ## 常见问题
@@ -449,31 +448,32 @@ $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 
 ## 最近更新（2026-05-04）
 
+### Ctrl+C 打断对话
+
+- Ctrl+C 在 AgentLoop 执行中会中断当前对话，不会退出 TUI。空闲状态下仍退出 TUI。
+- `AgentLoop` 内置可取消检查点（每轮开始、API 调用前、工具执行前），确保快速响应。
+- JLine INT 信号处理器提供 OS 层兜底拦截。
+- 打断后状态完全重置：流式缓冲、progress trace、工具状态均清理干净。
+
+### 上下文压缩产物落盘
+
+- 压缩时完整消息保存到 `.codeauto/compacted/compact-<timestamp>.md`。
+- 摘要末尾自动注入文件路径，AI 发现摘要信息不足时可自行 `read_file` 查阅。
+- 自动压缩和手动 `/compact` 均生效。
+
 ### 记忆系统简化
 
-- 移除主动记忆自动捕获弹窗（`ActiveMemoryCaptureService` + TUI popup + CLI 确认流程），记忆保存完全由 AI 驱动。
-- system prompt 增强 `Memory behavior:` 指引，AI 会在用户表达偏好、约定、决策时主动调用 `save_memory`。
-- `save_memory` 工具要求 AI 保存前先检查矛盾/过时记忆并清理。
-- 用户仍可通过 `/memory` 命令管理记忆。
+- 移除主动记忆自动捕获弹窗，记忆保存完全由 AI 驱动。
+- system prompt 增强 `Memory behavior:` 指引，AI 保存前先检查矛盾/过时记忆。
 
 ### Skills 会话注入
 
-- `load_skill` 加载后，skill 完整指令在当前会话的每轮 system prompt 中注入，标记 `[loaded]`。
-- system prompt 中 skill 列表现在展示名称和描述，AI 无需先调用 `list_skills` 即可判断何时加载。
-- 新增 `SessionSkills` 进程内注册表，per-cwd 跟踪已加载 skill。
-
-### TUI progress 与布局
-
-- 顶部 CodeAuto 外框已经移除，只保留工作目录和指标分隔线。
-- 工具调用状态统一进入 progress 区域，使用 ASCII 动态符号和 `[OK]`/`[ERR]` 标识。
-- progress 执行中固定在 assistant 输出上方，结束后插入到对应回复之前。
-- `Ctrl+O` 展开/折叠 progress；`Ctrl+Up` / `Ctrl+Down` 滚动聊天记录。
+- `load_skill` 加载后，skill 指令在每轮 system prompt 中注入，标记 `[loaded]`。
+- Skill 列表展示名称和描述，减少 `list_skills` 调用。
 
 ### TodoList 功能
 
-- 新增 `todo_create`、`todo_update`、`todo_list` 工具，AI 可在多步任务中追踪进度。
-- TUI header 展示当前 todo 进度（如 `3/7`）。
-- CLI/TUI 支持 `/todo` 命令管理任务。
+- 新增 `todo_create`、`todo_update`、`todo_list` 工具，TUI header 展示进度。
 
 ### 验证状态
 
