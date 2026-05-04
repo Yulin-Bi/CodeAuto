@@ -74,7 +74,10 @@ class AgentLoopTest {
 
     assertTrue(events.stream().anyMatch(event -> event.startsWith("compact:")));
     assertTrue(result.stream().anyMatch(ChatMessage.ContextSummaryMessage.class::isInstance));
-    assertTrue(observedCalls.getFirst().stream().anyMatch(ChatMessage.ContextSummaryMessage.class::isInstance));
+    // At least 2 calls: summarization (from CompactService) + main conversation.
+    // The last call is the main conversation and must contain the ContextSummaryMessage.
+    assertTrue(observedCalls.size() >= 2, "expected at least 2 model calls");
+    assertTrue(observedCalls.getLast().stream().anyMatch(ChatMessage.ContextSummaryMessage.class::isInstance));
   }
 
   @Test

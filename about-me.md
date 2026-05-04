@@ -196,7 +196,7 @@ MCP：
 当前测试状态：
 
 ```text
-Tests run: 79, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 84, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -260,12 +260,13 @@ CodeAuto 保持几个工程原则：
 - Skill 变量替换和 fork 模式
 - 更细的模型上下文窗口查询表
 
-## 最近实现状态（2026-05-04）
+## 最近实现状态（2026-05-05）
 
+- **模型辅助压缩摘要**：`CompactService` 新增 `ModelAdapter` 参数，压缩时优先让模型生成结构化摘要（User Intent / Key Decisions / File Changes / Errors & Fixes / TODOs / Important Context）。模型不可用时 fallback 到改进的启发式摘要（按消息类型分组，提取前几行关键内容）。压缩产物始终落盘。
 - **Ctrl+C 打断对话**：AgentLoop 内置取消检查点，Ctrl+C 在工具执行中或等待 API 时均可中断，JLine INT 信号处理器提供 OS 层兜底。打断后状态完全重置，下一轮对话不受影响。
 - **上下文压缩产物**：压缩时完整消息保存到 `.codeauto/compacted/compact-<timestamp>.md`，摘要末尾注入路径指针，AI 可自行 `read_file` 查阅完整上下文。
 - TUI 已经向更轻量的终端工作台收敛：顶部 CodeAuto 外框被移除，指标使用灰色分隔符，progress 是查看工具活动的主要入口。
 - 记忆系统简化为纯 AI 驱动：移除 `ActiveMemoryCaptureService` 和弹窗，system prompt 指导 AI 主动识别记忆信号，保存前自动检查矛盾项。
 - Skills 支持会话级持久注入：`load_skill` 后内容在每轮 system prompt 中注入，标记 `[loaded]`。
 - TodoList 功能：`todo_create`/`todo_update`/`todo_list` 工具，TUI header 展示进度。
-- 当前验证基线：`Tests run: 79, Failures: 0, Errors: 0, Skipped: 0`。
+- 当前验证基线：`Tests run: 84, Failures: 0, Errors: 0, Skipped: 0`。

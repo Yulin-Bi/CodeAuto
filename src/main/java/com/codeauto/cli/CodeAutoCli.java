@@ -244,7 +244,7 @@ public class CodeAutoCli implements Runnable {
         }
         if ("/compact".equals(input)) {
           int before = messages.size();
-          var result = CompactService.compactWithStats(messages, 8);
+          var result = CompactService.compactWithStats(messages, 8, 200_000, cwd, model);
           messages = new ArrayList<>(result.messages());
           if (result.summary() != null) {
             if (appendCompactBoundary(sessions, sessionId, result.summary(), result.tokensBefore(), result.tokensAfter())) {

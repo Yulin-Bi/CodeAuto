@@ -381,7 +381,7 @@ src/main/java/com/codeauto/
 当前测试：
 
 ```text
-Tests run: 79, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 84, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -446,7 +446,15 @@ CodeAuto 已在 CLI 入口默认设置 `org.jline.terminal.disableDeprecatedProv
 $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 ```
 
-## 最近更新（2026-05-04）
+## 最近更新（2026-05-05）
+
+### 上下文压缩模型辅助摘要
+
+- `CompactService.compactWithStats()` 新增 `ModelAdapter` 参数，压缩时优先让模型生成结构化摘要。
+- 摘要包含 6 个结构化 section：User Intent / Key Decisions / File Changes / Errors & Fixes / TODOs / Important Context。
+- 模型不可用或调用失败时自动 fallback 到改进的启发式摘要（按消息类型分组：User Requests / Tools Called / Key Outputs / Assistant Responses）。
+- 压缩产物始终落盘到 `.codeauto/compacted/compact-*.md`，保证完整上下文可回溯。
+- 自动压缩和手动 `/compact` 均生效。
 
 ### Ctrl+C 打断对话
 
@@ -478,7 +486,7 @@ $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 ### 验证状态
 
 ```
-Tests run: 79, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 84, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 

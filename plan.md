@@ -6,7 +6,7 @@
 |------|------|
 | Java 源文件 | 66 个 |
 | 测试文件 | 20 个 |
-| 测试数量 | 79 个（全部通过 ✅） |
+| 测试数量 | 84 个（全部通过 ✅） |
 | 代码行数 | ~7000 行 |
 | TUI 源文件 | 5 个（Ansi/PanelRenderer/MarkdownRenderer/TranscriptEntry/TuiApp） |
 | 技术栈 | Java 21 + Maven + Jackson + Picocli + JLine + java-diff-utils |
@@ -642,5 +642,47 @@ BUILD SUCCESS
 
 ```
 Tests run: 79, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+## 上下文压缩模型辅助摘要（2026-05-05）
+
+### 问题
+
+当前 `CompactService.excerpt()` 只做"取文本 → 压缩空白 → 截断 160 字符"的纯启发式摘要，信息密度低，扁平列表难以让模型快速定位关键信息。
+
+### 改进
+
+- [x] **模型辅助摘要**：`CompactService.compactWithStats()` 新增 `ModelAdapter` 参数，压缩时优先让模型生成结构化摘要
+  - 摘要专用 system prompt，指导模型输出 6 个结构化 section（User Intent / Key Decisions / File Changes / Errors & Fixes / TODOs / Important Context）
+  - 模型返回 ToolCallsStep 或空响应时自动 fallback 到启发式摘要
+  - 模型调用异常时自动 fallback
+- [x] **启发式摘要改进**：不再扁平罗列 160 字符 excerpt，改为按消息类型分组
+  - `### User Requests`：用户消息（最多 300 字符）
+  - `### Tools Called`：工具调用（工具名 + 参数）
+  - `### Key Outputs`：工具结果（前 3 行非空内容，每行 150 字符）
+  - `### Assistant Responses`：助手回复（去空白压缩，300 字符）
+  - 跳过 progress 和 raw 等低价值消息类型
+- [x] **压缩产物落盘不变**：完整消息始终保存到 `.codeauto/compacted/compact-*.md`
+
+### 调用方改动
+
+- [x] `AgentLoop.runTurn()` 自动压缩时传入 `model`
+- [x] `TuiApp.runCompact()` 手动压缩时传入 `model`
+- [x] `CodeAutoCli` `/compact` 命令传入 `model`
+
+### 测试
+
+新增 5 个测试：
+- `heuristicSummaryGroupsMessagesByType`：验证启发式摘要的 4 个 section 结构
+- `modelAssistedSummaryUsesModelOutput`：验证模型输出被用作摘要内容
+- `fallsBackToHeuristicWhenModelThrows`：验证模型异常时 fallback
+- `fallsBackToHeuristicWhenModelReturnsToolCalls`：验证模型返回工具调用时 fallback
+- `compactionSavesArtifactWhenCwdProvided`：验证压缩产物落盘 + 路径引用
+
+### 验证结果
+
+```
+Tests run: 84, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
