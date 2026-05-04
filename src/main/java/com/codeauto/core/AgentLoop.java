@@ -60,7 +60,7 @@ public class AgentLoop {
       listener.onContextStats(stats);
       if (step == 0 && ("critical".equals(stats.warningLevel()) || "blocked".equals(stats.warningLevel()))) {
         CompactService.CompactResult compact = CompactService.compactWithStats(
-            messages, DEFAULT_COMPACT_TAIL_MESSAGES, contextWindow);
+            messages, DEFAULT_COMPACT_TAIL_MESSAGES, contextWindow, toolContext.cwd());
         if (compact.summary() != null) {
           messages = new ArrayList<>(compact.messages());
           listener.onAutoCompact(compact);

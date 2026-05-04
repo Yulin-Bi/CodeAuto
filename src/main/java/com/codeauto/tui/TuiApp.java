@@ -1354,7 +1354,7 @@ public class TuiApp {
     agentFuture = CompletableFuture.runAsync(() -> {
       try {
         int before = messages.size();
-        var result = CompactService.compactWithStats(messages, 8);
+        var result = CompactService.compactWithStats(messages, 8, 200_000, cwd);
         messages.clear();
         messages.addAll(result.messages());
         if (result.summary() != null) {
