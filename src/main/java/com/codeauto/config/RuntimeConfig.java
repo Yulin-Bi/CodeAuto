@@ -10,7 +10,7 @@ public record RuntimeConfig(
     int maxRetries,
     int modelTimeoutSeconds
 ) {
-  public static final RuntimeConfig DEFAULTS = new RuntimeConfig("mock", "", "", 4096, 4, 600);
+  public static final RuntimeConfig DEFAULTS = new RuntimeConfig("mock", "", "", 16384, 4, 600);
 
   public RuntimeConfig withModel(String model) {
     return model == null || model.isBlank()

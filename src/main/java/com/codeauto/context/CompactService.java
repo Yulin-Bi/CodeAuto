@@ -77,6 +77,7 @@ public final class CompactService {
     }
     ChatMessage system = messages.getFirst();
     int tailStart = Math.max(1, messages.size() - keepTailMessages);
+    tailStart = snapToCleanBoundary(messages, tailStart);
     List<ChatMessage> compressed = messages.subList(1, tailStart);
 
     String summary = generateSummary(model, compressed);
@@ -276,6 +277,27 @@ public final class CompactService {
   }
 
   // ---- small utilities ----
+
+  /**
+   * Adjust index so the compact boundary never splits tool_use / tool_result pairs.
+   * If {@code messages[index]} is a {@link ToolResultMessage}, walk backwards past all
+   * adjacent ToolResultMessages and the AssistantToolCallMessages that precede them,
+   * so the tail includes the complete tool turn.
+   */
+  private static int snapToCleanBoundary(List<ChatMessage> messages, int index) {
+    if (index <= 1 || index >= messages.size()) return index;
+    if (!(messages.get(index) instanceof ChatMessage.ToolResultMessage)) return index;
+    int i = index;
+    while (i > 1) {
+      i--;
+      ChatMessage msg = messages.get(i);
+      if (!(msg instanceof ChatMessage.ToolResultMessage)
+          && !(msg instanceof ChatMessage.AssistantToolCallMessage)) {
+        return i + 1;
+      }
+    }
+    return 1;
+  }
 
   private static ChatMessage markUsageStale(ChatMessage message) {
     if (message instanceof ChatMessage.AssistantMessage assistant && assistant.providerUsage() != null) {

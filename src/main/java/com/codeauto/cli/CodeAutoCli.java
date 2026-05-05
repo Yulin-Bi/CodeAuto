@@ -56,7 +56,7 @@ public class CodeAutoCli implements Runnable {
   @CommandLine.Option(names = "--cwd", description = "Working directory (default: current dir)")
   String cwdOverride;
 
-  @CommandLine.Option(names = "--max-steps", defaultValue = "32", description = "Maximum model/tool steps per turn")
+  @CommandLine.Option(names = "--max-steps", defaultValue = "128", description = "Maximum model/tool steps per turn")
   int maxSteps;
 
   @CommandLine.Option(names = "--max-tokens", description = "Max output tokens (overrides config)")
