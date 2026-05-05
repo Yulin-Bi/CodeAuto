@@ -8,14 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TuiAppEscapeSequenceTest {
   @Test
   void bracketPrefixIsNotACompleteEscapeSequence() {
-    assertFalse(TuiApp.isCompleteEscapeSequence("\033["));
+    assertFalse(TuiInputParser.isCompleteEscapeSequence("\033["));
   }
 
   @Test
   void recognizesKeyboardAndMouseEscapeSequences() {
-    assertTrue(TuiApp.isCompleteEscapeSequence("\033[A"));
-    assertTrue(TuiApp.isCompleteEscapeSequence("\033[5~"));
-    assertTrue(TuiApp.isCompleteEscapeSequence("\033[1;5B"));
-    assertTrue(TuiApp.isCompleteEscapeSequence("\033[<64;10;5M"));
+    assertTrue(TuiInputParser.isCompleteEscapeSequence("\033[A"));
+    assertTrue(TuiInputParser.isCompleteEscapeSequence("\033[5~"));
+    assertTrue(TuiInputParser.isCompleteEscapeSequence("\033[1;5B"));
+    assertTrue(TuiInputParser.isCompleteEscapeSequence("\033[<64;10;5M"));
   }
 }
