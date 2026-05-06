@@ -121,6 +121,54 @@ class InstructionLoaderTest {
     }
   }
 
+  @Test
+  void bulletsAppearEvenWhenRegularMemoriesSaturateLimit() throws Exception {
+    String previousHome = System.getProperty("codeauto.home");
+    String previousUserHome = System.getProperty("user.home");
+    java.nio.file.Path userHome = Files.createTempDirectory("codeauto-bullet-quota-user");
+    java.nio.file.Path codeautoHome = Files.createTempDirectory("codeauto-bullet-quota-home");
+    java.nio.file.Path project = Files.createTempDirectory("codeauto-bullet-quota-project");
+    try {
+      System.setProperty("user.home", userHome.toString());
+      System.setProperty("codeauto.home", codeautoHome.toString());
+      MemoryManager memoryManager = new MemoryManager();
+
+      // Create 5 regular project memories — saturates the MAX_MEMORIES limit
+      for (int i = 1; i <= 5; i++) {
+        memoryManager.save(MemoryType.PROJECT, "Regular memory " + i, project,
+            List.of("test"), "Content for regular memory " + i);
+      }
+
+      // Bullets live in ~/.codeauto/bullets/ — separate from regular memories
+      java.nio.file.Path bulletsDir = codeautoHome.resolve("bullets");
+      Files.createDirectories(bulletsDir);
+      MemoryManager bulletManager = new MemoryManager(bulletsDir);
+      bulletManager.saveBullet(MemoryType.PROJECT, "Always grep first", project,
+          List.of("reflection", "auto"), "Grep for existing imports before adding new class references.",
+          "tip-grep", "tool_usage");
+
+      String prompt = InstructionLoader.systemPrompt(project, "ok");
+
+      // Regular memories section should exist
+      assertTrue(prompt.contains("Relevant persistent memories"));
+      // Bullet should appear in the ACE Playbook section in compact one-line format
+      assertTrue(prompt.contains("ACE Playbook (1)"));
+      assertTrue(prompt.contains("[bullet:tip-grep]"));
+      assertTrue(prompt.contains("Grep for existing imports"));
+
+      // Cleanup
+      for (var entry : memoryManager.list()) {
+        memoryManager.delete(entry.id());
+      }
+      for (var entry : bulletManager.list()) {
+        bulletManager.delete(entry.id());
+      }
+    } finally {
+      restoreProperty("codeauto.home", previousHome);
+      restoreProperty("user.home", previousUserHome);
+    }
+  }
+
   private static void assertInOrder(String haystack, String... needles) {
     int cursor = -1;
     for (String needle : needles) {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.codeauto.config.ConfigLoader;
 import com.codeauto.config.RuntimeConfig;
 import com.codeauto.context.CompactService;
+import com.codeauto.reflection.ReflectionService;
 import com.codeauto.context.ContextStats;
 import com.codeauto.context.TokenEstimator;
 import com.codeauto.core.AgentLoop;
@@ -1014,6 +1015,20 @@ public class TuiApp {
       updateStatusLine();
       transcriptDirty = true;
       render();
+    }
+
+    @Override
+    public void onTurnComplete(List<ChatMessage> messages) {
+      CompletableFuture.runAsync(() -> {
+        try {
+          ReflectionService.reflectIfNeeded(messages, model, cwd).ifPresent(memory -> {
+            addEntry(new TranscriptEntry.Assistant(nextEntryId++,
+                "[reflection] saved: " + memory.title()));
+          });
+        } catch (Exception e) {
+          System.err.println("[reflection] error: " + e.getMessage());
+        }
+      });
     }
   };
 

@@ -33,7 +33,7 @@ CodeAuto 的目标不是做一个庞大的 IDE，而是做一个清晰、可审�
 | 记忆 | frontmatter Markdown 持久化记忆 |
 | 指令 | 多级 CLAUDE.md 加载 |
 | MCP | stdio + Streamable HTTP |
-| 测试 | 79 个测试通过 |
+| 测试 | 111 个测试通过 |
 
 ## 架构模块
 
@@ -44,12 +44,14 @@ com.codeauto
   config         多级配置加载
   context        token 估算、压缩和工具结果落盘
   core           AgentLoop、ChatMessage、ToolCall、AgentStep
+  curator        ACE Bullet 确定性合并引擎
   instructions   CLAUDE.md 和 system prompt 指令注入
   manage         用户级管理配置读写
   mcp            MCP client/service/backed tool
   memory         持久化记忆系统
   model          ModelAdapter、Anthropic、Mock
   permissions    权限审批和持久化规则
+  reflection     Reflexion 自反思服务
   session        会话保存、恢复、fork、compact boundary
   skills         Skills 发现和加载
   tool           工具接口、注册表和结果类型
@@ -197,7 +199,7 @@ MCP：
 当前测试状态：
 
 ```text
-Tests run: 84, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 111, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -212,10 +214,12 @@ BUILD SUCCESS
 - MCP client/service/helper/backed tool
 - Skills 发现
 - 指令加载
-- 记忆保存、检索、注入和工具管理
+- 记忆保存、检索、注入、bullet 序列化和工具管理
 - CLI 编码和 workspace 解析
 - Assistant 流式输出事件
 - TUI escape sequence 处理
+- ReflectionService + 4 种触发检测 + FEEDBACK 记忆 + Bullet 自动创建
+- Curator + BulletDelta ADD/REMOVE/TAG/计数器/项目过滤 + Jaccard 去重
 
 ## 常用 CLI 参数
 
@@ -255,7 +259,7 @@ CodeAuto 保持几个工程原则：
 
 下一步适合继续推进：
 
-- SessionMemory 自动提取
+- Bullet 质量衰减（长期未使用的 bullet 自动降权）
 - L2 Session Memory 压缩层
 - 同文件多次编辑 transcript 聚合
 - Skill 变量替换和 fork 模式
@@ -263,6 +267,7 @@ CodeAuto 保持几个工程原则：
 
 ## 最近实现状态（2026-05-06）
 
+- **Reflexion 自反思 + ACE Bullet 结构化经验记忆**：每轮对话结束后自动检测失败信号，触发模型反思并保存 FEEDBACK 记忆。反思提取 Reusable Lesson 后通过 Curator 确定性增量引擎自动创建 ACE Bullet（带 helpful/harmful 计数器，Jaccard 去重，10 分钟冷却）。文件按类型分离存储（reflections/bullets → 项目级 `.codeauto/`，memories → 全局 `~/.codeauto/memory/`）。`InstructionLoader` 独立注入 ACE Playbook（最多 10 条紧凑单行索引），反思异步执行不阻塞用户。
 - **Windows MCP stdio 兼容性修复**：`McpClient` 新增 `.cmd` 自动解析，Windows 下自动从 `npx.cmd` 等包装脚本中提取 `node.exe` 等真实可执行文件，用户无需手动配置完整路径。修复 `initialize` 缺失 `capabilities` 字段、PATH 搜索误匹配 bash 脚本、stderr 噪声污染 JSON 帧等问题。建议显式指定 `"protocol": "newline-json"` 跳过 `auto` 模式的 content-length 协商等待。
 
 ## 最近实现状态（2026-05-05）
@@ -274,4 +279,4 @@ CodeAuto 保持几个工程原则：
 - 记忆系统简化为纯 AI 驱动：移除 `ActiveMemoryCaptureService` 和弹窗，system prompt 指导 AI 主动识别记忆信号，保存前自动检查矛盾项。
 - Skills 支持会话级持久注入：`load_skill` 后内容在每轮 system prompt 中注入，标记 `[loaded]`。
 - TodoList 功能：`todo_create`/`todo_update`/`todo_list` 工具，TUI header 展示进度。
-- 当前验证基线：`Tests run: 84, Failures: 0, Errors: 0, Skipped: 0`。
+- 当前验证基线：`Tests run: 111, Failures: 0, Errors: 0, Skipped: 0`。

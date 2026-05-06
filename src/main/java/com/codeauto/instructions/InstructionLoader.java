@@ -10,10 +10,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class InstructionLoader {
   private static final int MAX_MEMORIES = 5;
+  private static final int MAX_BULLETS = 10;
 
   public static String systemPrompt(Path cwd, String permissionSummary) {
     String base = "You are CodeAuto. Permissions: " + permissionSummary
@@ -33,7 +35,14 @@ public class InstructionLoader {
         + "contradictory or outdated memories on the same topic and delete_memory them. "
         + "Always ask the user which destination they prefer: store, project, global, or codeauto.";
     List<InstructionFile> files = load(cwd);
-    List<MemoryEntry> memories = new MemoryManager().relevant(cwd, "", MAX_MEMORIES);
+    MemoryManager manager = new MemoryManager();
+    List<MemoryEntry> regulars = manager.relevant(cwd, "", MAX_MEMORIES).stream()
+        .filter(m -> !m.isBullet())
+        .toList();
+    List<MemoryEntry> bullets = fetchRelevantBullets(cwd);
+    List<MemoryEntry> memories = new ArrayList<>(regulars.size() + bullets.size());
+    memories.addAll(regulars);
+    memories.addAll(bullets);
     String todoSummary = cwd != null ? new TodoStore(cwd).summary() : "";
     var skillIndex = cwd != null
         ? new SkillService(cwd).index() : List.<com.codeauto.skills.SkillService.SkillIndexEntry>of();
@@ -109,19 +118,70 @@ public class InstructionLoader {
     }
   }
 
+  private static List<MemoryEntry> fetchRelevantBullets(Path cwd) {
+    List<MemoryEntry> allBullets = new ArrayList<>();
+
+    // Project-specific bullets: <cwd>/.codeauto/bullets/
+    if (cwd != null) {
+      Path projectBulletsDir = cwd.resolve(".codeauto").resolve("bullets");
+      if (Files.isDirectory(projectBulletsDir)) {
+        allBullets.addAll(new MemoryManager(projectBulletsDir).list());
+      }
+    }
+    // Global bullets: ~/.codeauto/bullets/
+    Path globalBulletsDir = RuntimeConfig.homeDir().resolve("bullets");
+    if (Files.isDirectory(globalBulletsDir)) {
+      allBullets.addAll(new MemoryManager(globalBulletsDir).list());
+    }
+
+    String project = cwd == null ? "" : cwd.toAbsolutePath().normalize().toString();
+    return allBullets.stream()
+        .filter(MemoryEntry::isBullet)
+        .filter(b -> project.isBlank() || b.project().isBlank() || b.project().equals(project))
+        .sorted(Comparator.comparing((MemoryEntry b) -> {
+          if (project.isBlank()) return 0;
+          return b.project().equals(project) ? 0 : 1;
+        }).thenComparing(MemoryEntry::updatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+        .limit(MAX_BULLETS)
+        .toList();
+  }
+
   private static void appendMemories(StringBuilder prompt, List<MemoryEntry> memories) {
     Instant now = Instant.now();
-    prompt.append("\n# Relevant persistent memories\n");
-    prompt.append("Use these as helpful context. If a memory is marked stale, verify it before relying on it.\n");
-    for (MemoryEntry memory : memories) {
-      prompt.append("\n## ").append(memory.title())
-          .append(" [").append(memory.type().name().toLowerCase()).append("]");
-      if (memory.stale(now)) prompt.append(" [stale]");
-      prompt.append("\n");
-      if (!memory.tags().isEmpty()) {
-        prompt.append("tags: ").append(String.join(", ", memory.tags())).append("\n");
+    List<MemoryEntry> bullets = memories.stream().filter(MemoryEntry::isBullet).toList();
+    List<MemoryEntry> regulars = memories.stream().filter(m -> !m.isBullet()).toList();
+
+    if (!regulars.isEmpty()) {
+      prompt.append("\n# Relevant persistent memories\n");
+      prompt.append("Use these as helpful context. If a memory is marked stale, verify it before relying on it.\n");
+      for (MemoryEntry memory : regulars) {
+        prompt.append("\n## ").append(memory.title())
+            .append(" [").append(memory.type().name().toLowerCase()).append("]");
+        if (memory.stale(now)) prompt.append(" [stale]");
+        prompt.append("\n");
+        if (!memory.tags().isEmpty()) {
+          prompt.append("tags: ").append(String.join(", ", memory.tags())).append("\n");
+        }
+        prompt.append(memory.content().trim()).append("\n");
       }
-      prompt.append(memory.content().trim()).append("\n");
+    }
+
+    if (!bullets.isEmpty()) {
+      prompt.append("\n# ACE Playbook (").append(bullets.size()).append(")\n");
+      prompt.append("Each bullet below is a one-line lesson from past experience. ");
+      prompt.append("Apply them when the situation matches. Cite as [bullet:<id>].\n");
+      for (MemoryEntry bullet : bullets) {
+        prompt.append("- [bullet:").append(bullet.bulletId()).append("]");
+        if (!bullet.section().isBlank()) {
+          prompt.append(" [").append(bullet.section()).append("]");
+        }
+        if (bullet.helpfulCount() > 0 || bullet.harmfulCount() > 0) {
+          prompt.append(" +").append(bullet.helpfulCount()).append("/-").append(bullet.harmfulCount());
+        }
+        prompt.append(" ").append(bullet.content().trim());
+        if (bullet.stale(now)) prompt.append(" [stale]");
+        prompt.append("\n");
+      }
     }
   }
 

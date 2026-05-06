@@ -45,6 +45,11 @@ public class AgentLoop {
     this.contextWindow = contextWindow <= 0 ? DEFAULT_CONTEXT_WINDOW : contextWindow;
   }
 
+  private List<ChatMessage> finishTurn(List<ChatMessage> messages) {
+    listener.onTurnComplete(messages);
+    return messages;
+  }
+
   public List<ChatMessage> runTurn(List<ChatMessage> initialMessages) throws Exception {
     cancelled = false;
     List<ChatMessage> messages = new ArrayList<>(initialMessages);
@@ -53,7 +58,7 @@ public class AgentLoop {
     for (int step = 0; step < maxSteps; step++) {
       if (cancelled) {
         messages.add(new ChatMessage.AssistantMessage("(Interrupted)"));
-        return messages;
+        return finishTurn(messages);
       }
       messages = new ArrayList<>(MicroCompactService.microcompact(messages, contextWindow));
       ContextStats stats = TokenEstimator.compute(messages, contextWindow);
@@ -69,7 +74,7 @@ public class AgentLoop {
       }
       if (cancelled) {
         messages.add(new ChatMessage.AssistantMessage("(Interrupted)"));
-        return messages;
+        return finishTurn(messages);
       }
       AgentStep next = model.next(List.copyOf(messages), listener);
 
@@ -82,7 +87,7 @@ public class AgentLoop {
         }
         if (content.isEmpty()) {
           messages.add(new ChatMessage.AssistantMessage("Model returned an empty response.", assistant.usage(), false));
-          return messages;
+          return finishTurn(messages);
         }
         if (assistant.kind() == AgentStep.Kind.PROGRESS) {
           listener.onProgressMessage(content);
@@ -92,7 +97,7 @@ public class AgentLoop {
         }
         listener.onAssistantMessage(content);
         messages.add(new ChatMessage.AssistantMessage(content, assistant.usage(), false));
-        return messages;
+        return finishTurn(messages);
       }
 
       AgentStep.ToolCallsStep toolCalls = (AgentStep.ToolCallsStep) next;
@@ -110,7 +115,7 @@ public class AgentLoop {
         }
       }
       if (toolCalls.calls().isEmpty() && toolCalls.contentKind() != AgentStep.ContentKind.PROGRESS) {
-        return messages;
+        return finishTurn(messages);
       }
 
       List<ExecutedToolResult> executed = new ArrayList<>();
@@ -118,7 +123,7 @@ public class AgentLoop {
       for (ToolCall call : toolCalls.calls()) {
         if (cancelled) {
           messages.add(new ChatMessage.AssistantMessage("(Interrupted)"));
-          return messages;
+          return finishTurn(messages);
         }
         listener.onToolStart(call.toolName(), call.input());
         ToolResult result = tools.execute(call.toolName(), call.input(), toolContext);
@@ -146,13 +151,13 @@ public class AgentLoop {
         messages.add(toolResult);
         if (entry.result().awaitUser()) {
           messages.add(new ChatMessage.AssistantMessage(entry.result().output()));
-          return messages;
+          return finishTurn(messages);
         }
       }
     }
 
     messages.add(new ChatMessage.AssistantMessage("Reached maximum tool step limit; stopped current turn."));
-    return messages;
+    return finishTurn(messages);
   }
 
   public void cancel() {

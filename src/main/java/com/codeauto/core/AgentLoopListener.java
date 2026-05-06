@@ -3,6 +3,7 @@ package com.codeauto.core;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.codeauto.context.CompactService;
 import com.codeauto.context.ContextStats;
+import java.util.List;
 
 public interface AgentLoopListener {
   AgentLoopListener NOOP = new AgentLoopListener() {
@@ -27,5 +28,8 @@ public interface AgentLoopListener {
   }
 
   default void onToolResult(String toolName, String output, boolean isError) {
+  }
+
+  default void onTurnComplete(List<ChatMessage> messages) {
   }
 }

@@ -44,4 +44,50 @@ class MemoryManagerTest {
     assertFalse(relevant.isEmpty());
     assertEquals("CodeAuto context", relevant.getFirst().title());
   }
+
+  @Test
+  void savesAndParsesBulletFields() throws Exception {
+    java.nio.file.Path root = Files.createTempDirectory("codeauto-memory-bullet");
+    java.nio.file.Path project = Files.createTempDirectory("codeauto-memory-bullet-project");
+    MemoryManager manager = new MemoryManager(root);
+
+    var entry = manager.saveBullet(null, "Use read before edit",
+        project, List.of("tooling"), "Always read before editing.",
+        "tip-001", "tool_usage");
+
+    assertTrue(entry.isBullet());
+    assertEquals("tip-001", entry.bulletId());
+    assertEquals("tool_usage", entry.section());
+    assertEquals(0, entry.helpfulCount());
+    assertEquals(0, entry.harmfulCount());
+
+    // Verify round-trip through parse
+    var reloaded = manager.list().stream()
+        .filter(e -> e.bulletId().equals("tip-001"))
+        .findFirst();
+    assertTrue(reloaded.isPresent());
+    assertEquals("tip-001", reloaded.get().bulletId());
+    assertEquals("tool_usage", reloaded.get().section());
+    assertTrue(reloaded.get().tags().contains("tooling"));
+
+    manager.delete(entry.id());
+  }
+
+  @Test
+  void defaultCountersAreZeroForNonBullet() throws Exception {
+    java.nio.file.Path root = Files.createTempDirectory("codeauto-memory-nonbullet");
+    java.nio.file.Path project = Files.createTempDirectory("codeauto-memory-nonbullet-project");
+    MemoryManager manager = new MemoryManager(root);
+
+    var entry = manager.save(MemoryType.PROJECT, "Regular memory",
+        project, List.of(), "Some content.");
+
+    assertFalse(entry.isBullet());
+    assertEquals("", entry.bulletId());
+    assertEquals(0, entry.helpfulCount());
+    assertEquals(0, entry.harmfulCount());
+    assertEquals("", entry.section());
+
+    manager.delete(entry.id());
+  }
 }

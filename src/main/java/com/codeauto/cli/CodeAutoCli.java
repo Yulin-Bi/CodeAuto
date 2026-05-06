@@ -14,6 +14,7 @@ import com.codeauto.model.ModelAdapter;
 import com.codeauto.model.MockModelAdapter;
 import com.codeauto.mcp.McpService;
 import com.codeauto.permissions.PermissionManager;
+import com.codeauto.reflection.ReflectionService;
 import com.codeauto.session.SessionStore;
 import com.codeauto.skills.SkillService;
 import com.codeauto.tool.ToolContext;
@@ -22,6 +23,7 @@ import com.codeauto.todo.TodoStore;
 import com.codeauto.tools.DefaultTools;
 import com.codeauto.tui.TuiApp;
 import java.io.Console;
+import java.util.concurrent.CompletableFuture;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -94,7 +96,7 @@ public class CodeAutoCli implements Runnable {
       return;
     }
     AgentLoop loop
-        = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps, consoleListener(), 200_000);
+        = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps, consoleListener(model, cwd), 200_000);
     String sessionId = UUID.randomUUID().toString().substring(0, 8);
     int savedCount = 1;
     SessionStore sessions = new SessionStore(cwd);
@@ -568,7 +570,7 @@ public class CodeAutoCli implements Runnable {
     return parts;
   }
 
-  private AgentLoopListener consoleListener() {
+  private AgentLoopListener consoleListener(ModelAdapter model, Path cwd) {
     return new AgentLoopListener() {
       @Override
       public void onAutoCompact(CompactService.CompactResult result) {
@@ -608,6 +610,18 @@ public class CodeAutoCli implements Runnable {
         String status = isError ? "failed" : "completed";
         int chars = output == null ? 0 : output.length();
         System.out.println("[tool] " + toolName + " " + status + " (" + chars + " chars)");
+      }
+
+      @Override
+      public void onTurnComplete(List<ChatMessage> messages) {
+        CompletableFuture.runAsync(() -> {
+          try {
+            ReflectionService.reflectIfNeeded(messages, model, cwd)
+                .ifPresent(memory -> System.out.println("[reflection] " + memory.title()));
+          } catch (Exception e) {
+            System.err.println("[reflection] error: " + e.getMessage());
+          }
+        });
       }
     };
   }

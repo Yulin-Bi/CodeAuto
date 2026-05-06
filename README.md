@@ -6,7 +6,7 @@
 
 CodeAuto 参考 Claude Code 源码的设计思路，融合 MINICODE 的轻量可扩展理念，用 **Java 21** 构建了一个简单、可扩展、贴近 JVM 开发者的 AI 编程代理运行时。
 
-提供普通 CLI 和全屏 TUI 两种交互方式，内置工具调用、权限审批、文件 diff review、会话保存与恢复、上下文压缩、Skills、MCP、持久化记忆和多级项目指令加载。
+提供普通 CLI 和全屏 TUI 两种交互方式，内置工具调用、权限审批、文件 diff review、会话保存与恢复、上下文压缩、Skills、MCP、持久化记忆、多级项目指令加载、自反思（Reflexion）和 ACE 结构化经验记忆。
 
 ## 环境要求
 
@@ -406,12 +406,14 @@ src/main/java/com/codeauto/
   config/         配置加载
   context/        token 估算和上下文压缩
   core/           AgentLoop 和核心消息类型
+  curator/        ACE Bullet 确定性合并引擎
   instructions/   多级指令加载
   manage/         管理配置存储
   mcp/            MCP 客户端和服务
   memory/         持久化记忆系统
   model/          模型适配器
   permissions/    权限管理
+  reflection/     Reflexion 自反思服务
   session/        会话存储
   skills/         Skills 发现
   tool/           工具接口和注册表
@@ -425,7 +427,7 @@ src/main/java/com/codeauto/
 当前测试：
 
 ```text
-Tests run: 84, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 111, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -437,11 +439,13 @@ BUILD SUCCESS
 - Context 压缩 + 微压缩 + 压缩产物落盘
 - PermissionManager + 通配规则
 - MCP client/service
-- MemoryManager
-- InstructionLoader + 多级指令加载 + Skill 会话注入
+- MemoryManager + bullet 序列化往返
+- InstructionLoader + 多级指令加载 + Skill 会话注入 + ACE Playbook 注入
 - TodoStore
 - CLI 编码和 workspace 解析
 - TUI escape sequence + diff 高亮
+- ReflectionService + 4 种触发检测 + FEEDBACK 记忆保存 + Bullet 自动创建
+- Curator + BulletDelta ADD/REMOVE/TAG/计数器/项目过滤/内容更新 + Jaccard 去重
 
 ## 常见问题
 
@@ -492,6 +496,17 @@ $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 
 ## 最近更新（2026-05-06）
 
+### Reflexion 自反思 + ACE Bullet 结构化经验记忆
+
+- 每轮对话结束后自动检测失败信号（工具错误 / 达到最大步数 / 用户取消 / 用户不满），触发模型反思并保存 `FEEDBACK` 记忆。
+- 反思结构包含 What Went Wrong / Root Cause / What Should Have Been Done Differently / Reusable Lesson。
+- 反思提取 Reusable Lesson 后自动创建 ACE Bullet（带 `[bullet:<id>]` ID 和 helpful/harmful 计数器）。
+- Curator 确定性增量引擎：支持 BulletDelta Add/Update/Tag/Remove，Jaccard 相似度去重（阈值 0.55），section 范围匹配，10 分钟冷却防重复。
+- 文件分离：reflections → `<project>/.codeauto/reflections/`，bullets → `<project>/.codeauto/bullets/`，memories → `~/.codeauto/memory/`。
+- `InstructionLoader` 独立注入 ACE Playbook（最多 10 条），bullet 以单行紧凑索引显示，不占用普通记忆配额。
+- 反思异步执行（`CompletableFuture.runAsync`），不阻塞用户交互。
+- 模型答复中引用 bullet 时标注 `[bullet:<id>]`，ReflectionService 自动解析 Bullet Tags 并更新计数器。
+
 ### Windows MCP 自动命令解析
 
 - `McpClient` 在 Windows 下自动检测 `.cmd`/`.bat` 包装脚本，解析并提取底层可执行文件（如 `node.exe`）直接调用。
@@ -540,7 +555,7 @@ $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 ### 验证状态
 
 ```
-Tests run: 84, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 111, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 

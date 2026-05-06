@@ -28,25 +28,7 @@ public class MemoryManager {
   }
 
   public MemoryEntry save(MemoryType type, String title, Path project, List<String> tags, String content) {
-    try {
-      Files.createDirectories(root);
-      Instant now = Instant.now();
-      String id = slug(title) + "-" + UUID.randomUUID().toString().substring(0, 8);
-      MemoryEntry entry = new MemoryEntry(
-          id,
-          type == null ? MemoryType.PROJECT : type,
-          title == null || title.isBlank() ? "Untitled memory" : title.trim(),
-          project == null ? "" : project.toAbsolutePath().normalize().toString(),
-          tags == null ? List.of() : List.copyOf(tags),
-          now,
-          now,
-          content == null ? "" : content.trim(),
-          root.resolve(id + ".md"));
-      write(entry);
-      return entry;
-    } catch (Exception error) {
-      throw new IllegalStateException("Failed to save memory: " + error.getMessage(), error);
-    }
+    return saveBullet(type, title, project, tags, content, "", "");
   }
 
   public List<MemoryEntry> list() {
@@ -77,6 +59,63 @@ public class MemoryManager {
         .toList();
   }
 
+  public MemoryEntry saveBullet(MemoryType type, String title, Path project,
+      List<String> tags, String content, String bulletId, String section) {
+    try {
+      Files.createDirectories(root);
+      Instant now = Instant.now();
+      String id = slug(title) + "-" + UUID.randomUUID().toString().substring(0, 8);
+      MemoryEntry entry = new MemoryEntry(
+          id,
+          type == null ? MemoryType.PROJECT : type,
+          title == null || title.isBlank() ? "Untitled memory" : title.trim(),
+          project == null ? "" : project.toAbsolutePath().normalize().toString(),
+          tags == null ? List.of() : List.copyOf(tags),
+          now,
+          now,
+          content == null ? "" : content.trim(),
+          root.resolve(id + ".md"),
+          bulletId == null ? "" : bulletId,
+          0,
+          0,
+          section == null ? "" : section);
+      write(entry);
+      return entry;
+    } catch (Exception error) {
+      throw new IllegalStateException("Failed to save bullet memory: " + error.getMessage(), error);
+    }
+  }
+
+  public void overwrite(MemoryEntry entry) {
+    try {
+      write(entry);
+    } catch (Exception error) {
+      throw new IllegalStateException("Failed to overwrite memory: " + error.getMessage(), error);
+    }
+  }
+
+  public boolean incrementCounters(String bulletId, int helpfulDelta, int harmfulDelta) {
+    if (bulletId == null || bulletId.isBlank()) return false;
+    java.util.Optional<MemoryEntry> found = list().stream()
+        .filter(e -> e.bulletId().equals(bulletId) && e.isBullet())
+        .findFirst();
+    if (found.isEmpty()) return false;
+    MemoryEntry entry = found.get();
+    try {
+      MemoryEntry updated = new MemoryEntry(
+          entry.id(), entry.type(), entry.title(), entry.project(),
+          entry.tags(), entry.createdAt(), Instant.now(), entry.content(),
+          entry.path(), entry.bulletId(),
+          entry.helpfulCount() + helpfulDelta,
+          entry.harmfulCount() + harmfulDelta,
+          entry.section());
+      write(updated);
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
   public boolean delete(String id) {
     if (id == null || id.isBlank()) return false;
     try {
@@ -96,6 +135,18 @@ public class MemoryManager {
     out.append("tags: ").append(String.join(",", entry.tags())).append("\n");
     out.append("createdAt: ").append(entry.createdAt()).append("\n");
     out.append("updatedAt: ").append(entry.updatedAt()).append("\n");
+    if (!entry.bulletId().isBlank()) {
+      out.append("bulletId: ").append(escape(entry.bulletId())).append("\n");
+    }
+    if (entry.helpfulCount() > 0) {
+      out.append("helpfulCount: ").append(Integer.toString(entry.helpfulCount())).append("\n");
+    }
+    if (entry.harmfulCount() > 0) {
+      out.append("harmfulCount: ").append(Integer.toString(entry.harmfulCount())).append("\n");
+    }
+    if (!entry.section().isBlank()) {
+      out.append("section: ").append(escape(entry.section())).append("\n");
+    }
     out.append("---\n\n");
     out.append(entry.content()).append("\n");
     Files.writeString(entry.path(), out.toString());
@@ -109,6 +160,10 @@ public class MemoryManager {
       if (end < 0) return java.util.Optional.empty();
       Map<String, String> meta = parseFrontmatter(raw.substring(4, end));
       String content = raw.substring(end + 4).strip();
+      String bulletId = meta.getOrDefault("bulletId", "");
+      int helpfulCount = parseIntSafe(meta.get("helpfulCount"));
+      int harmfulCount = parseIntSafe(meta.get("harmfulCount"));
+      String section = meta.getOrDefault("section", "");
       return java.util.Optional.of(new MemoryEntry(
           meta.getOrDefault("id", stripExtension(path.getFileName().toString())),
           MemoryType.from(meta.get("type")),
@@ -118,7 +173,11 @@ public class MemoryManager {
           instant(meta.get("createdAt")),
           instant(meta.get("updatedAt")),
           content,
-          path));
+          path,
+          bulletId,
+          helpfulCount,
+          harmfulCount,
+          section));
     } catch (Exception ignored) {
       return java.util.Optional.empty();
     }
@@ -167,6 +226,15 @@ public class MemoryManager {
       return value == null || value.isBlank() ? Instant.EPOCH : Instant.parse(value.trim());
     } catch (Exception error) {
       return Instant.EPOCH;
+    }
+  }
+
+  private static int parseIntSafe(String value) {
+    if (value == null || value.isBlank()) return 0;
+    try {
+      return Integer.parseInt(value.trim());
+    } catch (NumberFormatException e) {
+      return 0;
     }
   }
 
