@@ -1018,10 +1018,11 @@ public class TuiApp {
     }
 
     @Override
-    public void onTurnComplete(List<ChatMessage> messages) {
+    public void onTurnComplete(List<ChatMessage> allMessages, int turnStartIndex) {
+      var messages = List.copyOf(allMessages);
       CompletableFuture.runAsync(() -> {
         try {
-          ReflectionService.reflectIfNeeded(messages, model, cwd).ifPresent(memory -> {
+          ReflectionService.reflectIfNeeded(messages, model, cwd, turnStartIndex).ifPresent(memory -> {
             addEntry(new TranscriptEntry.Assistant(nextEntryId++,
                 "[reflection] saved: " + memory.title()));
           });

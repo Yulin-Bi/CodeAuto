@@ -32,4 +32,9 @@ public interface AgentLoopListener {
 
   default void onTurnComplete(List<ChatMessage> messages) {
   }
+
+  /** @param turnStartIndex index of the first message added in the current turn */
+  default void onTurnComplete(List<ChatMessage> allMessages, int turnStartIndex) {
+    onTurnComplete(allMessages);
+  }
 }

@@ -10,8 +10,6 @@ import com.codeauto.memory.MemoryManager;
 import com.codeauto.memory.MemoryType;
 import com.codeauto.model.ModelAdapter;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -19,15 +17,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class ReflectionService {
 
   private static final Pattern BULLET_CITE = Pattern.compile("\\[bullet:([a-zA-Z0-9_-]+)\\]");
-  private static final Map<String, Instant> lastBulletCreated = new ConcurrentHashMap<>();
-  private static final Duration BULLET_COOLDOWN = Duration.ofMinutes(10);
 
   private static final String REFLECTION_SYSTEM_PROMPT = """
       You are a post-turn analyst for an AI coding agent. Review the turn below and extract lessons.
@@ -64,10 +59,15 @@ public final class ReflectionService {
 
   public static Optional<MemoryEntry> reflectIfNeeded(
       List<ChatMessage> messages, ModelAdapter model, Path cwd) {
+    return reflectIfNeeded(messages, model, cwd, 0);
+  }
+
+  public static Optional<MemoryEntry> reflectIfNeeded(
+      List<ChatMessage> messages, ModelAdapter model, Path cwd, int turnStartIndex) {
 
     if (model == null || messages == null || messages.isEmpty()) return Optional.empty();
 
-    ReflectionTrigger trigger = detectTrigger(messages);
+    ReflectionTrigger trigger = detectTrigger(messages, turnStartIndex);
     if (trigger == ReflectionTrigger.NONE) return Optional.empty();
 
     Set<String> citedBullets = extractCitations(messages);
@@ -90,20 +90,15 @@ public final class ReflectionService {
 
     String lesson = extractReusableLesson(reflection);
     if (!lesson.isBlank()) {
-      String section = sectionForTrigger(trigger);
-      String key = (cwd == null ? "" : cwd.toAbsolutePath().normalize().toString()) + ":" + section;
-      Instant last = lastBulletCreated.get(key);
-      if (last == null || Duration.between(last, Instant.now()).compareTo(BULLET_COOLDOWN) > 0) {
-        try {
-          Curator curator = new Curator(bulletMemory);
-          String bulletId = "ref-" + UUID.randomUUID().toString().substring(0, 6);
-          String title = lesson.length() > 60 ? lesson.substring(0, 57) + "..." : lesson;
-          curator.applyDeltas(cwd, List.of(
-              new BulletDelta.Add(bulletId, title, lesson, section, List.of("reflection", "auto"))));
-          lastBulletCreated.put(key, Instant.now());
-        } catch (Exception ignored) {
-          // curator is best-effort; reflection already saved
-        }
+      try {
+        Curator curator = new Curator(bulletMemory);
+        String bulletId = "ref-" + UUID.randomUUID().toString().substring(0, 6);
+        String title = lesson.length() > 60 ? lesson.substring(0, 57) + "..." : lesson;
+        String section = sectionForTrigger(trigger);
+        curator.applyDeltas(cwd, List.of(
+            new BulletDelta.Add(bulletId, title, lesson, section, List.of("reflection", "auto"))));
+      } catch (Exception ignored) {
+        // curator is best-effort; reflection already saved
       }
     }
 
@@ -127,7 +122,13 @@ public final class ReflectionService {
   }
 
   public static ReflectionTrigger detectTrigger(List<ChatMessage> messages) {
+    return detectTrigger(messages, 0);
+  }
+
+  public static ReflectionTrigger detectTrigger(List<ChatMessage> messages, int turnStartIndex) {
+    int start = Math.max(0, Math.min(turnStartIndex, messages.size()));
     boolean hasToolError = messages.stream()
+        .skip(start)
         .filter(m -> m instanceof ChatMessage.ToolResultMessage)
         .map(m -> (ChatMessage.ToolResultMessage) m)
         .anyMatch(ChatMessage.ToolResultMessage::isError);
@@ -146,7 +147,8 @@ public final class ReflectionService {
       return ReflectionTrigger.CANCELLED;
     }
 
-    for (int i = messages.size() - 1; i >= 0; i--) {
+    int userMsgEnd = turnStartIndex > 0 ? turnStartIndex : messages.size();
+    for (int i = userMsgEnd - 1; i >= 0; i--) {
       ChatMessage msg = messages.get(i);
       if (msg instanceof ChatMessage.UserMessage um) {
         String lower = um.content().toLowerCase();
@@ -321,11 +323,6 @@ public final class ReflectionService {
     String cleaned = body.strip();
     if (cleaned.equals("Nothing.") || cleaned.isBlank()) return "";
     return cleaned;
-  }
-
-  /** Clears the bullet cooldown map. For testing only. */
-  public static void resetCooldowns() {
-    lastBulletCreated.clear();
   }
 
   private static String sectionForTrigger(ReflectionTrigger trigger) {

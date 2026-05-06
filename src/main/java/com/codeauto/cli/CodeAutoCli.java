@@ -613,10 +613,11 @@ public class CodeAutoCli implements Runnable {
       }
 
       @Override
-      public void onTurnComplete(List<ChatMessage> messages) {
+      public void onTurnComplete(List<ChatMessage> allMessages, int turnStartIndex) {
+        var messages = List.copyOf(allMessages);
         CompletableFuture.runAsync(() -> {
           try {
-            ReflectionService.reflectIfNeeded(messages, model, cwd)
+            ReflectionService.reflectIfNeeded(messages, model, cwd, turnStartIndex)
                 .ifPresent(memory -> System.out.println("[reflection] " + memory.title()));
           } catch (Exception e) {
             System.err.println("[reflection] error: " + e.getMessage());

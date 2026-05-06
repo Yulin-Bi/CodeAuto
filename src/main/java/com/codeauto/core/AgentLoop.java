@@ -23,6 +23,7 @@ public class AgentLoop {
   private final AgentLoopListener listener;
   private final int contextWindow;
   private volatile boolean cancelled;
+  private int turnStartIndex;
 
   public AgentLoop(ModelAdapter model, ToolRegistry tools, ToolContext toolContext, int maxSteps) {
     this(model, tools, toolContext, maxSteps, AgentLoopListener.NOOP, DEFAULT_CONTEXT_WINDOW);
@@ -46,13 +47,14 @@ public class AgentLoop {
   }
 
   private List<ChatMessage> finishTurn(List<ChatMessage> messages) {
-    listener.onTurnComplete(messages);
+    listener.onTurnComplete(messages, turnStartIndex);
     return messages;
   }
 
   public List<ChatMessage> runTurn(List<ChatMessage> initialMessages) throws Exception {
     cancelled = false;
     List<ChatMessage> messages = new ArrayList<>(initialMessages);
+    turnStartIndex = messages.size();
     int emptyRetries = 0;
 
     for (int step = 0; step < maxSteps; step++) {
