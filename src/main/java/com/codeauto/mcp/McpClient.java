@@ -4,12 +4,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeUnit;
 
 public class McpClient implements AutoCloseable {
@@ -86,25 +90,96 @@ public class McpClient implements AutoCloseable {
   }
 
   private void initialize() throws Exception {
-    request("initialize", MAPPER.createObjectNode()
-        .put("protocolVersion", "2024-11-05")
-        .set("clientInfo", MAPPER.createObjectNode().put("name", "codeauto").put("version", "0.1.0")));
+    ObjectNode initParams = MAPPER.createObjectNode();
+    initParams.put("protocolVersion", "2024-11-05");
+    initParams.set("capabilities", MAPPER.createObjectNode());
+    initParams.set("clientInfo", MAPPER.createObjectNode().put("name", "codeauto").put("version", "0.1.0"));
+    request("initialize", initParams);
     ObjectNode notification = MAPPER.createObjectNode();
     notification.put("jsonrpc", "2.0");
     notification.put("method", "notifications/initialized");
     writeFrame(MAPPER.writeValueAsString(notification));
   }
 
+  private static final boolean IS_WINDOWS = System.getProperty("os.name", "").toLowerCase().contains("win");
+
   private void start() throws Exception {
     if (process != null && process.isAlive()) return;
     List<String> command = new ArrayList<>();
     command.add(config.command());
     command.addAll(config.args());
-    ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(false);
+    if (IS_WINDOWS) command = resolveWindowsCommand(command);
+    ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
     builder.environment().putAll(config.env());
     process = builder.start();
     reader = process.getInputStream();
     writer = process.getOutputStream();
+  }
+
+  /** On Windows, if the command is a .cmd/.bat wrapper, find and use the real executable directly. */
+  private List<String> resolveWindowsCommand(List<String> original) {
+    String cmd = original.get(0);
+    String lower = cmd.toLowerCase();
+    if (lower.endsWith(".exe") || lower.endsWith(".com")) return original;
+    // Resolve to full path
+    String resolved = null;
+    if (lower.endsWith(".cmd") || lower.endsWith(".bat")) {
+      resolved = findInPath(cmd);
+    } else {
+      for (String ext : new String[]{".exe", ".cmd", ".bat"}) {
+        resolved = findInPath(cmd + ext);
+        if (resolved != null) break;
+      }
+    }
+    if (resolved == null) return original;
+    if (!resolved.toLowerCase().endsWith(".cmd") && !resolved.toLowerCase().endsWith(".bat")) {
+      // Found a .exe, use it directly
+      List<String> result = new ArrayList<>();
+      result.add(resolved);
+      result.addAll(original.subList(1, original.size()));
+      return result;
+    }
+    // It's a .cmd/.bat — find the real executable next to it
+    List<String> unwrapped = unwrapCmd(resolved);
+    if (unwrapped != null) {
+      unwrapped.addAll(original.subList(1, original.size()));
+      return unwrapped;
+    }
+    return original;
+  }
+
+  /** Given a .cmd/.bat path, find node.exe and the JS entry point in the same directory tree. */
+  private List<String> unwrapCmd(String cmdPath) {
+    Path dir = Path.of(cmdPath).getParent();
+    // Look for node.exe in the same directory
+    Path nodeExe = dir.resolve("node.exe");
+    if (!Files.exists(nodeExe)) return null;
+    // Look for common npm wrapper JS entry points
+    String[] candidates = {
+        "node_modules/npm/bin/npx-cli.js",
+        "node_modules/npm/bin/npm-cli.js",
+        "node_modules/npm/bin/npm-prefix.js"
+    };
+    for (String js : candidates) {
+      Path jsPath = dir.resolve(js);
+      if (Files.exists(jsPath)) {
+        List<String> result = new ArrayList<>();
+        result.add(nodeExe.toString());
+        result.add(jsPath.toString());
+        return result;
+      }
+    }
+    return null;
+  }
+
+  private static String findInPath(String name) {
+    String pathEnv = System.getenv("PATH");
+    if (pathEnv == null) return null;
+    for (String dir : pathEnv.split(File.pathSeparator)) {
+      Path candidate = Path.of(dir.trim(), name);
+      if (Files.exists(candidate)) return candidate.toString();
+    }
+    return null;
   }
 
   JsonNode request(String method, JsonNode params) throws Exception {
@@ -122,7 +197,12 @@ public class McpClient implements AutoCloseable {
         Thread.sleep(25);
         continue;
       }
-      JsonNode response = MAPPER.readTree(readFrame());
+      JsonNode response;
+      try {
+        response = MAPPER.readTree(readFrame());
+      } catch (Exception ignored) {
+        continue; // skip non-JSON stderr noise
+      }
       if (response.path("id").asInt(-1) != id) continue;
       if (response.has("error")) {
         throw new IllegalStateException(response.get("error").toString());
@@ -146,7 +226,12 @@ public class McpClient implements AutoCloseable {
 
   String readFrame() throws Exception {
     if ("newline-json".equals(config.protocol())) {
-      return readLine();
+      while (true) {
+        String line = readLine();
+        if (line.isBlank()) continue;
+        if (!line.trim().startsWith("{")) continue; // skip stderr noise
+        return line;
+      }
     }
 
     int contentLength = -1;

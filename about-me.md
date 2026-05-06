@@ -190,6 +190,7 @@ MCP：
 - Streamable HTTP
 - token 存储和注入
 - MCP backed tools 自动注册
+- Windows：自动解析 `.cmd`/`.bat` 包装脚本，提取底层可执行文件直接调用，无需手动配置完整路径
 
 ## 测试
 
@@ -259,6 +260,10 @@ CodeAuto 保持几个工程原则：
 - 同文件多次编辑 transcript 聚合
 - Skill 变量替换和 fork 模式
 - 更细的模型上下文窗口查询表
+
+## 最近实现状态（2026-05-06）
+
+- **Windows MCP stdio 兼容性修复**：`McpClient` 新增 `.cmd` 自动解析，Windows 下自动从 `npx.cmd` 等包装脚本中提取 `node.exe` 等真实可执行文件，用户无需手动配置完整路径。修复 `initialize` 缺失 `capabilities` 字段、PATH 搜索误匹配 bash 脚本、stderr 噪声污染 JSON 帧等问题。建议显式指定 `"protocol": "newline-json"` 跳过 `auto` 模式的 content-length 协商等待。
 
 ## 最近实现状态（2026-05-05）
 

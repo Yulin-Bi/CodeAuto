@@ -686,3 +686,29 @@ BUILD SUCCESS
 Tests run: 84, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
+
+## Bug 修复记录（2026-05-06）
+
+### Windows MCP stdio 兼容性修复
+
+#### 问题与根因
+
+在 Windows 上通过 `mcp add` 或 `mcp.json` 配置 MCP server 时遇到四个叠加问题：
+
+1. **`CreateProcess error=2`**：`npx` 在 Windows 上是 `npx.cmd`，Java `ProcessBuilder` 不搜索 `PATHEXT`，直接传 `npx` 找不到文件。
+2. **`cmd /c` 包裹导致死锁**：尝试用 `cmd /c npx ...` 执行，`cmd` 等待子进程退出才转发 stdout，而 MCP server 是常驻进程，导致管道死锁。
+3. **PATH 搜索顺序错误**：nvm-windows 在 symlink 目录同时放了无扩展名的 `npx`（bash 脚本）和 `npx.cmd`（Windows batch），`findInPath` 先用空扩展名匹配到了无法执行的 bash 脚本。
+4. **`initialize` 缺少 `capabilities` 字段**：新版 MCP Server（`@modelcontextprotocol/server-filesystem`）强制要求 `initialize` 请求中 `capabilities` 为对象，缺失时返回 `-32603 invalid_type` 错误。
+5. **`auto` 协议超时等待**：默认 `auto` 协议先尝试 `content-length` 帧（10s 超时才降级），不指定 `protocol` 的用户会体验 10 秒启动等待。
+
+#### 修复方案
+
+- [x] **`.cmd` 解析 + 直接调用真实可执行文件**：新增 `resolveWindowsCommand()` / `unwrapCmd()`，在 Windows 上检测到命令解析到 `.cmd` 文件时，不执行 `.cmd` 或包裹 `cmd /c`，而是在同目录查找 `node.exe` + `node_modules/npm/bin/npx-cli.js`，用 `node.exe` 直调 JS 入口，彻底绕过 cmd 进程链死锁问题。
+- [x] **PATH 搜索优先 `.exe` / `.cmd` 扩展名**：跳过无扩展名文件，避免搜到 Unix shell 脚本。
+- [x] **`initialize()` 补充 `capabilities` 字段**：添加 `"capabilities": {}` 满足新 MCP Server 的强校验。
+- [x] **`redirectErrorStream(true)`**：合并 stderr 到 stdout 防止管道缓冲区死锁。
+- [x] **`readFrame()` / `request()` 噪声过滤**：newline-json 模式下跳过空行和非 `{` 开头的行，JSON 解析异常不崩溃。
+
+#### 影响
+
+Windows 用户现在可以直接用 `npx`、`node`、`python` 等命令配置 MCP Server，CodeAuto 自动解析 `.cmd` 包装并找到真实可执行文件。建议显式指定 `"protocol": "newline-json"` 跳过 `auto` 模式的 content-length 协商等待。

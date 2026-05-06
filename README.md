@@ -296,24 +296,54 @@ mvn exec:java "-Dexec.args=skills remove my-skill"
 
 ## MCP
 
-CodeAuto 支持 stdio MCP 和 Streamable HTTP MCP。
+CodeAuto 支持 stdio MCP 和 Streamable HTTP MCP。启动时自动发现所有配置的 MCP 服务器，将其工具注册到工具注册表，Agent Loop 可自动调用，无需手动指定。
+
+### 配置文件
 
 MCP 配置可以放在：
 
 ```text
-~/.codeauto/mcp.json
-.mcp.json
+~/.codeauto/mcp.json          # 用户级全局配置
+<project>/.mcp.json            # 项目级配置（不会覆盖用户级同名 server）
 ```
 
-管理命令：
+### 快速添加 MCP Server
 
 ```bash
-mvn exec:java "-Dexec.args=mcp list"
-mvn exec:java "-Dexec.args=mcp add --protocol auto --env TOKEN=$TOKEN local node server.js"
-mvn exec:java "-Dexec.args=mcp login local --token <bearer-token>"
-mvn exec:java "-Dexec.args=mcp logout local"
-mvn exec:java "-Dexec.args=mcp remove local"
+# stdio 方式（最常用）
+codeauto mcp add fs npx -- -y @modelcontextprotocol/server-filesystem /tmp
+
+# HTTP 方式（手动编辑 mcp.json，添加 url 字段）
 ```
+
+配置示例（`~/.codeauto/mcp.json`）：
+
+```json
+{
+  "local-node": {
+    "protocol": "auto",
+    "command": "node",
+    "args": ["server.js"],
+    "env": { "API_KEY": "xxx" }
+  },
+  "remote-api": {
+    "url": "https://mcp.example.com/api",
+    "headers": { "Authorization": "Bearer xxx" }
+  }
+}
+```
+
+### 管理命令
+
+```bash
+codeauto mcp list
+codeauto mcp add <name> <command> [args...] [--protocol auto|content-length|newline-json] [--env KEY=VALUE...]
+codeauto mcp login <name> --token <bearer-token>
+codeauto mcp logout <name>
+codeauto mcp remove <name>
+```
+
+TOKEN 会自动注入为 `MCP_BEARER_TOKEN` 和 `MCP_AUTH_TOKEN` 环境变量，无需在 env 中重复配置。
 
 TUI 内查看 MCP 状态：
 
@@ -321,13 +351,27 @@ TUI 内查看 MCP 状态：
 /mcp
 ```
 
-stdio 协议支持：
+### 协议
 
-- `auto`
-- `content-length`
-- `newline-json`
+stdio 协议支持 `auto`（默认）、`content-length`、`newline-json`。`auto` 会先尝试 `content-length`，失败后回退到 `newline-json`。
 
-`auto` 会先尝试 `content-length`，失败后回退到 `newline-json`。
+如果 MCP 服务器初始化慢，建议显式指定协议避免超时等待：
+
+```json
+{
+  "fs": {
+    "protocol": "newline-json",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+  }
+}
+```
+
+### Windows 兼容性
+
+Windows 下 Java `ProcessBuilder` 无法直接执行 `.cmd`/`.bat` 文件。CodeAuto 会自动检测并解析 `.cmd` 包装脚本，提取出底层真实可执行文件（如 `node.exe`）直接调用，无需用户手动处理。
+
+直接使用 `npx`、`node`、`python` 等命令即可，无需指定完整路径。建议显式指定 `protocol` 为 `newline-json`，避免 `auto` 模式下 content-length 协商超时等待。
 
 ## 常用斜杠命令
 
@@ -445,6 +489,16 @@ CodeAuto 已在 CLI 入口默认设置 `org.jline.terminal.disableDeprecatedProv
 ```powershell
 $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 ```
+
+## 最近更新（2026-05-06）
+
+### Windows MCP 自动命令解析
+
+- `McpClient` 在 Windows 下自动检测 `.cmd`/`.bat` 包装脚本，解析并提取底层可执行文件（如 `node.exe`）直接调用。
+- 用户可直接用 `npx`、`node`、`python` 等命令配置 MCP Server，无需手动拼接完整路径。
+- 修复 `initialize` 缺失 `capabilities` 字段导致新版 MCP Server 拒绝握手的问题。
+- `redirectErrorStream(true)` + JSON 噪声过滤，防止 stderr 管道死锁。
+- 建议显式指定 `"protocol": "newline-json"` 跳过 `auto` 模式的 content-length 协商等待。
 
 ## 最近更新（2026-05-05）
 
