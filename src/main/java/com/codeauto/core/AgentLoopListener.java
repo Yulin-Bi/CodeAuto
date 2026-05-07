@@ -21,6 +21,9 @@ public interface AgentLoopListener {
   default void onAssistantDelta(String delta) {
   }
 
+  default void onThinkingDelta(String delta) {
+  }
+
   default void onAssistantMessage(String content) {
   }
 

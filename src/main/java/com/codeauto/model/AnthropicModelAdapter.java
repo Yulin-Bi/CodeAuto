@@ -170,6 +170,9 @@ public class AnthropicModelAdapter implements ModelAdapter {
           if ("text".equals(copy.path("type").asText()) && !copy.has("text")) {
             copy.put("text", "");
           }
+          if ("thinking".equals(copy.path("type").asText()) && !copy.has("thinking")) {
+            copy.put("thinking", "");
+          }
           if ("tool_use".equals(copy.path("type").asText())) {
             copy.set("input", MAPPER.createObjectNode());
             toolInputs.set(index, new StringBuilder());
@@ -192,6 +195,11 @@ public class AnthropicModelAdapter implements ModelAdapter {
             block.put("type", "text");
             block.put("text", block.path("text").asText("") + text);
             if (!text.isEmpty()) listener.onAssistantDelta(text);
+          } else if ("thinking_delta".equals(deltaType)) {
+            String think = delta.path("thinking").asText("");
+            block.put("type", "thinking");
+            block.put("thinking", block.path("thinking").asText("") + think);
+            if (!think.isEmpty()) listener.onThinkingDelta(think);
           } else if ("input_json_delta".equals(deltaType)) {
             String partial = delta.path("partial_json").asText("");
             StringBuilder input = toolInputs.get(index);

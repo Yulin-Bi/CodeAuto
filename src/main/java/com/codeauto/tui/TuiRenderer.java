@@ -73,8 +73,12 @@ final class TuiRenderer {
       bottomPanel = renderPromptPanel(width, app);
     }
 
+    String thinkingBlock = buildThinkingBlock(width, app);
+    int thinkingLines = thinkingBlock != null ? lineCount(thinkingBlock) + 1 : 0;
+
     int fixedLines = lineCount(headerPanel) + 1
         + lineCount(bottomPanel)
+        + thinkingLines
         + 1
         + 1;
     int transcriptPanelOverhead = 5;
@@ -94,6 +98,10 @@ final class TuiRenderer {
     sb.append(bottomPanel);
 
     sb.append("\n").append(renderFooterBar(width, app));
+
+    if (thinkingBlock != null) {
+      sb.append("\n").append(thinkingBlock);
+    }
 
     sb.append("\033[J");
 
@@ -459,6 +467,23 @@ final class TuiRenderer {
   }
 
   // --- Footer ---
+
+  private String buildThinkingBlock(int width, TuiApp app) {
+    String thinking = app.thinkingText();
+    if (thinking == null || thinking.isBlank()) return null;
+    String[] lines = thinking.split("\n");
+    int start = Math.max(0, lines.length - 3);
+    var sb = new StringBuilder();
+    for (int i = start; i < lines.length; i++) {
+      String line = lines[i];
+      if (line.length() > width - 10) {
+        line = line.substring(0, Math.max(0, width - 13)) + "...";
+      }
+      sb.append(Ansi.YELLOW).append("  think: ").append(line).append(Ansi.RESET);
+      if (i < lines.length - 1) sb.append("\n");
+    }
+    return sb.toString();
+  }
 
   private String renderFooterBar(int termWidth, TuiApp app) {
     var left = new StringBuilder();

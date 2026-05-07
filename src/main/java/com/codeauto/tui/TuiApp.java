@@ -104,6 +104,7 @@ public class TuiApp {
 
   volatile String statusLineText = "";
   volatile int spinnerFrame;
+  volatile String thinkingText;
 
   int skillCount = -1;
   int mcpToolCount = -1;
@@ -149,6 +150,7 @@ public class TuiApp {
   boolean isBusy() { return isBusy; }
   int spinnerFrame() { return spinnerFrame; }
   String statusText() { return statusText; }
+  String thinkingText() { return thinkingText; }
   String inputText() { return input; }
   int cursorPos() { return cursorPos; }
   boolean cursorBlinkVisible() { return cursorBlinkVisible; }
@@ -630,6 +632,7 @@ public class TuiApp {
     isBusy = true;
     busyStartedAtMillis = System.currentTimeMillis();
     progressTraceEntryId = null;
+    thinkingText = null;
     synchronized (turnProgressTrace) {
       turnProgressTrace.clear();
     }
@@ -681,6 +684,7 @@ public class TuiApp {
     }
     streamingAssistantEntryId = null;
     streamingAssistantBuffer.setLength(0);
+    thinkingText = null;
     materializeProgressTrace();
     progressTraceEntryId = null;
     synchronized (turnProgressTrace) {
@@ -939,7 +943,23 @@ public class TuiApp {
     }
 
     @Override
+    public void onThinkingDelta(String delta) {
+      if (delta == null || delta.isEmpty()) return;
+      thinkingBuffer.append(delta);
+      thinkingText = thinkingBuffer.toString();
+      if (statusText == null) {
+        statusText = "Thinking...";
+        statusLineText = statusText;
+      }
+      render();
+    }
+
+    private final StringBuilder thinkingBuffer = new StringBuilder();
+
+    @Override
     public void onAssistantDelta(String delta) {
+      thinkingBuffer.setLength(0);
+      thinkingText = null;
       if (delta == null || delta.isEmpty()) return;
       synchronized (transcript) {
         transcript.removeIf(e -> e instanceof TranscriptEntry.Status);
