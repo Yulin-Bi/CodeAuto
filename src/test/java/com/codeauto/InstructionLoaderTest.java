@@ -8,6 +8,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InstructionLoaderTest {
@@ -122,7 +123,7 @@ class InstructionLoaderTest {
   }
 
   @Test
-  void bulletsAppearEvenWhenRegularMemoriesSaturateLimit() throws Exception {
+  void pastExperienceSectionPointsToProjectDirs() throws Exception {
     String previousHome = System.getProperty("codeauto.home");
     String previousUserHome = System.getProperty("user.home");
     java.nio.file.Path userHome = Files.createTempDirectory("codeauto-bullet-quota-user");
@@ -139,29 +140,21 @@ class InstructionLoaderTest {
             List.of("test"), "Content for regular memory " + i);
       }
 
-      // Bullets live in ~/.codeauto/bullets/ — separate from regular memories
-      java.nio.file.Path bulletsDir = codeautoHome.resolve("bullets");
-      Files.createDirectories(bulletsDir);
-      MemoryManager bulletManager = new MemoryManager(bulletsDir);
-      bulletManager.saveBullet(MemoryType.PROJECT, "Always grep first", project,
-          List.of("reflection", "auto"), "Grep for existing imports before adding new class references.",
-          "tip-grep", "tool_usage");
-
       String prompt = InstructionLoader.systemPrompt(project, "ok");
 
       // Regular memories section should exist
       assertTrue(prompt.contains("Relevant persistent memories"));
-      // Bullet should appear in the ACE Playbook section in compact one-line format
-      assertTrue(prompt.contains("ACE Playbook (1)"));
-      assertTrue(prompt.contains("[bullet:tip-grep]"));
-      assertTrue(prompt.contains("Grep for existing imports"));
+      // Past experience section should point to bullets/ and reflections/ dirs
+      assertTrue(prompt.contains("Past experience"));
+      assertTrue(prompt.contains(project.resolve(".codeauto/bullets").normalize().toString()));
+      assertTrue(prompt.contains(project.resolve(".codeauto/reflections").normalize().toString()));
+      assertTrue(prompt.contains("[bullet:<id>]"));
+      // ACE Playbook injection should NOT be in the prompt anymore
+      assertFalse(prompt.contains("ACE Playbook"));
 
       // Cleanup
       for (var entry : memoryManager.list()) {
         memoryManager.delete(entry.id());
-      }
-      for (var entry : bulletManager.list()) {
-        bulletManager.delete(entry.id());
       }
     } finally {
       restoreProperty("codeauto.home", previousHome);

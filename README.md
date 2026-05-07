@@ -367,6 +367,19 @@ stdio 协议支持 `auto`（默认）、`content-length`、`newline-json`。`aut
 }
 ```
 
+### 系统指令一览
+<system-reminder>
+  # CLAUDE.md 多级指令
+  # Todo summary
+  # Available skills (索引，按需加载)
+  # Loaded skill instructions (已加载的全量)
+  # Relevant persistent memories (最多 5 条)
+  # Past experience   ← 新增：告诉模型去哪找，不注入内容
+    遇到错误 → grep .codeauto/bullets/ (compact 经验)
+    需要全量分析 → read .codeauto/reflections/ (详细复盘)
+</system-reminder>
+
+
 ### Windows 兼容性
 
 Windows 下 Java `ProcessBuilder` 无法直接执行 `.cmd`/`.bat` 文件。CodeAuto 会自动检测并解析 `.cmd` 包装脚本，提取出底层真实可执行文件（如 `node.exe`）直接调用，无需用户手动处理。
