@@ -41,6 +41,7 @@ public class ConfigLoader {
     if (overrides.contextWindow() > 0) {
       result = result.withContextWindow(overrides.contextWindow());
     }
+    result = result.withStripThinking(overrides.stripThinking());
     return result;
   }
 
@@ -56,11 +57,12 @@ public class ConfigLoader {
     json.put("maxRetries", config.maxRetries());
     json.put("modelTimeoutSeconds", config.modelTimeoutSeconds());
     json.put("contextWindow", config.contextWindow());
+    json.put("stripThinking", config.stripThinking());
     Files.writeString(path, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(json) + "\n");
   }
 
-  public record CliOverrides(String model, int maxTokens, int contextWindow) {
-    public static final CliOverrides NONE = new CliOverrides(null, 0, 0);
+  public record CliOverrides(String model, int maxTokens, int contextWindow, boolean stripThinking) {
+    public static final CliOverrides NONE = new CliOverrides(null, 0, 0, false);
   }
 
   private static RuntimeConfig fromEnvironment() {
@@ -69,7 +71,8 @@ public class ConfigLoader {
         .withBaseUrl(env("CODEAUTO_BASE_URL"))
         .withAuthToken(env("CODEAUTO_AUTH_TOKEN"))
         .withModelTimeoutSeconds(envInt("CODEAUTO_MODEL_TIMEOUT_SECONDS", 0))
-        .withContextWindow(envInt("CODEAUTO_CONTEXT_WINDOW", 0));
+        .withContextWindow(envInt("CODEAUTO_CONTEXT_WINDOW", 0))
+        .withStripThinking(envBool("CODEAUTO_STRIP_THINKING"));
   }
 
   private static String env(String name) {
@@ -90,7 +93,8 @@ public class ConfigLoader {
           integer(json, "maxOutputTokens", 0),
           integer(json, "maxRetries", -1),
           integer(json, "modelTimeoutSeconds", 0),
-          integer(json, "contextWindow", 0));
+          integer(json, "contextWindow", 0),
+          json.path("stripThinking").asBoolean(false));
     } catch (Exception error) {
       return RuntimeConfig.DEFAULTS;
     }
@@ -104,6 +108,11 @@ public class ConfigLoader {
   private static int integer(JsonNode json, String field, int fallback) {
     JsonNode value = json.get(field);
     return value == null || !value.canConvertToInt() ? fallback : value.asInt();
+  }
+
+  private static boolean envBool(String name) {
+    String value = System.getenv(name);
+    return "true".equalsIgnoreCase(value) || "1".equals(value);
   }
 
   private static int envInt(String name, int fallback) {

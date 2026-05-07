@@ -88,7 +88,7 @@ public class AnthropicModelAdapter implements ModelAdapter {
         i--;
         appendToolResults(anthropicMessages, results);
       } else {
-        appendMessage(anthropicMessages, message);
+        appendMessage(anthropicMessages, message, config.stripThinking());
       }
     }
     if (!system.isEmpty()) {
@@ -275,7 +275,7 @@ public class AnthropicModelAdapter implements ModelAdapter {
     return Math.min(8000L, 500L * (1L << Math.max(0, attempt - 1)));
   }
 
-  private static void appendMessage(ArrayNode messages, ChatMessage message) {
+  private static void appendMessage(ArrayNode messages, ChatMessage message, boolean stripThinking) {
     ObjectNode next = messages.addObject();
     if (message instanceof ChatMessage.UserMessage user) {
       next.put("role", "user");
@@ -285,7 +285,7 @@ public class AnthropicModelAdapter implements ModelAdapter {
       next.put("content", assistant.content());
     } else if (message instanceof ChatMessage.AssistantRawMessage raw) {
       next.put("role", "assistant");
-      next.set("content", raw.content());
+      next.set("content", stripThinking ? stripThinkingBlocks(raw.content()) : raw.content());
     } else if (message instanceof ChatMessage.AssistantProgressMessage progress) {
       next.put("role", "assistant");
       next.put("content", "<progress>\n" + progress.content() + "\n</progress>");
@@ -301,6 +301,17 @@ public class AnthropicModelAdapter implements ModelAdapter {
       next.put("role", "user");
       next.put("content", summary.content());
     }
+  }
+
+  private static JsonNode stripThinkingBlocks(JsonNode content) {
+    if (content == null || !content.isArray()) return content;
+    ArrayNode filtered = MAPPER.createArrayNode();
+    for (JsonNode block : content) {
+      if (!"thinking".equals(block.path("type").asText())) {
+        filtered.add(block);
+      }
+    }
+    return filtered;
   }
 
   private static void appendToolResults(ArrayNode messages, List<ChatMessage.ToolResultMessage> results) {

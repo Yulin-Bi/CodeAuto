@@ -94,6 +94,7 @@ PowerShell 示例：
 $env:CODEAUTO_BASE_URL="https://api.anthropic.com"
 $env:CODEAUTO_AUTH_TOKEN="your-api-key"
 $env:CODEAUTO_MODEL="your-model-name"
+$env:CODEAUTO_STRIP_THINKING="true"   # Anthropic extended thinking: true; DeepSeek: false
 ```
 
 macOS / Linux 示例：
@@ -102,6 +103,7 @@ macOS / Linux 示例：
 export CODEAUTO_BASE_URL="https://api.anthropic.com"
 export CODEAUTO_AUTH_TOKEN="your-api-key"
 export CODEAUTO_MODEL="your-model-name"
+export CODEAUTO_STRIP_THINKING="true"   # Anthropic extended thinking: true; DeepSeek: false
 ```
 
 用户级配置示例：
@@ -113,7 +115,9 @@ export CODEAUTO_MODEL="your-model-name"
   "model": "your-model-name",
   "maxOutputTokens": 4096,
   "maxRetries": 4,
-  "modelTimeoutSeconds": 600
+  "modelTimeoutSeconds": 600,
+  "contextWindow": 200000,
+  "stripThinking": false
 }
 ```
 
@@ -121,6 +125,27 @@ TUI 和 CLI 中可以直接切换并持久化模型：
 
 ```text
 /model <name>
+```
+
+### Extended Thinking 兼容性
+
+不同 API 对 extended thinking（思考块）的处理要求不同：
+
+- **DeepSeek v4**：开启 extended thinking 时，必须将 thinking 块原样传回 API，否则返回 400 错误。设置 `stripThinking: false`（默认）。
+- **Anthropic**：如果开启了 extended thinking，thinking 块不能传回 API，需要剥离。设置 `stripThinking: true`。
+- **GLM / MiniMax**：当前未开启 extended thinking，不产生 thinking 块，两种设置均无影响。
+
+配置方式（优先级从高到低）：
+
+```bash
+# CLI 参数
+codeauto --strip-thinking
+
+# 环境变量
+export CODEAUTO_STRIP_THINKING=true
+
+# settings.json
+{ "stripThinking": true }
 ```
 
 ## 核心能力
@@ -506,6 +531,15 @@ CodeAuto 已在 CLI 入口默认设置 `org.jline.terminal.disableDeprecatedProv
 ```powershell
 $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 ```
+
+## 最近更新（2026-05-07）
+
+### Extended Thinking 显示 + API 兼容配置
+
+- 支持模型 extended thinking 流式输出，TUI 底部实时显示最新 3 行思考内容（浅黄色标注），CLI 静默忽略。
+- 新增 `stripThinking` 配置开关，兼容不同 API 对 thinking 块的传回要求（Anthropic 开启 extended thinking 时需剥离 → 设 `true`；DeepSeek v4 必须传回 → 设 `false` 默认）。
+- 配置优先级：CLI `--strip-thinking` > 环境变量 `CODEAUTO_STRIP_THINKING` > `settings.json` 的 `stripThinking` 字段。
+- `AnthropicModelAdapter` 在构建请求时根据 `stripThinking` 自动过滤/保留 assistant 消息中的 thinking 块。
 
 ## 最近更新（2026-05-06）
 

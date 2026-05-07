@@ -397,8 +397,8 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
     </div>
     <div class="stats-bar">
       <div class="stat-item"><div class="stat-number">23</div><div class="stat-label" data-i18n="stats.tools">Built-in Tools</div></div>
-      <div class="stat-item"><div class="stat-number">79</div><div class="stat-label" data-i18n="stats.tests">Tests Passing</div></div>
-      <div class="stat-item"><div class="stat-number">5</div><div class="stat-label" data-i18n="stats.models">Core Systems</div></div>
+      <div class="stat-item"><div class="stat-number">111</div><div class="stat-label" data-i18n="stats.tests">Tests Passing</div></div>
+      <div class="stat-item"><div class="stat-number">6</div><div class="stat-label" data-i18n="stats.models">Core Systems</div></div>
       <div class="stat-item"><div class="stat-number">2</div><div class="stat-label" data-i18n="stats.deps">MCP Protocols</div></div>
     </div>
   </div>
@@ -441,7 +441,7 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
         <div class="hl-icon agent">L</div>
         <h3 data-i18n="hl.agent.title">Agent Loop -- The Execution Engine</h3>
         <div class="hl-subtitle" data-i18n="hl.agent.subtitle">Multi-step tool calling with automatic context management</div>
-        <p class="hl-desc" data-i18n="hl.agent.desc">The Agent Loop drives every conversation turn: sending messages to the model, parsing tool calls, executing them, and feeding results back -- up to 32 steps per turn. Streaming SSE deltas update the TUI in real time. Three-layer token management keeps context under control.</p>
+        <p class="hl-desc" data-i18n="hl.agent.desc">The Agent Loop drives every conversation turn: sending messages to the model, parsing tool calls, executing them, and feeding results back -- up to 128 steps per turn. Streaming SSE deltas update the TUI in real time. Three-layer token management keeps context under control.</p>
         <ul class="hl-features">
           <li data-i18n="hl.agent.f1">Streaming AssistantMessage via SSE text_delta, TUI renders in-place without flicker</li>
           <li data-i18n="hl.agent.f2">Micro-compact clears old tool results at 50% context utilization, keeps last 3</li>
@@ -449,7 +449,7 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
           <li data-i18n="hl.agent.f4">Cancellable at any step -- cancel() flag checked before API calls and tool execution</li>
           <li data-i18n="hl.agent.f5">JLine Signal.INT handler ensures Ctrl+C works even when raw mode signal suppression fails</li>
         </ul>
-        <div class="hl-tags"><span class="feature-tag">maxSteps: 32</span><span class="feature-tag">SSE Streaming</span><span class="feature-tag">Cancellable</span><span class="feature-tag">3-Layer Context</span></div>
+        <div class="hl-tags"><span class="feature-tag">maxSteps: 128</span><span class="feature-tag">SSE Streaming</span><span class="feature-tag">Reflexion</span><span class="feature-tag">Ext. Thinking</span><span class="feature-tag">3-Layer Context</span></div>
       </div>
     </div>
 
@@ -562,7 +562,7 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
           <li data-i18n="hl.memory.f4">CompactService: saves full pre-compaction context to .codeauto/compacted/compact-*.md with pointer in summary</li>
           <li data-i18n="hl.memory.f5">Token budget: 200K context window, local estimation as fallback, provider usage priority</li>
         </ul>
-        <div class="hl-tags"><span class="feature-tag">4-Layer</span><span class="feature-tag">Frontmatter MD</span><span class="feature-tag">AI-Driven</span><span class="feature-tag">200K Window</span><span class="feature-tag">Artifact Save</span></div>
+        <div class="hl-tags"><span class="feature-tag">4-Layer</span><span class="feature-tag">ACE Bullet</span><span class="feature-tag">Reflexion</span><span class="feature-tag">200K Window</span><span class="feature-tag">Artifact Save</span></div>
       </div>
     </div>
   </div>
@@ -668,12 +668,12 @@ const I18N = {
     'highlights.desc': 'Agent Loop、TodoList、MCP/Skills、多层记忆与动态上下文压缩 —— 构成了 CodeAuto 的能力、安全性和可扩展性基础。',
     'hl.agent.title': 'Agent Loop —— 执行引擎',
     'hl.agent.subtitle': '多步工具调用 + 自动上下文管理',
-    'hl.agent.desc': 'Agent Loop 驱动每轮对话：将消息发送到模型，解析工具调用，执行工具，结果回填 —— 最多 32 步。SSE 流式输出实时更新 TUI。三层 token 管理确保上下文受控。',
+    'hl.agent.desc': 'Agent Loop 驱动每轮对话：将消息发送到模型，解析工具调用，执行工具，结果回填 —— 最多 128 步。SSE 流式输出实时更新 TUI，支持 Extended Thinking 思考内容流式显示。每轮结束后自动触发 Reflexion 自反思，检测失败信号并保存结构化教训。',
     'hl.agent.f1': 'SSE text_delta 流式 AssistantMessage，TUI 原地刷新不闪屏',
     'hl.agent.f2': '微压缩在 50% 利用率时清理旧工具结果，保留最近 3 个',
     'hl.agent.f3': '全压缩在 80% 时触发：摘要中段消息，完整产物落盘 .codeauto/compacted/',
     'hl.agent.f4': '任意检查点可取消 —— cancel() 在 API 调用前、工具执行前检查',
-    'hl.agent.f5': 'JLine Signal.INT 处理器确保 raw mode 信号抑制失败时 Ctrl+C 仍有效',
+    'hl.agent.f5': '每轮结束后 Reflexion 自动检测失败信号（工具错误/达到最大步数/用户取消），触发模型反思并保存结构化 FEEDBACK 记忆',
     'hl.todo.title': 'TodoList —— 多步任务追踪',
     'hl.todo.subtitle': 'AI 与用户协作追踪复杂任务进度',
     'hl.todo.desc': '用户提出 3+ 步骤任务时，AI 自动用 todo_create 拆解。TUI header 实时显示进度（3/7）。AI 完成步骤后更新状态，用户也可通过 /todo 命令直接管理。',
@@ -691,10 +691,10 @@ const I18N = {
     'hl.mcp.f5': 'Skill 索引在 system prompt 中展示名称+描述，减少不必要的 list_skills',
     'hl.memory.title': '多层记忆与动态上下文压缩',
     'hl.memory.subtitle': '从跨会话持久记忆到实时 token 管理',
-    'hl.memory.desc': '四层记忆协同工作：L1 注入 CLAUDE.md 指令+已加载 skills+相关记忆到每轮 system prompt。L2 将 AI 驱动的记忆持久化为 frontmatter Markdown 并自动矛盾检测。L3 压缩长对话并将完整产物落盘。L4 在 50% 利用率时微压缩过期工具结果。',
+    'hl.memory.desc': '四层记忆协同工作：L1 注入 CLAUDE.md 指令+已加载 skills+相关记忆到每轮 system prompt。L2 将 AI 驱动的记忆持久化为 frontmatter Markdown 并自动矛盾检测，包含 ACE Bullet 结构化经验记忆（带 helpful/harmful 计数器）。L3 压缩长对话并将完整产物落盘。L4 在 50% 利用率时微压缩过期工具结果。Past experience 区域引导模型按需检索 bullets 和 reflections。',
     'hl.memory.f1': 'InstructionLoader: 4 级 CLAUDE.md 加载链（user > codeauto > project > project-local），后者优先',
     'hl.memory.f2': 'MemoryManager: frontmatter Markdown 文件，分类条目，相关性评分（project +8, global +1, term +2）',
-    'hl.memory.f3': 'AI 驱动保存: system prompt 指导 AI 在保存前检查矛盾，超过 24 小时标记 stale',
+    'hl.memory.f3': 'ACE Bullet 结构化经验: Reflexion 反思自动创建带 helpful/harmful 计数器的 bullet，Jaccard 去重，按需 grep 检索',
     'hl.memory.f4': 'CompactService: 压缩时保存完整上下文至 .codeauto/compacted/compact-*.md，摘要含文件指针',
     'hl.memory.f5': 'Token 预算: 200K 上下文窗口，本地估算作为 fallback，provider usage 优先使用',
     'quickstart.label': '快速开始',
@@ -752,12 +752,12 @@ const I18N = {
     'highlights.desc': 'Agent Loop, TodoList, MCP/Skills, and Multi-Layer Memory with Dynamic Context Compression form the foundation of CodeAuto\'s capability, safety, and extensibility.',
     'hl.agent.title': 'Agent Loop -- The Execution Engine',
     'hl.agent.subtitle': 'Multi-step tool calling with automatic context management',
-    'hl.agent.desc': 'The Agent Loop drives every conversation turn: sending messages to the model, parsing tool calls, executing them, and feeding results back -- up to 32 steps per turn. Streaming SSE deltas update the TUI in real time. Three-layer token management keeps context under control.',
+    'hl.agent.desc': 'The Agent Loop drives every conversation turn: sending messages to the model, parsing tool calls, executing them, and feeding results back -- up to 128 steps per turn. Streaming SSE deltas update the TUI in real time, with Extended Thinking content displayed in a dedicated footer area. After each turn, Reflexion auto-detects failure signals and saves structured lessons as ACE Bullets.',
     'hl.agent.f1': 'Streaming AssistantMessage via SSE text_delta, TUI renders in-place without flicker',
     'hl.agent.f2': 'Micro-compact clears old tool results at 50% context utilization, keeps last 3',
     'hl.agent.f3': 'Full compact at 80%: summarizes middle messages, saves artifact to .codeauto/compacted/',
     'hl.agent.f4': 'Cancellable at any step -- cancel() flag checked before API calls and tool execution',
-    'hl.agent.f5': 'JLine Signal.INT handler ensures Ctrl+C works even when raw mode signal suppression fails',
+    'hl.agent.f5': 'After each turn, Reflexion auto-detects failure signals (tool errors, max steps, user cancel) and saves structured FEEDBACK memories with reusable lessons',
     'hl.todo.title': 'TodoList -- Multi-Step Task Tracking',
     'hl.todo.subtitle': 'AI and user collaboratively track complex task progress',
     'hl.todo.desc': 'When the user gives a 3+ step task, the AI breaks it down with todo_create. The TUI header shows live progress (3/7). The AI updates status as it works, and users can manage tasks directly via /todo commands.',
@@ -775,10 +775,10 @@ const I18N = {
     'hl.mcp.f5': 'Skill index shows name + description in system prompt, reducing unnecessary list_skills calls',
     'hl.memory.title': 'Multi-Layer Memory & Dynamic Context Compression',
     'hl.memory.subtitle': 'From persistent cross-session memory to real-time token management',
-    'hl.memory.desc': 'Four layers of memory work together: L1 injects CLAUDE.md instructions + loaded skills + relevant memories into every system prompt. L2 persists AI-driven memories as frontmatter Markdown with contradiction detection. L3 compresses long conversations with full artifact persistence. L4 micro-compacts stale tool results at 50% utilization.',
+    'hl.memory.desc': 'Four layers of memory work together: L1 injects CLAUDE.md instructions + loaded skills + relevant memories into every system prompt. L2 persists AI-driven memories as frontmatter Markdown with ACE Bullet structured experience (helpful/harmful counters) and contradiction detection. L3 compresses long conversations with full artifact persistence. L4 micro-compacts stale tool results at 50% utilization. Past experience section guides model to retrieve bullets and reflections on demand.',
     'hl.memory.f1': 'InstructionLoader: 4-level CLAUDE.md chain (user > codeauto > project > project-local), later wins',
     'hl.memory.f2': 'MemoryManager: frontmatter Markdown files, typed entries, relevance scoring (project +8, global +1, term +2)',
-    'hl.memory.f3': 'AI-driven save: system prompt guides AI to check contradictions before saving, stale after 24h',
+    'hl.memory.f3': 'ACE Bullet structure: Reflexion auto-creates bullets with helpful/harmful counters, Jaccard dedup, on-demand grep retrieval',
     'hl.memory.f4': 'CompactService: saves full pre-compaction context to .codeauto/compacted/compact-*.md with pointer in summary',
     'hl.memory.f5': 'Token budget: 200K context window, local estimation as fallback, provider usage priority',
     'quickstart.label': 'Get Started',

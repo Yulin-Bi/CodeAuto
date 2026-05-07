@@ -103,7 +103,7 @@
 
 - [x] 多级配置加载链：默认值 → 环境变量 → 项目 settings.json → 用户 settings.json → CLI 标志
 - [x] `RuntimeConfig.merge()` / `withXxx()` 分层覆盖模式
-- [x] CLI 标志：`--model`、`--cwd`、`--max-tokens`、`--tui`、`--mock`、`--resume`、`--fork`
+- [x] CLI 标志：`--model`、`--cwd`、`--max-tokens`、`--tui`、`--mock`、`--resume`、`--fork`、`--context-window`、`--strip-thinking`
 - [x] `codeauto` 启动脚本（Unix shell + Windows batch）
 - [x] 首次启动自动构建 fat JAR
 
@@ -712,3 +712,26 @@ BUILD SUCCESS
 #### 影响
 
 Windows 用户现在可以直接用 `npx`、`node`、`python` 等命令配置 MCP Server，CodeAuto 自动解析 `.cmd` 包装并找到真实可执行文件。建议显式指定 `"protocol": "newline-json"` 跳过 `auto` 模式的 content-length 协商等待。
+
+## Extended Thinking 支持与跨 API 兼容（2026-05-07）
+
+### 问题
+
+1. **模型思考内容丢失**：DeepSeek v4 等模型开启 extended thinking 时，流式返回 `thinking_delta` 事件，但 CodeAuto 未处理，思考内容静默丢弃。
+2. **DeepSeek API 400 错误**：DeepSeek 要求 thinking 块必须在后续请求中原样传回，CodeAuto 之前未保留 thinking 块，导致 `"The content[].thinking in the thinking mode must be passed back to the API"` 错误。
+3. **不同 API 行为相反**：Anthropic 开启 extended thinking 后 thinking 块不能传回 API 需剥离，DeepSeek 必须传回，需要统一兼容方案。
+
+### 实现
+
+- [x] `AnthropicModelAdapter` 流式解析新增 `content_block_start` 中 `"thinking"` 类型的处理，`content_block_delta` 中 `"thinking_delta"` 的处理，以及 `content_block_stop` 时 thinking 块的完整保存。
+- [x] `AgentLoopListener` 新增 `onThinkingDelta(String delta)` 回调，TUI 在底部 footer 上方实时渲染最新 3 行思考内容（浅黄色），CLI 静默忽略。
+- [x] `RuntimeConfig` 新增 `stripThinking` 字段（第 8 个字段，默认 `false`），通过 `withStripThinking()` 和 `merge()` 支持分层覆盖。
+- [x] `ConfigLoader` 支持 `settings.json` 的 `stripThinking` 字段、环境变量 `CODEAUTO_STRIP_THINKING`、CLI `--strip-thinking` 参数。
+- [x] `AnthropicModelAdapter.buildRequestBody()` 在构建下一次请求时，根据 `stripThinking` 配置决定是否从 assistant 消息 content 数组中过滤 `type: "thinking"` 块。
+- [x] 默认 `stripThinking: false`（保留 thinking 块），兼容 DeepSeek；Anthropic 用户开启 extended thinking 时需设置 `stripThinking: true`。
+
+### 设计决策
+
+- **默认保留 thinking 块**：DeepSeek 必须传回，不传回报 400；Anthropic 未开启 extended thinking 时不产生 thinking 块，传空不影响。只有当 Anthropic 显式开启 extended thinking 时才需要用户手动设置剥离。
+- **TUI 底部显示而非 status bar**：thinking 内容最长可达数百行，status bar 单行截断不可用。底部 3 行 dimmed 区域可在不干扰对话流的前提下展示最新思考进度。
+- **CliOverrides 使用 boolean sentinel 模式**：`withStripThinking(false)` → 不应用（保持原值），只有 `true` 才覆盖，与现有 int/String sentinel 模式一致。

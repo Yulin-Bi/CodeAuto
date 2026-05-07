@@ -21,7 +21,8 @@ class ConfigLoaderTest {
           2048,
           2,
           900,
-          200_000);
+          200_000,
+          true);
 
       ConfigLoader.writeUserSettings(config);
 

@@ -240,6 +240,8 @@ codeauto --fork <id>       # 从指定会话分叉
 # 模型配置
 codeauto --model claude-sonnet-4-6
 codeauto --max-tokens 8192
+codeauto --context-window 200000
+codeauto --strip-thinking        # Anthropic extended thinking 需开启
 
 # 最大工具调用步数
 codeauto --max-steps 64
@@ -264,6 +266,11 @@ CodeAuto 保持几个工程原则：
 - 同文件多次编辑 transcript 聚合
 - Skill 变量替换和 fork 模式
 - 更细的模型上下文窗口查询表
+
+## 最近实现状态（2026-05-07）
+
+- **Extended Thinking 流式显示**：模型 extended thinking 内容通过 `thinking_delta` SSE 事件接收，TUI 底部 3 行浅黄色实时显示最新思考行，CLI 静默忽略。`TuiApp` 的 `thinkingText` 字段由 `onThinkingDelta` 更新、`onAssistantDelta` 清空。
+- **`stripThinking` 跨 API 兼容配置**：不同 API 对 thinking 块传回要求不同（Anthropic 开启 extended thinking 时需剥离，DeepSeek v4 必须保留）。新增 `stripThinking` 配置字段（默认 `false`），通过 CLI `--strip-thinking`、环境变量 `CODEAUTO_STRIP_THINKING`、`settings.json` 配置。`AnthropicModelAdapter.buildRequestBody()` 根据该标志自动过滤 assistant 消息中的 thinking 块。
 
 ## 最近实现状态（2026-05-06）
 

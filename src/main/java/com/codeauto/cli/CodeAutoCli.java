@@ -67,6 +67,9 @@ public class CodeAutoCli implements Runnable {
   @CommandLine.Option(names = "--context-window", description = "Context window size in tokens (default: 200000)")
   Integer contextWindowOverride;
 
+  @CommandLine.Option(names = "--strip-thinking", description = "Strip thinking blocks before sending to API (Anthropic: true, DeepSeek: false)")
+  boolean stripThinkingOverride;
+
   @CommandLine.Option(names = "--resume", arity = "0..1", fallbackValue = "__latest__",
       description = "Resume the latest session, or resume a specific session id")
   String resumeTarget;
@@ -89,7 +92,8 @@ public class CodeAutoCli implements Runnable {
     runtime = ConfigLoader.applyCliOverrides(runtime,
         new ConfigLoader.CliOverrides(modelOverride,
             maxTokensOverride == null ? 0 : maxTokensOverride,
-            contextWindowOverride == null ? 0 : contextWindowOverride));
+            contextWindowOverride == null ? 0 : contextWindowOverride,
+            stripThinkingOverride));
     PermissionManager permissions = new PermissionManager(cwd);
     ToolRegistry tools = DefaultTools.create();
     tools.addTools(new McpService(new com.codeauto.manage.ManagementStore(), cwd).createBackedTools());
