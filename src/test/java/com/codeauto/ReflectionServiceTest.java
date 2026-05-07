@@ -47,13 +47,13 @@ class ReflectionServiceTest {
   }
 
   @Test
-  void detectsCancelledTrigger() {
+  void cancelledDoesNotTriggerReflection() {
     List<ChatMessage> messages = List.of(
         new ChatMessage.SystemMessage("system"),
         new ChatMessage.UserMessage("do it"),
         new ChatMessage.AssistantMessage("(Interrupted)"));
 
-    assertEquals(ReflectionService.ReflectionTrigger.CANCELLED,
+    assertEquals(ReflectionService.ReflectionTrigger.NONE,
         ReflectionService.detectTrigger(messages));
   }
 

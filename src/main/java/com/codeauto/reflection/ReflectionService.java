@@ -141,12 +141,6 @@ public final class ReflectionService {
       return ReflectionTrigger.MAX_STEPS;
     }
 
-    if (last instanceof ChatMessage.AssistantMessage am
-        && am.content() != null
-        && am.content().equals("(Interrupted)")) {
-      return ReflectionTrigger.CANCELLED;
-    }
-
     int userMsgEnd = turnStartIndex > 0 ? turnStartIndex : messages.size();
     for (int i = userMsgEnd - 1; i >= 0; i--) {
       ChatMessage msg = messages.get(i);
