@@ -281,7 +281,7 @@ Edit(secret/*)
 Skills 会从项目级目录发现，也支持用户级管理配置。通过 `load_skill` 加载后，skill 的完整指令会在当前会话的每一轮 system prompt 中注入，确保 AI 在整个会话中遵循 skill 指令。
 
 ```text
-.code-auto/skills          # 项目级 skills 目录
+.codeauto/skills           # 项目级 skills 目录
 .claude/skills             # 项目级 .claude skills 目录
 ~/.codeauto/skills.json    # 用户级 managed skills (skills add/remove CLI)
 ```
@@ -501,10 +501,11 @@ $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 - 每轮对话结束后自动检测失败信号（工具错误 / 达到最大步数 / 用户取消 / 用户不满），触发模型反思并保存 `FEEDBACK` 记忆。
 - 反思结构包含 What Went Wrong / Root Cause / What Should Have Been Done Differently / Reusable Lesson。
 - 反思提取 Reusable Lesson 后自动创建 ACE Bullet（带 `[bullet:<id>]` ID 和 helpful/harmful 计数器）。
-- Curator 确定性增量引擎：支持 BulletDelta Add/Update/Tag/Remove，Jaccard 相似度去重（阈值 0.55），section 范围匹配，10 分钟冷却防重复。
+- Curator 确定性增量引擎：支持 BulletDelta Add/Update/Tag/Remove，Jaccard 相似度去重（阈值 0.55），section 范围匹配。
 - 文件分离：reflections → `<project>/.codeauto/reflections/`，bullets → `<project>/.codeauto/bullets/`，memories → `~/.codeauto/memory/`。
 - `InstructionLoader` 独立注入 ACE Playbook（最多 10 条），bullet 以单行紧凑索引显示，不占用普通记忆配额。
-- 反思异步执行（`CompletableFuture.runAsync`），不阻塞用户交互。
+- 反思异步执行（`CompletableFuture.runAsync` + `List.copyOf` 防御性拷贝），不阻塞用户交互。
+- `detectTrigger` 仅扫描本轮增量消息（`turnStartIndex` 限定），避免历史错误重复触发。
 - 模型答复中引用 bullet 时标注 `[bullet:<id>]`，ReflectionService 自动解析 Bullet Tags 并更新计数器。
 
 ### Windows MCP 自动命令解析

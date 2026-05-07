@@ -8,44 +8,51 @@ public record RuntimeConfig(
     String authToken,
     int maxOutputTokens,
     int maxRetries,
-    int modelTimeoutSeconds
+    int modelTimeoutSeconds,
+    int contextWindow
 ) {
-  public static final RuntimeConfig DEFAULTS = new RuntimeConfig("mock", "", "", 16384, 4, 600);
+  public static final RuntimeConfig DEFAULTS = new RuntimeConfig("mock", "", "", 16384, 4, 600, 200_000);
 
   public RuntimeConfig withModel(String model) {
     return model == null || model.isBlank()
         ? this
-        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds);
+        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds, contextWindow);
   }
 
   public RuntimeConfig withBaseUrl(String baseUrl) {
     return baseUrl == null || baseUrl.isBlank()
         ? this
-        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds);
+        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds, contextWindow);
   }
 
   public RuntimeConfig withAuthToken(String authToken) {
     return authToken == null || authToken.isBlank()
         ? this
-        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds);
+        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds, contextWindow);
   }
 
   public RuntimeConfig withMaxOutputTokens(int maxOutputTokens) {
     return maxOutputTokens <= 0
         ? this
-        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds);
+        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds, contextWindow);
   }
 
   public RuntimeConfig withMaxRetries(int maxRetries) {
     return maxRetries < 0
         ? this
-        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds);
+        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds, contextWindow);
   }
 
   public RuntimeConfig withModelTimeoutSeconds(int modelTimeoutSeconds) {
     return modelTimeoutSeconds <= 0
         ? this
-        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds);
+        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds, contextWindow);
+  }
+
+  public RuntimeConfig withContextWindow(int contextWindow) {
+    return contextWindow <= 0
+        ? this
+        : new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds, contextWindow);
   }
 
   /** Merge another config over this one: non-null/non-default fields in {@code overlay} win. */
@@ -57,7 +64,8 @@ public record RuntimeConfig(
         .withAuthToken(overlay.authToken)
         .withMaxOutputTokens(overlay.maxOutputTokens)
         .withMaxRetries(overlay.maxRetries)
-        .withModelTimeoutSeconds(overlay.modelTimeoutSeconds);
+        .withModelTimeoutSeconds(overlay.modelTimeoutSeconds)
+        .withContextWindow(overlay.contextWindow);
   }
 
   public static Path homeDir() {

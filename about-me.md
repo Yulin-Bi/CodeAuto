@@ -178,7 +178,7 @@ CodeAuto 的权限层由 `PermissionManager` 和 `PermissionStore` 组成。
 
 Skills：
 
-- 项目级 `.code-auto/skills`
+- 项目级 `.codeauto/skills`
 - 用户级 `.claude/skills`
 - `load_skill` 工具，加载后会话每轮注入 skill 指令
 - `SessionSkills` 进程内注册表，per-cwd 跟踪已加载 skill
@@ -267,7 +267,7 @@ CodeAuto 保持几个工程原则：
 
 ## 最近实现状态（2026-05-06）
 
-- **Reflexion 自反思 + ACE Bullet 结构化经验记忆**：每轮对话结束后自动检测失败信号，触发模型反思并保存 FEEDBACK 记忆。反思提取 Reusable Lesson 后通过 Curator 确定性增量引擎自动创建 ACE Bullet（带 helpful/harmful 计数器，Jaccard 去重，10 分钟冷却）。文件按类型分离存储（reflections/bullets → 项目级 `.codeauto/`，memories → 全局 `~/.codeauto/memory/`）。`InstructionLoader` 独立注入 ACE Playbook（最多 10 条紧凑单行索引），反思异步执行不阻塞用户。
+- **Reflexion 自反思 + ACE Bullet 结构化经验记忆**：每轮对话结束后自动检测本轮失败信号，触发模型反思并保存 FEEDBACK 记忆。反思提取 Reusable Lesson 后通过 Curator 确定性增量引擎自动创建 ACE Bullet（带 helpful/harmful 计数器，Jaccard 去重）。文件按类型分离存储（reflections/bullets → 项目级 `.codeauto/`，memories → 全局 `~/.codeauto/memory/`）。`InstructionLoader` 独立注入 ACE Playbook（最多 10 条紧凑单行索引）。`detectTrigger` 仅扫描本轮增量消息，异步执行 + 防御性拷贝不阻塞用户。
 - **Windows MCP stdio 兼容性修复**：`McpClient` 新增 `.cmd` 自动解析，Windows 下自动从 `npx.cmd` 等包装脚本中提取 `node.exe` 等真实可执行文件，用户无需手动配置完整路径。修复 `initialize` 缺失 `capabilities` 字段、PATH 搜索误匹配 bash 脚本、stderr 噪声污染 JSON 帧等问题。建议显式指定 `"protocol": "newline-json"` 跳过 `auto` 模式的 content-length 协商等待。
 
 ## 最近实现状态（2026-05-05）

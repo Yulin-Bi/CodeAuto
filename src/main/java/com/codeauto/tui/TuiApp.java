@@ -45,7 +45,6 @@ import org.jline.terminal.TerminalBuilder;
 
 public class TuiApp {
 
-  private static final int CONTEXT_WINDOW = 200_000;
   private static final int PERMISSION_TIMEOUT_SECS = 120;
 
   static final int SCROLL_STEP = 5;
@@ -218,7 +217,7 @@ public class TuiApp {
           .build();
       writer = terminal.writer();
 
-      renderer = new TuiRenderer(terminal, writer);
+      renderer = new TuiRenderer(terminal, writer, config.contextWindow());
 
       permissions = new PermissionManager(cwd, new com.codeauto.permissions.PermissionStore(),
           new PermissionPrompt() {
@@ -231,7 +230,7 @@ public class TuiApp {
               return askPermission(req);
             }
           });
-      loop = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps, listener, CONTEXT_WINDOW);
+      loop = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps, listener, config.contextWindow());
       sessions = new SessionStore(cwd);
       sessionId = UUID.randomUUID().toString().substring(0, 8);
       savedCount = 1;
@@ -668,7 +667,7 @@ public class TuiApp {
         agentFuture = null;
         transcriptAutoScroll = true;
         statusText = null;
-        contextStats = TokenEstimator.compute(messages, CONTEXT_WINDOW);
+        contextStats = TokenEstimator.compute(messages, config.contextWindow());
         render();
       }
     });
@@ -707,7 +706,7 @@ public class TuiApp {
     model = "mock".equalsIgnoreCase(config.model())
         ? new MockModelAdapter()
         : new AnthropicModelAdapter(config, tools);
-    loop = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps, listener, CONTEXT_WINDOW);
+    loop = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps, listener, config.contextWindow());
     try {
       ConfigLoader.writeUserSettings(config);
       addEntry(new TranscriptEntry.Assistant(nextEntryId++,

@@ -14,7 +14,6 @@ import org.jline.terminal.Terminal;
  */
 final class TuiRenderer {
 
-  private static final int CONTEXT_WINDOW = 200_000;
   private static final int SCROLL_STEP = 5;
   private static final int SLASH_MENU_MAX_ROWS = 7;
   private static final int LIVE_PROGRESS_MAX_LINES = 5;
@@ -27,10 +26,12 @@ final class TuiRenderer {
 
   private final Terminal terminal;
   private final Writer writer;
+  private final int contextWindow;
 
-  TuiRenderer(Terminal terminal, Writer writer) {
+  TuiRenderer(Terminal terminal, Writer writer, int contextWindow) {
     this.terminal = terminal;
     this.writer = writer;
+    this.contextWindow = contextWindow;
   }
 
   // --- Main render entry point ---
@@ -630,7 +631,7 @@ final class TuiRenderer {
   private String renderContextBadge(ContextStats stats) {
     if (stats == null) return "";
     int pct = Math.min(100, Math.max(0,
-        (int) ((double) stats.estimatedTokens() / CONTEXT_WINDOW * 100)));
+        (int) ((double) stats.estimatedTokens() / contextWindow * 100)));
     String color = switch (stats.warningLevel()) {
       case "warning" -> Ansi.YELLOW;
       case "critical" -> Ansi.RED;

@@ -64,6 +64,9 @@ public class CodeAutoCli implements Runnable {
   @CommandLine.Option(names = "--max-tokens", description = "Max output tokens (overrides config)")
   Integer maxTokensOverride;
 
+  @CommandLine.Option(names = "--context-window", description = "Context window size in tokens (default: 200000)")
+  Integer contextWindowOverride;
+
   @CommandLine.Option(names = "--resume", arity = "0..1", fallbackValue = "__latest__",
       description = "Resume the latest session, or resume a specific session id")
   String resumeTarget;
@@ -84,7 +87,9 @@ public class CodeAutoCli implements Runnable {
     Path cwd = resolveCwd();
     var runtime = new ConfigLoader().load(cwd);
     runtime = ConfigLoader.applyCliOverrides(runtime,
-        new ConfigLoader.CliOverrides(modelOverride, maxTokensOverride == null ? 0 : maxTokensOverride));
+        new ConfigLoader.CliOverrides(modelOverride,
+            maxTokensOverride == null ? 0 : maxTokensOverride,
+            contextWindowOverride == null ? 0 : contextWindowOverride));
     PermissionManager permissions = new PermissionManager(cwd);
     ToolRegistry tools = DefaultTools.create();
     tools.addTools(new McpService(new com.codeauto.manage.ManagementStore(), cwd).createBackedTools());
@@ -96,7 +101,8 @@ public class CodeAutoCli implements Runnable {
       return;
     }
     AgentLoop loop
-        = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps, consoleListener(model, cwd), 200_000);
+        = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps,
+            consoleListener(model, cwd), runtime.contextWindow());
     String sessionId = UUID.randomUUID().toString().substring(0, 8);
     int savedCount = 1;
     SessionStore sessions = new SessionStore(cwd);

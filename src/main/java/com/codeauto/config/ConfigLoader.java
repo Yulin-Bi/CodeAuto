@@ -38,6 +38,9 @@ public class ConfigLoader {
     if (overrides.maxTokens() > 0) {
       result = result.withMaxOutputTokens(overrides.maxTokens());
     }
+    if (overrides.contextWindow() > 0) {
+      result = result.withContextWindow(overrides.contextWindow());
+    }
     return result;
   }
 
@@ -52,11 +55,12 @@ public class ConfigLoader {
     json.put("maxOutputTokens", config.maxOutputTokens());
     json.put("maxRetries", config.maxRetries());
     json.put("modelTimeoutSeconds", config.modelTimeoutSeconds());
+    json.put("contextWindow", config.contextWindow());
     Files.writeString(path, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(json) + "\n");
   }
 
-  public record CliOverrides(String model, int maxTokens) {
-    public static final CliOverrides NONE = new CliOverrides(null, 0);
+  public record CliOverrides(String model, int maxTokens, int contextWindow) {
+    public static final CliOverrides NONE = new CliOverrides(null, 0, 0);
   }
 
   private static RuntimeConfig fromEnvironment() {
@@ -64,7 +68,8 @@ public class ConfigLoader {
         .withModel(env("CODEAUTO_MODEL"))
         .withBaseUrl(env("CODEAUTO_BASE_URL"))
         .withAuthToken(env("CODEAUTO_AUTH_TOKEN"))
-        .withModelTimeoutSeconds(envInt("CODEAUTO_MODEL_TIMEOUT_SECONDS", 0));
+        .withModelTimeoutSeconds(envInt("CODEAUTO_MODEL_TIMEOUT_SECONDS", 0))
+        .withContextWindow(envInt("CODEAUTO_CONTEXT_WINDOW", 0));
   }
 
   private static String env(String name) {
@@ -84,7 +89,8 @@ public class ConfigLoader {
           text(json, "authToken", null),
           integer(json, "maxOutputTokens", 0),
           integer(json, "maxRetries", -1),
-          integer(json, "modelTimeoutSeconds", 0));
+          integer(json, "modelTimeoutSeconds", 0),
+          integer(json, "contextWindow", 0));
     } catch (Exception error) {
       return RuntimeConfig.DEFAULTS;
     }

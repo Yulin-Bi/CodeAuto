@@ -20,7 +20,8 @@ class ConfigLoaderTest {
           "token",
           2048,
           2,
-          900);
+          900,
+          200_000);
 
       ConfigLoader.writeUserSettings(config);
 

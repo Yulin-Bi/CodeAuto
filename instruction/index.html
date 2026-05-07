@@ -506,7 +506,7 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
    <span class="dim">  ====================</span>
    <span class="fc">  Skills</span>
    <span class="dim">    |</span>
-   <span class="fc">    +-- .code-auto/skills/</span>
+   <span class="fc">    +-- .codeauto/skills/</span>
    <span class="fc">    +-- .claude/skills/</span>
    <span class="fc">    +-- load_skill -> SessionSkills</span>
    <span class="fc">    +-- inject each turn [loaded]</span></div>
@@ -519,7 +519,7 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
         <ul class="hl-features">
           <li data-i18n="hl.mcp.f1">Dual MCP transport: stdio (Content-Length / newline-json auto-negotiation) + Streamable HTTP</li>
           <li data-i18n="hl.mcp.f2">MCP tools auto-discovered and registered as native ToolDefinitions in ToolRegistry</li>
-          <li data-i18n="hl.mcp.f3">Skills discovered from .code-auto/skills + .claude/skills with 3-tier resolution</li>
+          <li data-i18n="hl.mcp.f3">Skills discovered from .codeauto/skills + .claude/skills with 3-tier resolution</li>
           <li data-i18n="hl.mcp.f4">load_skill -> SessionSkills in-memory registry -> injected into every subsequent system prompt</li>
           <li data-i18n="hl.mcp.f5">Skill index shows name + description in system prompt, reducing unnecessary list_skills calls</li>
         </ul>
@@ -686,7 +686,7 @@ const I18N = {
     'hl.mcp.desc': 'MCP 将外部工具引入代理：通过 stdio 或 HTTP 连接数据库、API 或自定义服务。Skills 将领域专属指令嵌入会话的每轮 system prompt 中。',
     'hl.mcp.f1': '双 MCP 传输： stdio（Content-Length / newline-json 自动协商）+ Streamable HTTP',
     'hl.mcp.f2': 'MCP 工具自动发现并注册为原生 ToolDefinition，纳入 ToolRegistry',
-    'hl.mcp.f3': 'Skills 从 .code-auto/skills + .claude/skills 三层发现',
+    'hl.mcp.f3': 'Skills 从 .codeauto/skills + .claude/skills 三层发现',
     'hl.mcp.f4': 'load_skill -> SessionSkills 内存注册表 -> 后续每轮 system prompt 注入',
     'hl.mcp.f5': 'Skill 索引在 system prompt 中展示名称+描述，减少不必要的 list_skills',
     'hl.memory.title': '多层记忆与动态上下文压缩',
@@ -770,7 +770,7 @@ const I18N = {
     'hl.mcp.desc': 'MCP brings external tools into the agent: connect databases, APIs, or custom servers via stdio or HTTP. Skills embed domain-specific instructions that persist through the entire session via system prompt injection.',
     'hl.mcp.f1': 'Dual MCP transport: stdio (Content-Length / newline-json auto-negotiation) + Streamable HTTP',
     'hl.mcp.f2': 'MCP tools auto-discovered and registered as native ToolDefinitions in ToolRegistry',
-    'hl.mcp.f3': 'Skills discovered from .code-auto/skills + .claude/skills with 3-tier resolution',
+    'hl.mcp.f3': 'Skills discovered from .codeauto/skills + .claude/skills with 3-tier resolution',
     'hl.mcp.f4': 'load_skill -> SessionSkills in-memory registry -> injected into every subsequent system prompt',
     'hl.mcp.f5': 'Skill index shows name + description in system prompt, reducing unnecessary list_skills calls',
     'hl.memory.title': 'Multi-Layer Memory & Dynamic Context Compression',
