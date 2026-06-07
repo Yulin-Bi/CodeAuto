@@ -30,7 +30,7 @@ CodeAuto 的目标不是做一个庞大的 IDE，而是做一个清晰、可审�
 | 工具 | 23 个默认内置工具 + Skills/MCP 扩展 |
 | 会话 | JSONL append-only，按 workspace 隔离 |
 | 权限 | 命令/路径/编辑权限，支持通配规则 |
-| 记忆 | frontmatter Markdown 持久化记忆 |
+| 记忆 | 双层存储：user 类型单文件画像 + 其他类型独立 frontmatter Markdown |
 | 指令 | 多级 CLAUDE.md 加载 |
 | MCP | stdio + Streamable HTTP |
 | 测试 | 111 个测试通过 |
@@ -129,15 +129,23 @@ CodeAuto 的权限层由 `PermissionManager` 和 `PermissionStore` 组成。
 
 ## 记忆系统
 
-记忆系统由 `MemoryManager`、`MemoryEntry`、`MemoryType` 和 `MemoryTool` 组成。记忆保存完全由 AI 驱动——system prompt 指导 AI 在用户表达偏好、约定或决策时主动调用 `save_memory`，并在保存前检查矛盾/过时记忆。
+记忆系统由 `MemoryManager`、`MemoryEntry`、`MemoryType`、`MemoryTool` 和 `Curator` 组成。记忆保存完全由 AI 驱动——system prompt 指导 AI 在用户表达偏好、约定或决策时主动调用 `save_memory`，并在保存前检查矛盾/过时记忆。
 
-特点：
+### 双层存储模型
+
+| 记忆类型 | 存储方式 | 注入策略 |
+|---------|---------|---------|
+| `user` | `user-profile.md`（单文件，段落式） | 全量注入 system prompt，不截断 |
+| `project` / `feedback` / `reference` | 独立 `.md` 文件（frontmatter Markdown） | 相关性打分，最多 5 条 |
+| ACE Bullet（经验教训） | `<project>/.codeauto/bullets/` | 仅注入路径提示，AI 按需 grep |
+
+### 特点
 
 - 默认存储目录：`~/.codeauto/memory/`
-- 文件格式：frontmatter Markdown
-- 类型：`user`、`feedback`、`project`、`reference`
-- 支持保存、列表、删除、相关性检索
-- 相关记忆会注入 system prompt
+- USER 类型：单文件 `user-profile.md`，`## 标题` 段落式组织，HTML 注释存 ID/时间/标签元数据
+- 用户画像 4000 字符上限，超限拒绝保存
+- 同标题偏好自动合并更新（而非创建重复条目）
+- 其他类型：frontmatter Markdown，每记忆一个文件
 - 24 小时以上未更新的记忆会标记为 stale
 - AI 保存前会 `list_memory` 检查矛盾项并 `delete_memory` 清理
 - 用户可通过 `/memory` 管理，模型可通过 `save_memory` 等工具管理

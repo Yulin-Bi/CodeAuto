@@ -34,8 +34,8 @@ public class MemoryTool implements ToolDefinition {
   @Override
   public String description() {
     return switch (kind) {
-      case SAVE -> "Save a persistent memory. Before saving, call list_memory to check for contradictory or outdated memories on the same topic, and delete_memory them first. Then ask the user which destination they prefer: store, project, global, or codeauto.";
-      case LIST -> "List persistent memories relevant to the workspace.";
+      case SAVE -> "Save a persistent memory. Before saving, call list_memory to check for contradictory or outdated memories on the same topic, and delete_memory them first. Use type=user + destination=store for personal preferences (style, habits, communication) — they go into your user profile. Use type=project + destination=project for project-specific facts (build commands, conventions, tech stack). Use destination=global or codeauto for cross-project instructions. Always ask the user which destination they prefer.";
+      case LIST -> "List persistent memories relevant to the workspace, including user profile entries.";
       case DELETE -> "Delete a persistent memory by id.";
     };
   }
@@ -48,9 +48,13 @@ public class MemoryTool implements ToolDefinition {
         ObjectNode props = schema.putObject("properties");
         props.set("title", JsonSchemas.stringProp("Memory title"));
         props.set("content", JsonSchemas.stringProp("Memory content (Markdown)"));
-        props.set("type", JsonSchemas.stringProp("Memory type: user/feedback/project/reference (default: project)"));
+        props.set("type", JsonSchemas.stringProp(
+            "Memory type: user (personal preference → user profile), feedback, project (project fact), "
+            + "or reference (default: project)"));
         props.set("destination", JsonSchemas.stringProp(
-            "Where to save: store (default), project, global, or codeauto. Ask the user before choosing."));
+            "Where to save: store (user profile, type=user), project (CLAUDE.md, type=project), "
+            + "global (~/.claude/CLAUDE.md), or codeauto (~/.codeauto/CLAUDE.md). "
+            + "Ask the user before choosing."));
         props.set("tags", JsonSchemas.arrayProp("string", "Tags for this memory"));
         yield JsonSchemas.required(schema, "title", "content", "destination");
       }

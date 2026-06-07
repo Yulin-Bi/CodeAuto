@@ -3,6 +3,7 @@ package com.codeauto.instructions;
 import com.codeauto.config.RuntimeConfig;
 import com.codeauto.memory.MemoryEntry;
 import com.codeauto.memory.MemoryManager;
+import com.codeauto.memory.MemoryType;
 import com.codeauto.skills.SessionSkills;
 import com.codeauto.skills.SkillService;
 import com.codeauto.todo.TodoStore;
@@ -31,18 +32,22 @@ public class InstructionLoader {
         + "\"always use...\", \"never use...\"), a project fact (build commands, conventions, tech stack), "
         + "or a decision (\"let's use X instead of Y\"). Before saving, call list_memory to check for "
         + "contradictory or outdated memories on the same topic and delete_memory them. "
-        + "Always ask the user which destination they prefer: store, project, global, or codeauto.";
+        + "User preferences and personal style choices use type=user, destination=store — they become part of "
+        + "your user profile (loaded in full each turn). "
+        + "Project facts use destination=project (CLAUDE.md) or store with type=project.";
     List<InstructionFile> files = load(cwd);
     MemoryManager manager = new MemoryManager();
+    List<MemoryEntry> userProfile = manager.loadUserProfile();
+    // Exclude USER type — they're loaded separately as the full profile
     List<MemoryEntry> memories = manager.relevant(cwd, "", MAX_MEMORIES).stream()
-        .filter(m -> !m.isBullet())
+        .filter(m -> !m.isBullet() && m.type() != MemoryType.USER)
         .toList();
     String todoSummary = cwd != null ? new TodoStore(cwd).summary() : "";
     var skillIndex = cwd != null
         ? new SkillService(cwd).index() : List.<com.codeauto.skills.SkillService.SkillIndexEntry>of();
     var loadedSkills = cwd != null ? SessionSkills.getLoaded(cwd) : java.util.Map.<String, String>of();
 
-    boolean hasReminders = !files.isEmpty() || !memories.isEmpty()
+    boolean hasReminders = !files.isEmpty() || !memories.isEmpty() || !userProfile.isEmpty()
         || !todoSummary.isEmpty() || !skillIndex.isEmpty() || !loadedSkills.isEmpty();
     if (!hasReminders) return base;
 
@@ -54,6 +59,15 @@ public class InstructionLoader {
       for (InstructionFile file : files) {
         prompt.append("\n# ").append(file.label()).append(" (").append(file.path()).append(")\n");
         prompt.append(file.content().trim()).append("\n");
+      }
+    }
+    if (!userProfile.isEmpty()) {
+      prompt.append("\n# User Profile\n");
+      prompt.append("These are your user's preferences, habits, and style choices. ");
+      prompt.append("Always keep them in mind — they apply to every response.\n");
+      for (MemoryEntry entry : userProfile) {
+        prompt.append("\n## ").append(entry.title()).append("\n");
+        prompt.append(entry.content().trim()).append("\n");
       }
     }
     if (!todoSummary.isEmpty()) {

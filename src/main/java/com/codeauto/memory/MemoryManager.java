@@ -13,6 +13,9 @@ import java.util.Map;
 import java.util.UUID;
 
 public class MemoryManager {
+  private static final String USER_PROFILE_FILENAME = "user-profile.md";
+  private static final int MAX_USER_PROFILE_CHARS = 4000;
+
   private final Path root;
 
   public MemoryManager() {
@@ -28,14 +31,44 @@ public class MemoryManager {
   }
 
   public MemoryEntry save(MemoryType type, String title, Path project, List<String> tags, String content) {
+    if (type == MemoryType.USER) {
+      return saveUserProfile(title, project, tags, content);
+    }
     return saveBullet(type, title, project, tags, content, "", "");
   }
 
+  /**
+   * Returns all USER-type entries from the single user-profile.md file.
+   * Always returns the full profile — not subject to keyword filtering or top-N cutoff.
+   */
+  public List<MemoryEntry> loadUserProfile() {
+    Path profilePath = root.resolve(USER_PROFILE_FILENAME);
+    if (!Files.isRegularFile(profilePath)) return List.of();
+    try {
+      return parseUserProfile(Files.readString(profilePath), profilePath);
+    } catch (Exception ignored) {
+      return List.of();
+    }
+  }
+
   public List<MemoryEntry> list() {
+    return list(false);
+  }
+
+  /**
+   * @param excludeUser if true, skip entries from user-profile.md (caller uses loadUserProfile instead)
+   */
+  public List<MemoryEntry> list(boolean excludeUser) {
     List<MemoryEntry> entries = new ArrayList<>();
     if (!Files.isDirectory(root)) return entries;
     try (var paths = Files.list(root)) {
       for (Path path : paths.filter(p -> p.getFileName().toString().endsWith(".md")).toList()) {
+        if (path.getFileName().toString().equals(USER_PROFILE_FILENAME)) {
+          if (!excludeUser) {
+            entries.addAll(parseUserProfile(Files.readString(path), path));
+          }
+          continue;
+        }
         parse(path).ifPresent(entries::add);
       }
     } catch (Exception ignored) {
@@ -86,6 +119,213 @@ public class MemoryManager {
     }
   }
 
+  // ── User profile (single-file, section-based) ──────────────────────
+
+  private MemoryEntry saveUserProfile(String title, Path project, List<String> tags, String content) {
+    try {
+      Files.createDirectories(root);
+      Path profilePath = root.resolve(USER_PROFILE_FILENAME);
+      Instant now = Instant.now();
+      String id = "user-" + slug(title) + "-" + UUID.randomUUID().toString().substring(0, 8);
+      String existingRaw = Files.isRegularFile(profilePath) ? Files.readString(profilePath) : "";
+
+      // Check for duplicate by similar title → update existing section
+      String existingId = findProfileSectionByTitle(existingRaw, title);
+      boolean isUpdate = existingId != null;
+      String effectiveId = isUpdate ? existingId : id;
+      Instant createdAt = now;
+      if (isUpdate) {
+        MemoryEntry old = parseUserProfile(existingRaw, profilePath).stream()
+            .filter(e -> e.id().equals(existingId))
+            .findFirst().orElse(null);
+        if (old != null) createdAt = old.createdAt();
+      }
+
+      String newSection = formatProfileSection(effectiveId, title, createdAt, now, tags, content);
+
+      String newProfile;
+      if (isUpdate) {
+        newProfile = replaceProfileSection(existingRaw, existingId, newSection);
+      } else {
+        newProfile = existingRaw.strip();
+        int newLen = newProfile.length() + (newProfile.isEmpty() ? 0 : 2) + newSection.length();
+        if (newLen > MAX_USER_PROFILE_CHARS) {
+          throw new IllegalStateException(
+              "User profile would exceed " + MAX_USER_PROFILE_CHARS + " chars. "
+              + "Delete some old preferences before adding new ones.");
+        }
+        newProfile = (newProfile.isEmpty() ? "" : newProfile + "\n\n") + newSection;
+      }
+
+      if (newProfile.length() > MAX_USER_PROFILE_CHARS) {
+        throw new IllegalStateException(
+            "User profile exceeds " + MAX_USER_PROFILE_CHARS + " char limit after update.");
+      }
+
+      Files.writeString(profilePath, newProfile.strip() + "\n");
+
+      return new MemoryEntry(
+          effectiveId, MemoryType.USER, title,
+          project == null ? "" : project.toAbsolutePath().normalize().toString(),
+          tags == null ? List.of() : List.copyOf(tags),
+          createdAt, now, content == null ? "" : content.trim(),
+          profilePath, "", 0, 0, "");
+    } catch (IllegalStateException e) {
+      throw e;
+    } catch (Exception error) {
+      throw new IllegalStateException("Failed to save user profile entry: " + error.getMessage(), error);
+    }
+  }
+
+  private boolean deleteUserProfileEntry(String id) {
+    Path profilePath = root.resolve(USER_PROFILE_FILENAME);
+    if (!Files.isRegularFile(profilePath)) return false;
+    try {
+      String raw = Files.readString(profilePath);
+      String updated = removeProfileSection(raw, id);
+      if (updated == null) return false; // section not found
+      Files.writeString(profilePath, updated.strip() + "\n");
+      return true;
+    } catch (Exception ignored) {
+      return false;
+    }
+  }
+
+  // ── Parsing ────────────────────────────────────────────────────────
+
+  private List<MemoryEntry> parseUserProfile(String raw, Path profilePath) {
+    List<MemoryEntry> entries = new ArrayList<>();
+    if (raw == null || raw.isBlank()) return entries;
+    // Split on <!-- id:... --> marker that starts each section
+    String[] blocks = raw.split("(?=<!-- id:)");
+    for (String block : blocks) {
+      String trimmed = block.strip();
+      if (trimmed.isEmpty()) continue;
+      MemoryEntry entry = parseProfileSection(trimmed, profilePath);
+      if (entry != null) entries.add(entry);
+    }
+    return entries;
+  }
+
+  private MemoryEntry parseProfileSection(String block, Path profilePath) {
+    // Format: <!-- id:xxx created:... updated:... tags:... -->\n## Title\nContent
+    int commentEnd = block.indexOf("-->");
+    if (commentEnd < 0) return null;
+    Map<String, String> meta = parseProfileMeta(block.substring(4, commentEnd).trim());
+    String id = meta.getOrDefault("id", "");
+    if (id.isBlank()) return null;
+    String rest = block.substring(commentEnd + 3).strip();
+    int newlineIdx = rest.indexOf('\n');
+    String title;
+    String content;
+    if (newlineIdx > 0) {
+      String heading = rest.substring(0, newlineIdx).strip();
+      title = heading.startsWith("## ") ? heading.substring(3).trim() : heading;
+      content = rest.substring(newlineIdx + 1).strip();
+    } else {
+      title = rest.startsWith("## ") ? rest.substring(3).trim() : rest;
+      content = "";
+    }
+    return new MemoryEntry(
+        id, MemoryType.USER, title, "",
+        splitTags(meta.getOrDefault("tags", "")),
+        instant(meta.get("created")),
+        instant(meta.get("updated")),
+        content,
+        profilePath,
+        "", 0, 0, "");
+  }
+
+  private static Map<String, String> parseProfileMeta(String raw) {
+    Map<String, String> values = new LinkedHashMap<>();
+    for (String part : raw.split("\\s+")) {
+      int colon = part.indexOf(':');
+      if (colon > 0) values.put(part.substring(0, colon), part.substring(colon + 1));
+    }
+    return values;
+  }
+
+  // ── Section manipulation ───────────────────────────────────────────
+
+  private static String formatProfileSection(String id, String title, Instant createdAt,
+      Instant updatedAt, List<String> tags, String content) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("<!-- id:").append(id)
+        .append(" created:").append(createdAt)
+        .append(" updated:").append(updatedAt);
+    if (tags != null && !tags.isEmpty()) {
+      sb.append(" tags:").append(String.join(",", tags));
+    }
+    sb.append(" -->\n");
+    sb.append("## ").append(title).append("\n\n");
+    sb.append(content);
+    return sb.toString();
+  }
+
+  private static String findProfileSectionByTitle(String raw, String title) {
+    if (raw == null || raw.isBlank() || title == null || title.isBlank()) return null;
+    String target = title.toLowerCase(Locale.ROOT).trim();
+    for (String block : raw.split("(?=<!-- id:)")) {
+      int commentEnd = block.indexOf("-->");
+      if (commentEnd < 0) continue;
+      Map<String, String> meta = parseProfileMeta(block.substring(4, commentEnd).trim());
+      String rest = block.substring(commentEnd + 3).strip();
+      String sectionTitle = extractSectionTitle(rest);
+      if (sectionTitle != null && sectionTitle.toLowerCase(Locale.ROOT).trim().equals(target)) {
+        return meta.get("id");
+      }
+    }
+    return null;
+  }
+
+  private static String replaceProfileSection(String raw, String id, String newSection) {
+    String[] blocks = raw.split("(?=<!-- id:)");
+    StringBuilder sb = new StringBuilder();
+    boolean replaced = false;
+    for (String block : blocks) {
+      String trimmed = block.strip();
+      if (trimmed.isEmpty()) continue;
+      if (!replaced && hasBlockId(trimmed, id)) {
+        sb.append(newSection);
+        replaced = true;
+      } else {
+        if (!sb.isEmpty()) sb.append("\n\n");
+        sb.append(trimmed);
+      }
+    }
+    return sb.toString();
+  }
+
+  private static String removeProfileSection(String raw, String id) {
+    String[] blocks = raw.split("(?=<!-- id:)");
+    StringBuilder sb = new StringBuilder();
+    boolean found = false;
+    for (String block : blocks) {
+      String trimmed = block.strip();
+      if (trimmed.isEmpty()) continue;
+      if (hasBlockId(trimmed, id)) {
+        found = true;
+        continue;
+      }
+      if (!sb.isEmpty()) sb.append("\n\n");
+      sb.append(trimmed);
+    }
+    return found ? sb.toString() : null;
+  }
+
+  private static boolean hasBlockId(String block, String id) {
+    int commentEnd = block.indexOf("-->");
+    if (commentEnd < 0) return false;
+    Map<String, String> meta = parseProfileMeta(block.substring(4, commentEnd).trim());
+    return id.equals(meta.get("id"));
+  }
+
+  private static String extractSectionTitle(String rest) {
+    if (rest == null || rest.isBlank()) return null;
+    String firstLine = rest.split("\\R", 2)[0].strip();
+    return firstLine.startsWith("## ") ? firstLine.substring(3).trim() : null;
+  }
+
   public void overwrite(MemoryEntry entry) {
     try {
       write(entry);
@@ -118,6 +358,10 @@ public class MemoryManager {
 
   public boolean delete(String id) {
     if (id == null || id.isBlank()) return false;
+    // USER entries live in user-profile.md sections, not standalone files
+    if (id.startsWith("user-")) {
+      return deleteUserProfileEntry(id);
+    }
     try {
       return Files.deleteIfExists(root.resolve(id + ".md"));
     } catch (Exception error) {
