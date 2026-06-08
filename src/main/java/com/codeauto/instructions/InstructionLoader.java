@@ -96,6 +96,22 @@ public class InstructionLoader {
       prompt.append("error, read the corresponding reflection in ");
       prompt.append(cwd.resolve(".codeauto/reflections").normalize().toString()).append(".\n");
       prompt.append("Cite relevant lessons as [bullet:<id>] in your response.\n");
+      MemoryManager bulletManager = new MemoryManager(cwd.resolve(".codeauto/bullets"));
+      List<MemoryEntry> bullets = bulletManager.list().stream()
+          .filter(MemoryEntry::isBullet)
+          .toList();
+      if (!bullets.isEmpty()) {
+        prompt.append("\n## Bullet index (").append(bullets.size()).append(")\n");
+        for (MemoryEntry bullet : bullets) {
+          prompt.append("- [bullet:").append(bullet.bulletId()).append("] ");
+          prompt.append(bullet.title());
+          if (bullet.helpfulCount() > 0 || bullet.harmfulCount() > 0) {
+            prompt.append(" (↑").append(bullet.helpfulCount())
+                  .append(" ↓").append(bullet.harmfulCount()).append(")");
+          }
+          prompt.append("\n");
+        }
+      }
     }
     prompt.append("</system-reminder>");
     return prompt.toString();

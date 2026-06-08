@@ -76,9 +76,16 @@ public final class CompactService {
       return new CompactResult(messages, null, 0, before.estimatedTokens(), before.estimatedTokens());
     }
     ChatMessage system = messages.getFirst();
-    int tailStart = Math.max(1, messages.size() - keepTailMessages);
+    // Find last ContextSummaryMessage as compaction boundary — everything before it is locked.
+    int compactFrom = findLastSummaryIndex(messages) + 1;
+    if (compactFrom < 1) compactFrom = 1;
+    // If everything after the boundary fits in the tail, nothing to compress.
+    if (messages.size() - compactFrom <= keepTailMessages) {
+      return new CompactResult(messages, null, 0, before.estimatedTokens(), before.estimatedTokens());
+    }
+    int tailStart = Math.max(compactFrom + 1, messages.size() - keepTailMessages);
     tailStart = snapToCleanBoundary(messages, tailStart);
-    List<ChatMessage> compressed = messages.subList(1, tailStart);
+    List<ChatMessage> compressed = messages.subList(compactFrom, tailStart);
 
     String summary = generateSummary(model, compressed);
 
@@ -87,17 +94,22 @@ public final class CompactService {
       artifactPath = saveArtifact(cwd, summary, compressed);
       if (artifactPath != null) {
         summary += "\n\nCompacted messages saved to " + artifactPath
-            + ". If the summary above lacks details you need, read that file.";
+            + ". If the summary above lacks details you need, grep that file for relevant keywords "
+            + "— do NOT read the entire file.";
       }
     }
 
     List<ChatMessage> next = new ArrayList<>();
     next.add(system);
+    // Preserve locked messages (index 1 through compactFrom-1, includes prior summaries).
+    for (int i = 1; i < compactFrom; i++) {
+      next.add(messages.get(i));
+    }
     ChatMessage.ContextSummaryMessage summaryMessage =
         new ChatMessage.ContextSummaryMessage(summary.trim(), compressed.size(), Instant.now().toEpochMilli());
     next.add(summaryMessage);
-    for (ChatMessage message : messages.subList(tailStart, messages.size())) {
-      next.add(markUsageStale(message));
+    for (int i = tailStart; i < messages.size(); i++) {
+      next.add(markUsageStale(messages.get(i)));
     }
     ContextStats after = TokenEstimator.compute(next, contextWindow);
     return new CompactResult(next, summaryMessage, compressed.size(), before.estimatedTokens(), after.estimatedTokens());
@@ -277,6 +289,20 @@ public final class CompactService {
   }
 
   // ---- small utilities ----
+
+  /**
+   * Find the index of the last {@link ChatMessage.ContextSummaryMessage} in the list.
+   * This marks the compaction boundary — everything before it (inclusive) is locked
+   * and won't be re-compressed. Returns -1 if no summary exists.
+   */
+  private static int findLastSummaryIndex(List<ChatMessage> messages) {
+    for (int i = messages.size() - 1; i >= 0; i--) {
+      if (messages.get(i) instanceof ChatMessage.ContextSummaryMessage) {
+        return i;
+      }
+    }
+    return -1;
+  }
 
   /**
    * Adjust index so the compact boundary never splits tool_use / tool_result pairs.

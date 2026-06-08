@@ -175,6 +175,86 @@ class ContextTest {
   }
 
   @Test
+  void compactionPreservesContextSummaryAsBoundary() {
+    // Messages with a previous ContextSummaryMessage at index 1.
+    // Only messages AFTER the boundary should be compressed.
+    List<ChatMessage> messages = new ArrayList<>();
+    messages.add(new ChatMessage.SystemMessage("system"));
+    messages.add(new ChatMessage.ContextSummaryMessage("old compaction summary", 50, 1000L));
+    for (int i = 0; i < 12; i++) {
+      messages.add(new ChatMessage.UserMessage("message " + i));
+    }
+
+    var result = CompactService.compactWithStats(messages, 4, 200_000, null, null);
+
+    // Old ContextSummaryMessage must be preserved exactly at the same position.
+    assertTrue(result.messages().get(1) instanceof ChatMessage.ContextSummaryMessage);
+    ChatMessage.ContextSummaryMessage oldSummary =
+        (ChatMessage.ContextSummaryMessage) result.messages().get(1);
+    assertEquals("old compaction summary", oldSummary.content());
+    assertEquals(50, oldSummary.compressedCount());
+    // New ContextSummaryMessage must follow.
+    assertTrue(result.messages().get(2) instanceof ChatMessage.ContextSummaryMessage);
+    // Tail messages must be present.
+    assertTrue(result.messages().size() > 3);
+  }
+
+  @Test
+  void compactionOnlyCompressesMessagesAfterLastSummary() {
+    // Scenario: after first compaction, new messages arrive. Second compaction
+    // should only compress the new messages, leaving the first summary untouched.
+    List<ChatMessage> messages = new ArrayList<>();
+    messages.add(new ChatMessage.SystemMessage("system"));
+    // First compaction's summary (50 old messages → summary)
+    messages.add(new ChatMessage.ContextSummaryMessage("first compaction result", 50, 1000L));
+    // Old tail messages from first compaction + new messages from second turn
+    messages.add(new ChatMessage.UserMessage("old tail A"));
+    messages.add(new ChatMessage.AssistantMessage("old tail B"));
+    messages.add(new ChatMessage.UserMessage("new turn request"));
+    messages.add(new ChatMessage.AssistantMessage("new turn response"));
+    messages.add(new ChatMessage.UserMessage("another request"));
+    messages.add(new ChatMessage.AssistantToolCallMessage("id1", "read_file",
+        new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("path", "test.txt")));
+    messages.add(new ChatMessage.ToolResultMessage("id1", "read_file", "file content here", false));
+    messages.add(new ChatMessage.AssistantMessage("final response"));
+
+    var result = CompactService.compactWithStats(messages, 3, 200_000, null, null);
+
+    // First summary preserved as-is.
+    assertTrue(result.messages().get(1) instanceof ChatMessage.ContextSummaryMessage);
+    ChatMessage.ContextSummaryMessage firstSummary =
+        (ChatMessage.ContextSummaryMessage) result.messages().get(1);
+    assertEquals("first compaction result", firstSummary.content());
+    assertEquals(50, firstSummary.compressedCount());
+    // Second summary is new, only covers messages after the first summary.
+    assertTrue(result.messages().get(2) instanceof ChatMessage.ContextSummaryMessage);
+    ChatMessage.ContextSummaryMessage secondSummary =
+        (ChatMessage.ContextSummaryMessage) result.messages().get(2);
+    assertTrue(secondSummary.compressedCount() < 10,
+        "should only compress new messages, not re-compress old tail");
+    // The second summary should reference the new turn content, not the first summary.
+    assertTrue(secondSummary.content().contains("new turn"),
+        "new summary should describe messages after boundary");
+  }
+
+  @Test
+  void compactionSkipsWhenNothingToCompressAfterBoundary() {
+    // Everything after the ContextSummaryMessage fits in the tail — no compression needed.
+    List<ChatMessage> messages = new ArrayList<>();
+    messages.add(new ChatMessage.SystemMessage("system"));
+    messages.add(new ChatMessage.ContextSummaryMessage("recent compaction", 30, 2000L));
+    messages.add(new ChatMessage.UserMessage("msg A"));
+    messages.add(new ChatMessage.UserMessage("msg B"));
+    // 4 msgs, compactFrom=2, 4-2=2 <= keepTail=2 → nothing to compress.
+
+    var result = CompactService.compactWithStats(messages, 2, 200_000, null, null);
+
+    // No new summary — nothing to compress beyond the boundary.
+    assertTrue(result.summary() == null);
+    assertEquals(4, result.messages().size());
+  }
+
+  @Test
   void microcompactClearsOldCompactableToolResultsWhenContextIsLarge() {
     List<ChatMessage> messages = new ArrayList<>();
     messages.add(new ChatMessage.SystemMessage("system"));
