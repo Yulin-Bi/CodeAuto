@@ -234,19 +234,22 @@ CodeAuto 支持跨会话记忆，默认存储在：
 
 ### 双层存储模型
 
-不同类型的记忆采用不同的存储策略：
+`~/.codeauto/memory/` 仅存储用户画像（`user-profile.md`）。其他内容通过 CLAUDE.md 或 Skills 承载：
 
-| 类型 | 存储方式 | 说明 |
-|------|---------|------|
-| `user` | `user-profile.md`（单文件） | 用户偏好、风格习惯、沟通方式。所有 USER 类型记忆集中到一个文件，形成完整的用户画像。受 4000 字符上限保护，新偏好与已有条目自动合并。 |
-| `project` / `feedback` / `reference` | 独立 `.md` 文件（每记忆一个文件） | 项目事实、反思反馈、外部参考。使用 frontmatter Markdown 格式。 |
+| 内容类型 | 存储位置 | 说明 |
+|---------|---------|------|
+| 用户偏好、风格习惯 | `~/.codeauto/memory/user-profile.md` | 单文件，`## 标题` 段落式。全量注入 system prompt，4000 字符上限。 |
+| 项目事实、构建约定 | `<cwd>/CLAUDE.md` | `destination=project`，版本可控 |
+| 跨项目通用指令 | `~/.claude/CLAUDE.md` | `destination=global` |
+| 全局 CodeAuto 配置 | `~/.codeauto/CLAUDE.md` | `destination=codeauto` |
+| 经验教训（ACE Bullet） | `<project>/.codeauto/bullets/` | 仅注入路径提示，AI 按需 grep |
 
 ### 注入策略
 
 启动新会话时，记忆按不同类型注入 system prompt 的 `<system-reminder>` 区域：
 
-- **User Profile**：全量注入，不受数量截断——用户画像是完整的人物小传，不能遗漏。
-- **其他记忆**：按相关性打分注入，最多 5 条。超过 24 小时未更新的记忆会标记为 `[stale]`。
+- **User Profile**：全量注入，不受数量截断——用户画像是完整的人物小传。
+- **CLAUDE.md 指令**：多级加载（user → codeauto → project → project-local），始终注入。
 - **经验教训**（ACE Bullet）：仅注入路径提示，AI 遇到错误时自行 `grep` 检索 `.codeauto/bullets/`。
 
 ### 用户命令
@@ -261,14 +264,12 @@ CodeAuto 支持跨会话记忆，默认存储在：
 
 记忆保存由 AI 驱动：system prompt 会提示 AI 在用户表达偏好、项目约定、架构决策时主动调用 `save_memory`。保存前 AI 会先 `list_memory` 检查是否有矛盾或过时的旧记忆，有则 `delete_memory` 清理。
 
-保存时根据内容类型选择合适的 destination：
-
-| 内容类型 | type | destination | 实际写入位置 |
-|---------|------|-------------|-------------|
-| 用户偏好、风格习惯 | `user` | `store` | `~/.codeauto/memory/user-profile.md` |
-| 项目事实、构建约定 | `project` | `project` | `<cwd>/CLAUDE.md` |
-| 跨项目通用指令 | `project` | `global` | `~/.claude/CLAUDE.md` |
-| 全局 CodeAuto 配置 | `project` | `codeauto` | `~/.codeauto/CLAUDE.md` |
+| 内容类型 | destination | 实际写入位置 |
+|---------|-------------|-------------|
+| 用户偏好、风格习惯 | `store` | `~/.codeauto/memory/user-profile.md` |
+| 项目事实、构建约定 | `project` | `<cwd>/CLAUDE.md` |
+| 跨项目通用指令 | `global` | `~/.claude/CLAUDE.md` |
+| 全局 CodeAuto 配置 | `codeauto` | `~/.codeauto/CLAUDE.md` |
 
 模型通过内置工具管理记忆：
 
@@ -413,7 +414,6 @@ stdio 协议支持 `auto`（默认）、`content-length`、`newline-json`。`aut
   # Todo summary
   # Available skills (索引，按需加载)
   # Loaded skill instructions (已加载的全量)
-  # Relevant persistent memories (最多 5 条，不含 user 类型)
   # Past experience   ← 告诉模型去哪找，不注入内容
     遇到错误 → grep .codeauto/bullets/ (compact 经验)
     需要全量分析 → read .codeauto/reflections/ (详细复盘)
@@ -547,16 +547,15 @@ CodeAuto 已在 CLI 入口默认设置 `org.jline.terminal.disableDeprecatedProv
 $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 ```
 
-## 最近更新（2026-06-07）
+## 最近更新（2026-06-08）
 
-### 用户画像单文件存储
+### 记忆系统简化：User-Profile-Only Store
 
-- USER 类型记忆从独立 `.md` 文件迁移到单文件 `user-profile.md`（`~/.codeauto/memory/`），每个 `## 标题` 段落 = 一条偏好。
-- 用户画像全量注入 system prompt（不受 top-5 截断），形成完整的人物小传。
-- 新增 4000 字符上限，超限时拒绝保存并提示清理旧条目。
-- 同标题偏好自动合并更新，避免重复创建。
-- `save_memory` 中 `type=user + destination=store` → 写入用户画像；其他类型保持独立文件存储。
-- `delete_memory` 支持 `user-*` ID 前缀，自动定位并删除画像中的对应段落。
+- `~/.codeauto/memory/` 退化为只存 `user-profile.md`，不再有独立 `.md` 记忆文件。
+- MemoryManager 新增 `profileStore` 标志：默认构造 → profile 模式（仅用户画像），Path 构造 → file 模式（reflections/bullets 继续使用）。
+- 移除 `# Relevant persistent memories` system prompt 段落——所有持久记忆统一走 User Profile（全量）或 CLAUDE.md（固定注入）。
+- 移除 `MAX_MEMORIES`、`appendMemories`、`list(boolean excludeUser)` 等过时死代码。
+- `save_memory` 中 `destination=store` 即用户画像，`destination=project/global/codeauto` 即写入对应 CLAUDE.md。不再要求 AI 在 type 参数上纠结。
 
 ## 最近更新（2026-05-07）
 

@@ -18,20 +18,36 @@ public class MemoryManager {
 
   private final Path root;
 
+  /**
+   * When true, this store only manages user-profile.md — no individual .md files.
+   * Default store (~/.codeauto/memory/) is profile-only.
+   * Reflection/bullet stores (<project>/.codeauto/reflections/, bullets/) are not.
+   */
+  private final boolean profileStore;
+
   public MemoryManager() {
-    this(RuntimeConfig.homeDir().resolve("memory"));
+    this(RuntimeConfig.homeDir().resolve("memory"), true);
   }
 
   public MemoryManager(Path root) {
+    this(root, false);
+  }
+
+  private MemoryManager(Path root, boolean profileStore) {
     this.root = root;
+    this.profileStore = profileStore;
   }
 
   public Path root() {
     return root;
   }
 
+  /**
+   * In profile-store mode, always saves to user-profile.md (type parameter is ignored).
+   * In file mode (reflections/bullets), saves as individual .md file.
+   */
   public MemoryEntry save(MemoryType type, String title, Path project, List<String> tags, String content) {
-    if (type == MemoryType.USER) {
+    if (profileStore) {
       return saveUserProfile(title, project, tags, content);
     }
     return saveBullet(type, title, project, tags, content, "", "");
@@ -52,23 +68,15 @@ public class MemoryManager {
   }
 
   public List<MemoryEntry> list() {
-    return list(false);
-  }
-
-  /**
-   * @param excludeUser if true, skip entries from user-profile.md (caller uses loadUserProfile instead)
-   */
-  public List<MemoryEntry> list(boolean excludeUser) {
     List<MemoryEntry> entries = new ArrayList<>();
     if (!Files.isDirectory(root)) return entries;
+    if (profileStore) {
+      // Profile store: only user-profile.md exists
+      return loadUserProfile();
+    }
+    // File store (reflections/bullets): scan individual .md files
     try (var paths = Files.list(root)) {
       for (Path path : paths.filter(p -> p.getFileName().toString().endsWith(".md")).toList()) {
-        if (path.getFileName().toString().equals(USER_PROFILE_FILENAME)) {
-          if (!excludeUser) {
-            entries.addAll(parseUserProfile(Files.readString(path), path));
-          }
-          continue;
-        }
         parse(path).ifPresent(entries::add);
       }
     } catch (Exception ignored) {

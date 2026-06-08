@@ -64,7 +64,7 @@ class InstructionLoaderTest {
   }
 
   @Test
-  void systemPromptIncludesRelevantMemories() throws Exception {
+  void systemPromptIncludesUserProfile() throws Exception {
     String previousHome = System.getProperty("codeauto.home");
     String previousUserHome = System.getProperty("user.home");
     java.nio.file.Path userHome = Files.createTempDirectory("codeauto-memory-user-home");
@@ -73,14 +73,17 @@ class InstructionLoaderTest {
     try {
       System.setProperty("user.home", userHome.toString());
       System.setProperty("codeauto.home", codeautoHome.toString());
-      new MemoryManager().save(MemoryType.PROJECT, "Project preference", project,
-          List.of("testing"), "Always run mvn test after permission changes.");
+      // USER type → goes to user-profile.md (profileStore=true)
+      new MemoryManager().save(MemoryType.USER, "Code style", project,
+          List.of("style"), "Always use tabs for indentation.");
 
       String prompt = InstructionLoader.systemPrompt(project, "ok");
 
-      assertTrue(prompt.contains("Relevant persistent memories"));
-      assertTrue(prompt.contains("Project preference"));
-      assertTrue(prompt.contains("Always run mvn test"));
+      assertTrue(prompt.contains("User Profile"));
+      assertTrue(prompt.contains("Code style"));
+      assertTrue(prompt.contains("Always use tabs for indentation"));
+      // Old "Relevant persistent memories" section is gone — everything is in User Profile
+      assertFalse(prompt.contains("Relevant persistent memories"));
     } finally {
       restoreProperty("codeauto.home", previousHome);
       restoreProperty("user.home", previousUserHome);
@@ -88,7 +91,7 @@ class InstructionLoaderTest {
   }
 
   @Test
-  void systemPromptMarksOldMemoriesAsStale() throws Exception {
+  void systemPromptOmitsUserProfileWhenEmpty() throws Exception {
     String previousHome = System.getProperty("codeauto.home");
     String previousUserHome = System.getProperty("user.home");
     java.nio.file.Path userHome = Files.createTempDirectory("codeauto-stale-user-home");
@@ -97,25 +100,14 @@ class InstructionLoaderTest {
     try {
       System.setProperty("user.home", userHome.toString());
       System.setProperty("codeauto.home", codeautoHome.toString());
-      java.nio.file.Path memoryRoot = codeautoHome.resolve("memory");
-      Files.createDirectories(memoryRoot);
-      Files.writeString(memoryRoot.resolve("old.md"), """
-          ---
-          id: old
-          type: project
-          title: Old project note
-          project: %s
-          tags: stale
-          createdAt: 2020-01-01T00:00:00Z
-          updatedAt: 2020-01-01T00:00:00Z
-          ---
-
-          This old note should be verified.
-          """.formatted(project.toAbsolutePath().normalize()));
+      // No user profile saved — prompt should not contain User Profile or Relevant memories sections
 
       String prompt = InstructionLoader.systemPrompt(project, "ok");
 
-      assertTrue(prompt.contains("Old project note [project] [stale]"));
+      assertFalse(prompt.contains("User Profile"));
+      assertFalse(prompt.contains("Relevant persistent memories"));
+      // Base prompt should still be intact
+      assertTrue(prompt.startsWith("You are CodeAuto. Permissions: ok"));
     } finally {
       restoreProperty("codeauto.home", previousHome);
       restoreProperty("user.home", previousUserHome);
@@ -134,23 +126,22 @@ class InstructionLoaderTest {
       System.setProperty("codeauto.home", codeautoHome.toString());
       MemoryManager memoryManager = new MemoryManager();
 
-      // Create 5 regular project memories — saturates the MAX_MEMORIES limit
-      for (int i = 1; i <= 5; i++) {
-        memoryManager.save(MemoryType.PROJECT, "Regular memory " + i, project,
-            List.of("test"), "Content for regular memory " + i);
-      }
+      // Save a user preference to trigger the <system-reminder> block
+      memoryManager.save(MemoryType.USER, "Test preference", project,
+          List.of("test"), "Test content.");
 
       String prompt = InstructionLoader.systemPrompt(project, "ok");
 
-      // Regular memories section should exist
-      assertTrue(prompt.contains("Relevant persistent memories"));
+      // User profile section should exist
+      assertTrue(prompt.contains("User Profile"));
       // Past experience section should point to bullets/ and reflections/ dirs
       assertTrue(prompt.contains("Past experience"));
       assertTrue(prompt.contains(project.resolve(".codeauto/bullets").normalize().toString()));
       assertTrue(prompt.contains(project.resolve(".codeauto/reflections").normalize().toString()));
       assertTrue(prompt.contains("[bullet:<id>]"));
-      // ACE Playbook injection should NOT be in the prompt anymore
+      // Old sections should NOT appear
       assertFalse(prompt.contains("ACE Playbook"));
+      assertFalse(prompt.contains("Relevant persistent memories"));
 
       // Cleanup
       for (var entry : memoryManager.list()) {

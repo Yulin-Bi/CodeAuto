@@ -3,18 +3,15 @@ package com.codeauto.instructions;
 import com.codeauto.config.RuntimeConfig;
 import com.codeauto.memory.MemoryEntry;
 import com.codeauto.memory.MemoryManager;
-import com.codeauto.memory.MemoryType;
 import com.codeauto.skills.SessionSkills;
 import com.codeauto.skills.SkillService;
 import com.codeauto.todo.TodoStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
 public class InstructionLoader {
-  private static final int MAX_MEMORIES = 5;
 
   public static String systemPrompt(Path cwd, String permissionSummary) {
     String base = "You are CodeAuto. Permissions: " + permissionSummary
@@ -32,22 +29,18 @@ public class InstructionLoader {
         + "\"always use...\", \"never use...\"), a project fact (build commands, conventions, tech stack), "
         + "or a decision (\"let's use X instead of Y\"). Before saving, call list_memory to check for "
         + "contradictory or outdated memories on the same topic and delete_memory them. "
-        + "User preferences and personal style choices use type=user, destination=store — they become part of "
+        + "User preferences and personal style choices use destination=store — they become part of "
         + "your user profile (loaded in full each turn). "
-        + "Project facts use destination=project (CLAUDE.md) or store with type=project.";
+        + "Project facts and conventions use destination=project to write into the project's CLAUDE.md.";
     List<InstructionFile> files = load(cwd);
     MemoryManager manager = new MemoryManager();
     List<MemoryEntry> userProfile = manager.loadUserProfile();
-    // Exclude USER type — they're loaded separately as the full profile
-    List<MemoryEntry> memories = manager.relevant(cwd, "", MAX_MEMORIES).stream()
-        .filter(m -> !m.isBullet() && m.type() != MemoryType.USER)
-        .toList();
     String todoSummary = cwd != null ? new TodoStore(cwd).summary() : "";
     var skillIndex = cwd != null
         ? new SkillService(cwd).index() : List.<com.codeauto.skills.SkillService.SkillIndexEntry>of();
     var loadedSkills = cwd != null ? SessionSkills.getLoaded(cwd) : java.util.Map.<String, String>of();
 
-    boolean hasReminders = !files.isEmpty() || !memories.isEmpty() || !userProfile.isEmpty()
+    boolean hasReminders = !files.isEmpty() || !userProfile.isEmpty()
         || !todoSummary.isEmpty() || !skillIndex.isEmpty() || !loadedSkills.isEmpty();
     if (!hasReminders) return base;
 
@@ -94,9 +87,6 @@ public class InstructionLoader {
         prompt.append(entry.getValue().trim()).append("\n");
       }
     }
-    if (!memories.isEmpty()) {
-      appendMemories(prompt, memories);
-    }
     if (cwd != null) {
       prompt.append("\n# Past experience\n");
       prompt.append("When you encounter an error or the user reports a problem, grep ");
@@ -133,24 +123,6 @@ public class InstructionLoader {
       }
     } catch (Exception ignored) {
       // Instruction files are optional and should never block startup.
-    }
-  }
-
-  private static void appendMemories(StringBuilder prompt, List<MemoryEntry> memories) {
-    Instant now = Instant.now();
-    if (memories.isEmpty()) return;
-
-    prompt.append("\n# Relevant persistent memories\n");
-    prompt.append("Use these as helpful context. If a memory is marked stale, verify it before relying on it.\n");
-    for (MemoryEntry memory : memories) {
-      prompt.append("\n## ").append(memory.title())
-          .append(" [").append(memory.type().name().toLowerCase()).append("]");
-      if (memory.stale(now)) prompt.append(" [stale]");
-      prompt.append("\n");
-      if (!memory.tags().isEmpty()) {
-        prompt.append("tags: ").append(String.join(", ", memory.tags())).append("\n");
-      }
-      prompt.append(memory.content().trim()).append("\n");
     }
   }
 
