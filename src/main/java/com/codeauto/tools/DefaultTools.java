@@ -33,7 +33,12 @@ public final class DefaultTools {
         new McpHelperTool(McpHelperTool.Kind.LIST_RESOURCES),
         new McpHelperTool(McpHelperTool.Kind.READ_RESOURCE),
         new McpHelperTool(McpHelperTool.Kind.LIST_PROMPTS),
-        new McpHelperTool(McpHelperTool.Kind.GET_PROMPT));
+        new McpHelperTool(McpHelperTool.Kind.GET_PROMPT),
+        new UndoTool(UndoTool.Kind.UNDO),
+        new UndoTool(UndoTool.Kind.UNDO_LIST),
+        new UndoTool(UndoTool.Kind.UNDO_ALL),
+        new CheckpointTool(CheckpointTool.Kind.LIST),
+        new CheckpointTool(CheckpointTool.Kind.RESTORE));
     return new ToolRegistry(tools);
   }
 }

@@ -140,8 +140,7 @@ public class AgentLoop {
           return finishTurn(messages);
         }
         listener.onToolStart(call.toolName(), call.input());
-        ToolContext callContext = toolContext.withToolCallId(call.id());
-        ToolResult result = tools.execute(call.toolName(), call.input(), callContext);
+        ToolResult result = tools.execute(call.toolName(), call.input(), toolContext);
         listener.onToolResult(call.toolName(), result.output(), !result.ok());
         ChatMessage.ToolResultMessage toolResult =
             new ChatMessage.ToolResultMessage(call.id(), call.toolName(), result.output(), !result.ok());

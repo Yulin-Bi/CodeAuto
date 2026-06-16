@@ -5,6 +5,7 @@ import com.github.difflib.UnifiedDiffUtils;
 import com.github.difflib.patch.Patch;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolResult;
+import com.codeauto.undo.UndoStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -20,6 +21,18 @@ final class FileReviewService {
     if (!context.permissions().canWrite(file)) {
       return ToolResult.error("Write path is not allowed: " + file + context.permissions().formatLastDenialFeedback());
     }
+
+    // Layer 1 undo recording: save pre-write state before mutating the file.
+    String toolCallId = context.toolCallId();
+    if (toolCallId != null) {
+      try {
+        new UndoStore(context.cwd()).save(toolCallId, verb, file, before);
+      } catch (Exception e) {
+        // Best-effort: undo storage failure must not block the file write.
+        System.err.println("[CodeAuto] Failed to save undo record: " + e.getMessage());
+      }
+    }
+
     String diff = unifiedDiff(file, before, after);
     Files.createDirectories(file.getParent());
     Files.writeString(file, after);

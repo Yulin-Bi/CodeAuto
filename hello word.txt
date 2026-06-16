@@ -1,3 +1,0 @@
-Hello World!
-This is a test file.
-Line three here.
