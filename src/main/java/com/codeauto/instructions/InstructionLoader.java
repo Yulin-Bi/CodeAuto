@@ -9,6 +9,7 @@ import com.codeauto.todo.TodoStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class InstructionLoader {
@@ -97,11 +98,15 @@ public class InstructionLoader {
       prompt.append(cwd.resolve(".codeauto/reflections").normalize().toString()).append(".\n");
       prompt.append("Cite relevant lessons as [bullet:<id>] in your response.\n");
       MemoryManager bulletManager = new MemoryManager(cwd.resolve(".codeauto/bullets"));
+      int totalBullets = (int) bulletManager.list().stream().filter(MemoryEntry::isBullet).count();
       List<MemoryEntry> bullets = bulletManager.list().stream()
           .filter(MemoryEntry::isBullet)
+          .sorted(Comparator.comparingInt((MemoryEntry b) -> b.helpfulCount() - b.harmfulCount()).reversed())
+          .limit(30)
           .toList();
       if (!bullets.isEmpty()) {
-        prompt.append("\n## Bullet index (").append(bullets.size()).append(")\n");
+        prompt.append("\n## Bullet index (")
+              .append(bullets.size()).append(" of ").append(totalBullets).append(")\n");
         for (MemoryEntry bullet : bullets) {
           prompt.append("- [bullet:").append(bullet.bulletId()).append("] ");
           prompt.append(bullet.title());

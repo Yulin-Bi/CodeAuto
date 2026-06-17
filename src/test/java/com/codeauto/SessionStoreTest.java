@@ -6,7 +6,11 @@ import java.nio.file.Files;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -181,5 +185,40 @@ class SessionStoreTest {
         project.cwd().equals(projectB.toAbsolutePath().normalize().toString())
             && project.sessionCount() == 1));
     assertTrue(projects.getFirst().latestUpdatedAt() >= projects.get(1).latestUpdatedAt());
+  }
+
+  @Test
+  void concurrentAppendsDoNotLoseEvents() throws Exception {
+    java.nio.file.Path temp = Files.createTempDirectory("codeauto-session-concurrent-test");
+    java.nio.file.Path home = Files.createTempDirectory("codeauto-home-concurrent-test");
+    System.setProperty("codeauto.home", home.toString());
+    SessionStore store = new SessionStore(temp);
+    int writers = 8;
+    int messagesPerWriter = 20;
+    var pool = Executors.newFixedThreadPool(writers);
+    var barrier = new CyclicBarrier(writers);
+    List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
+
+    for (int writer = 0; writer < writers; writer++) {
+      final int writerId = writer;
+      futures.add(pool.submit(() -> {
+        barrier.await();
+        for (int i = 0; i < messagesPerWriter; i++) {
+          store.save("abc123", List.of(new ChatMessage.UserMessage("writer-" + writerId + "-msg-" + i)), 0);
+        }
+        return null;
+      }));
+    }
+    for (var future : futures) {
+      future.get();
+    }
+    pool.shutdown();
+
+    List<ChatMessage> loaded = store.load("abc123");
+    assertEquals(writers * messagesPerWriter, loaded.size());
+    Set<String> contents = loaded.stream()
+        .map(message -> ((ChatMessage.UserMessage) message).content())
+        .collect(java.util.stream.Collectors.toSet());
+    assertEquals(writers * messagesPerWriter, contents.size());
   }
 }

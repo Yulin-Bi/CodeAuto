@@ -36,6 +36,13 @@ class RunCommandToolTest {
   }
 
   @Test
+  void preservesWindowsStylePathsInsideQuotedCommand() {
+    assertEquals(
+        List.of("C:\\Program Files\\Git\\bin\\git.exe", "--version"),
+        RunCommandTool.splitCommand("\"C:\\Program Files\\Git\\bin\\git.exe\" --version"));
+  }
+
+  @Test
   void runsCommandWithExplicitArgsArray() throws Exception {
     Path temp = Files.createTempDirectory("codeauto-run-command-test");
     PermissionManager permissions = new PermissionManager(
@@ -153,5 +160,45 @@ class RunCommandToolTest {
 
     assertTrue(!result.ok());
     assertTrue(result.output().contains("Please inspect before mutating."), result.output());
+  }
+
+  @Test
+  void returnsPartialOutputIfChildKeepsStdoutOpenAfterParentExit() throws Exception {
+    Path temp = Files.createTempDirectory("codeauto-run-command-open-stdout");
+    PermissionManager permissions = new PermissionManager(
+        temp,
+        new PermissionStore(Files.createTempFile("permissions-run-command-open-stdout", ".json")),
+        request -> PermissionDecision.ALLOW_ONCE);
+    String javaExecutable = Path.of(System.getProperty("java.home"), "bin",
+        System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java").toString();
+    Path source = temp.resolve("HoldStdout.java");
+    Files.writeString(source, """
+        public class HoldStdout {
+          public static void main(String[] args) throws Exception {
+            if (args.length > 0 && "child".equals(args[0])) {
+              Thread.sleep(5000);
+              return;
+            }
+            String javaBin = java.nio.file.Path.of(
+                System.getProperty("java.home"),
+                "bin",
+                System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java")
+                .toString();
+            String sourcePath = java.nio.file.Path.of(System.getProperty("user.dir"), "HoldStdout.java").toString();
+            new ProcessBuilder(javaBin, sourcePath, "child").inheritIO().start();
+            System.out.println("done");
+          }
+        }
+        """);
+
+    var result = DefaultTools.create().execute("run_command",
+        MAPPER.createObjectNode()
+            .put("command", javaExecutable)
+            .set("args", MAPPER.createArrayNode().add(source.getFileName().toString())),
+        new ToolContext(temp, permissions));
+
+    assertTrue(result.ok(), result.output());
+    assertTrue(result.output().contains("done"), result.output());
+    assertTrue(result.output().contains("partial output"), result.output());
   }
 }

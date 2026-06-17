@@ -92,6 +92,11 @@ public class AgentLoop {
       }
       AgentStep next = model.next(List.copyOf(messages), listener);
 
+      if (next == null) {
+        messages.add(new ChatMessage.AssistantMessage("(Internal error: model returned null response)"));
+        return finishTurn(messages);
+      }
+
       if (next instanceof AgentStep.AssistantStep assistant) {
         String content = assistant.content() == null ? "" : assistant.content().trim();
         if (content.isEmpty() && emptyRetries < 2) {
@@ -115,6 +120,12 @@ public class AgentLoop {
       }
 
       AgentStep.ToolCallsStep toolCalls = (AgentStep.ToolCallsStep) next;
+      if (toolCalls.calls() == null || toolCalls.calls().isEmpty()) {
+        if (toolCalls.contentKind() != AgentStep.ContentKind.PROGRESS) {
+          return finishTurn(messages);
+        }
+        continue;
+      }
       if (toolCalls.content() != null && !toolCalls.content().isBlank()) {
         if (toolCalls.contentKind() == AgentStep.ContentKind.PROGRESS) {
           listener.onProgressMessage(toolCalls.content());
@@ -128,12 +139,10 @@ public class AgentLoop {
           }
         }
       }
-      if (toolCalls.calls().isEmpty() && toolCalls.contentKind() != AgentStep.ContentKind.PROGRESS) {
-        return finishTurn(messages);
-      }
 
       List<ExecutedToolResult> executed = new ArrayList<>();
       List<ChatMessage.ToolResultMessage> pendingResults = new ArrayList<>();
+      boolean stoppedForUser = false;
       for (ToolCall call : toolCalls.calls()) {
         if (cancelled) {
           messages.add(new ChatMessage.AssistantMessage("(Interrupted)"));
@@ -147,12 +156,20 @@ public class AgentLoop {
             new ChatMessage.ToolResultMessage(call.id(), call.toolName(), result.output(), !result.ok());
         executed.add(new ExecutedToolResult(call, result));
         pendingResults.add(toolResult);
+        // Stop executing further tools in this batch if the current one requires user input.
+        if (result.awaitUser()) {
+          stoppedForUser = true;
+          break;
+        }
       }
 
       List<ChatMessage.ToolResultMessage> budgetedResults = toolResultStorage.applyBatchBudget(pendingResults);
       if (toolCalls.rawContent() != null) {
         messages.add(new ChatMessage.AssistantRawMessage(toolCalls.rawContent(), toolCalls.usage()));
         messages.addAll(budgetedResults);
+        if (stoppedForUser) {
+          return finishTurn(messages);
+        }
         continue;
       }
       for (int i = 0; i < executed.size(); i++) {
@@ -168,6 +185,10 @@ public class AgentLoop {
           messages.add(new ChatMessage.AssistantMessage(entry.result().output()));
           return finishTurn(messages);
         }
+      }
+
+      if (stoppedForUser) {
+        return finishTurn(messages);
       }
     }
 

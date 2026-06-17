@@ -12,6 +12,8 @@ public class ConsolePermissionPrompt implements PermissionPrompt {
   public PermissionResponse askDetailed(PermissionRequest request) {
     Console console = System.console();
     if (console == null) {
+      System.err.println("[CodeAuto] No interactive console available - running in headless mode. "
+          + "Edits are auto-allowed; commands are denied. Configure permissions.json for persistent rules.");
       return new PermissionResponse(
           "edit".equals(request.kind()) ? PermissionDecision.ALLOW_ONCE : PermissionDecision.DENY_ONCE);
     }

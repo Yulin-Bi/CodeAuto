@@ -84,12 +84,25 @@ public class UndoTool implements ToolDefinition {
     Path file = store.resolveFilePath(record.filePath());
     String currentContent;
     boolean fileExists = Files.exists(file);
+    boolean willModify = fileExists || !record.beforeContent().isEmpty();
+
+    // Permission check: any undo that modifies the filesystem must pass canWrite.
+    if (willModify && !context.permissions().canWrite(file)) {
+      return ToolResult.error("Undo write path is not allowed: " + record.filePath()
+          + context.permissions().formatLastDenialFeedback());
+    }
 
     if (!fileExists && record.beforeContent().isEmpty()) {
       // File was created by the original operation and is already gone.
       store.markUndone(record.id());
       return ToolResult.ok("Undid " + record.id() + " [" + record.toolName() + "]: file " + record.filePath()
           + " was already deleted.");
+    }
+
+    // OOM guard: refuse to read files larger than 1 MB into memory.
+    if (fileExists && Files.size(file) > 1_048_576) {
+      return ToolResult.error("File is too large to undo (>1 MB): " + record.filePath()
+          + ". Use git checkout or manual restore instead.");
     }
 
     currentContent = fileExists ? Files.readString(file) : "";
@@ -151,6 +164,22 @@ public class UndoTool implements ToolDefinition {
       try {
         Path file = store.resolveFilePath(record.filePath());
         boolean fileExists = Files.exists(file);
+        boolean willModify = fileExists || !record.beforeContent().isEmpty();
+
+        // Permission check: any undo that modifies the filesystem must pass canWrite.
+        if (willModify && !context.permissions().canWrite(file)) {
+          result.append("- ").append(record.id()).append(" [").append(record.toolName()).append("] SKIPPED: ")
+              .append("write not allowed for ").append(record.filePath()).append("\n");
+          continue;
+        }
+
+        // OOM guard: refuse to read files larger than 1 MB into memory.
+        if (fileExists && Files.size(file) > 1_048_576) {
+          result.append("- ").append(record.id()).append(" [").append(record.toolName()).append("] SKIPPED: ")
+              .append("file too large (>1 MB): ").append(record.filePath()).append("\n");
+          continue;
+        }
+
         String currentContent = fileExists ? Files.readString(file) : "";
 
         if (record.beforeContent().isEmpty()) {

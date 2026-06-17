@@ -3,17 +3,25 @@ package com.codeauto.session;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.codeauto.config.RuntimeConfig;
 import com.codeauto.core.ChatMessage;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class SessionStore {
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final ConcurrentHashMap<Path, ReentrantLock> APPEND_LOCKS = new ConcurrentHashMap<>();
   private final Path cwd;
 
   public SessionStore(Path cwd) {
@@ -29,8 +37,7 @@ public class SessionStore {
           Instant.now().toString(), sessionId, cwd.toString(), null, null, null, null)));
     }
     if (!lines.isEmpty()) {
-      Files.writeString(file, String.join("\n", lines) + "\n",
-          java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+      appendAtomically(file, String.join("\n", lines) + "\n");
     }
   }
 
@@ -39,8 +46,7 @@ public class SessionStore {
     Files.createDirectories(file.getParent());
     SessionEvent event = new SessionEvent("rename", null, UUID.randomUUID().toString(), Instant.now().toString(),
         sessionId, cwd.toString(), title, null, null, null);
-    Files.writeString(file, MAPPER.writeValueAsString(event) + "\n",
-        java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+    appendAtomically(file, MAPPER.writeValueAsString(event) + "\n");
   }
 
   public void appendCompactBoundary(
@@ -59,8 +65,29 @@ public class SessionStore {
         MAPPER.writeValueAsString(new SessionEvent("summary", summary, UUID.randomUUID().toString(), now,
             sessionId, cwd.toString(), null, null, null, null))
     );
-    Files.writeString(file, String.join("\n", lines) + "\n",
-        java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+    appendAtomically(file, String.join("\n", lines) + "\n");
+  }
+
+  /** Append content without rewriting the whole file, so concurrent writers do not clobber prior events. */
+  private static void appendAtomically(Path file, String newContent) throws Exception {
+    Path normalized = file.toAbsolutePath().normalize();
+    ReentrantLock lock = APPEND_LOCKS.computeIfAbsent(normalized, ignored -> new ReentrantLock());
+    lock.lock();
+    try {
+      Files.createDirectories(normalized.getParent());
+      try (FileChannel channel = FileChannel.open(normalized,
+          StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+           FileLock ignored = channel.lock()) {
+        channel.position(channel.size());
+        ByteBuffer buffer = StandardCharsets.UTF_8.encode(newContent);
+        while (buffer.hasRemaining()) {
+          channel.write(buffer);
+        }
+        channel.force(true);
+      }
+    } finally {
+      lock.unlock();
+    }
   }
 
   public List<ChatMessage> load(String sessionId) throws Exception {
@@ -70,18 +97,26 @@ public class SessionStore {
     int start = 0;
     for (int i = lines.size() - 1; i >= 0; i--) {
       if (lines.get(i).isBlank()) continue;
-      SessionEvent event = MAPPER.readValue(lines.get(i), SessionEvent.class);
-      if ("compact_boundary".equals(event.type())) {
-        start = i + 1;
-        break;
+      try {
+        SessionEvent event = MAPPER.readValue(lines.get(i), SessionEvent.class);
+        if ("compact_boundary".equals(event.type())) {
+          start = i + 1;
+          break;
+        }
+      } catch (Exception ignored) {
+        // Skip corrupt lines.
       }
     }
     List<ChatMessage> messages = new ArrayList<>();
     for (int i = start; i < lines.size(); i++) {
       String line = lines.get(i);
       if (line.isBlank()) continue;
-      SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
-      if (event.message != null) messages.add(event.message);
+      try {
+        SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
+        if (event.message != null) messages.add(event.message);
+      } catch (Exception e) {
+        System.err.println("[CodeAuto] Skipping corrupt session line " + i + ": " + e.getMessage());
+      }
     }
     return messages;
   }
@@ -133,8 +168,9 @@ public class SessionStore {
     List<TranscriptEntry> entries = new ArrayList<>();
     for (String line : Files.readAllLines(file)) {
       if (line.isBlank()) continue;
-      SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
-      switch (event.type()) {
+      try {
+        SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
+        switch (event.type()) {
         case "user" -> entries.add(new TranscriptEntry("user", null, textContent(event.message()), null));
       case "assistant" -> entries.add(new TranscriptEntry("assistant", null, textContent(event.message()), null));
       case "assistant_raw" -> entries.add(new TranscriptEntry("assistant", null, textContent(event.message()), null));
@@ -171,6 +207,9 @@ public class SessionStore {
           // Ignore metadata events such as rename.
         }
       }
+      } catch (Exception e) {
+        System.err.println("[CodeAuto] Skipping corrupt transcript line: " + e.getMessage());
+      }
     }
     return entries;
   }
@@ -206,13 +245,17 @@ public class SessionStore {
     String updatedAt = "";
     for (String line : Files.readAllLines(file)) {
       if (line.isBlank()) continue;
-      SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
-      updatedAt = event.timestamp() == null ? updatedAt : event.timestamp();
-      if ("rename".equals(event.type()) && event.title() != null && !event.title().isBlank()) {
-        title = event.title();
-      }
-      if (firstUser == null && event.message() instanceof ChatMessage.UserMessage user) {
-        firstUser = user.content();
+      try {
+        SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
+        updatedAt = event.timestamp() == null ? updatedAt : event.timestamp();
+        if ("rename".equals(event.type()) && event.title() != null && !event.title().isBlank()) {
+          title = event.title();
+        }
+        if (firstUser == null && event.message() instanceof ChatMessage.UserMessage user) {
+          firstUser = user.content();
+        }
+      } catch (Exception ignored) {
+        // Skip corrupt lines in summary scanning.
       }
     }
     if (title == null || title.isBlank()) title = firstUser == null ? "(untitled)" : excerpt(firstUser);
@@ -241,18 +284,26 @@ public class SessionStore {
     int start = 0;
     for (int i = lines.size() - 1; i >= 0; i--) {
       if (lines.get(i).isBlank()) continue;
-      SessionEvent event = MAPPER.readValue(lines.get(i), SessionEvent.class);
-      if ("compact_boundary".equals(event.type())) {
-        start = i + 1;
-        break;
+      try {
+        SessionEvent event = MAPPER.readValue(lines.get(i), SessionEvent.class);
+        if ("compact_boundary".equals(event.type())) {
+          start = i + 1;
+          break;
+        }
+      } catch (Exception ignored) {
+        // Skip corrupt lines.
       }
     }
     List<ChatMessage> messages = new ArrayList<>();
     for (int i = start; i < lines.size(); i++) {
       String line = lines.get(i);
       if (line.isBlank()) continue;
-      SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
-      if (event.message != null) messages.add(event.message);
+      try {
+        SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
+        if (event.message != null) messages.add(event.message);
+      } catch (Exception e) {
+        System.err.println("[CodeAuto] Skipping corrupt session line " + i + ": " + e.getMessage());
+      }
     }
     return messages;
   }

@@ -102,6 +102,10 @@ public class MemoryTool implements ToolDefinition {
         }
         case "project", "claude_project" -> {
           Path path = context.cwd().resolve("CLAUDE.md");
+          if (!context.permissions().canWrite(path)) {
+            yield ToolResult.error("Write path is not allowed: " + path
+                + context.permissions().formatLastDenialFeedback());
+          }
           appendClaudeMemory(path, content);
           yield ToolResult.ok("Saved memory instruction to " + path);
         }

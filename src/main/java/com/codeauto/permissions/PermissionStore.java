@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.codeauto.config.RuntimeConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -35,7 +36,10 @@ public class PermissionStore {
   public void write(Data data) {
     try {
       Files.createDirectories(path.getParent());
-      Files.writeString(path, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(data) + "\n");
+      // Write to temp file first, then atomically rename to prevent corruption on crash.
+      Path tmp = path.resolveSibling(path.getFileName() + ".tmp");
+      Files.writeString(tmp, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(data) + "\n");
+      Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     } catch (Exception error) {
       throw new IllegalStateException("Failed to write permissions: " + error.getMessage(), error);
     }

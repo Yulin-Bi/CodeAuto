@@ -191,6 +191,44 @@ class CheckpointToolTest {
     }
   }
 
+  @Test
+  void checkpointRestoreExecuteHonorsWritePermissions() throws Exception {
+    assumeTrue(gitAvailable, "git not available on PATH");
+    Path cwd = Files.createTempDirectory("codeauto-checkpoint-permissions");
+    try {
+      runGit(cwd, "init");
+      Files.writeString(cwd.resolve("data.txt"), "original");
+      runGit(cwd, "add", "-A");
+      runGit(cwd, "commit", "-m", "initial");
+
+      com.codeauto.git.GitCheckpointService service = new com.codeauto.git.GitCheckpointService();
+      var hashOpt = service.createCheckpoint(cwd, 1);
+      assertTrue(hashOpt.isPresent());
+      String hash = hashOpt.get();
+
+      Files.writeString(cwd.resolve("data.txt"), "modified");
+
+      Path storePath = Files.createTempFile("permissions-chkpt-deny", ".json");
+      PermissionStore store = new PermissionStore(storePath);
+      PermissionStore.Data data = new PermissionStore.Data();
+      data.deniedEditPatterns.add("Edit(data.txt)");
+      store.write(data);
+      PermissionManager permissions = new PermissionManager(cwd, store, request -> PermissionDecision.ALLOW_ONCE);
+
+      var restore = DefaultTools.create().execute("checkpoint_restore",
+          MAPPER.createObjectNode()
+              .put("hash", hash)
+              .put("execute", true),
+          new ToolContext(cwd, permissions));
+      assertFalse(restore.ok(), restore.output());
+      assertTrue(restore.output().contains("Write path is not allowed"), restore.output());
+      assertEquals("modified", Files.readString(cwd.resolve("data.txt")),
+          "Denied restore must not change the file");
+    } finally {
+      deleteRecursively(cwd);
+    }
+  }
+
   private static PermissionManager allowingPermissions(Path root) throws Exception {
     return new PermissionManager(root, new PermissionStore(Files.createTempFile("permissions-chkpt", ".json")),
         request -> PermissionDecision.ALLOW_ONCE);

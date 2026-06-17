@@ -22,7 +22,12 @@ final class FileReviewService {
       return ToolResult.error("Write path is not allowed: " + file + context.permissions().formatLastDenialFeedback());
     }
 
-    // Layer 1 undo recording: save pre-write state before mutating the file.
+    String diff = unifiedDiff(file, before, after);
+    Files.createDirectories(file.getParent());
+    Files.writeString(file, after);
+
+    // Layer 1 undo recording: save pre-write state AFTER successful write, so a write failure
+    // does not leave a stale undo record for an operation that never actually happened.
     String toolCallId = context.toolCallId();
     if (toolCallId != null) {
       try {
@@ -33,9 +38,6 @@ final class FileReviewService {
       }
     }
 
-    String diff = unifiedDiff(file, before, after);
-    Files.createDirectories(file.getParent());
-    Files.writeString(file, after);
     return ToolResult.ok(verb + " " + file + "\n" + diff);
   }
 

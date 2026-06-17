@@ -118,15 +118,35 @@ public class CheckpointTool implements ToolDefinition {
     }
 
     // Execute restore
+    Path workspace = context.cwd().toAbsolutePath().normalize();
+    for (String changedFile : changedFiles) {
+      Path filePath = workspace.resolve(changedFile).normalize();
+      if (!filePath.startsWith(workspace)) {
+        return ToolResult.error("Checkpoint restore path escapes workspace: " + changedFile);
+      }
+      if (!context.permissions().canWrite(filePath)) {
+        return ToolResult.error("Write path is not allowed: " + changedFile
+            + context.permissions().formatLastDenialFeedback());
+      }
+    }
     return service.restoreCheckpoint(context.cwd(), hash);
   }
 
   private ToolResult restoreSingleFile(GitCheckpointService service, ToolContext context,
       String hash, String relativeFile, boolean execute) throws Exception {
     Path file = context.cwd().resolve(relativeFile).normalize();
+    Path workspace = context.cwd().toAbsolutePath().normalize();
+
+    // Path traversal guard: reject paths that escape the workspace.
+    if (!file.startsWith(workspace)) {
+      return ToolResult.error("File path escapes workspace: " + relativeFile);
+    }
 
     if (!execute) {
-      // Preview mode for single file
+      // Preview mode: check read permission first.
+      if (!context.permissions().canRead(file)) {
+        return ToolResult.error("Read path is not allowed: " + relativeFile);
+      }
       String before = Files.exists(file) ? Files.readString(file) : "(file does not exist)";
       return ToolResult.ok("Preview: would restore " + relativeFile + " from checkpoint " + shortHash(hash)
           + "\nCurrent content:\n" + before
@@ -134,11 +154,14 @@ public class CheckpointTool implements ToolDefinition {
           + "\", file: \"" + relativeFile + "\"");
     }
 
+    // Execute mode: check write permission.
+    if (!context.permissions().canWrite(file)) {
+      return ToolResult.error("Write path is not allowed: " + relativeFile
+          + context.permissions().formatLastDenialFeedback());
+    }
+
     // Execute single-file restore
     ToolResult result = service.restoreFile(context.cwd(), relativeFile, hash);
-    if (!result.ok()) return result;
-
-    // Record undo for restored file if toolCallId is set
     return result;
   }
 

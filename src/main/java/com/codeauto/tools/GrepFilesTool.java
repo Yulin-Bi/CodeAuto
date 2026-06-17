@@ -9,8 +9,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 public class GrepFilesTool implements ToolDefinition {
+
+  private static final Set<String> EXCLUDED_DIRS = Set.of(
+      ".git", ".codeauto", "node_modules", "target", "build", "__pycache__",
+      ".svn", ".hg", "dist", ".next", ".nuxt", "out", "coverage", ".nyc_output");
+
   @Override public String name() { return "grep_files"; }
   @Override public String description() { return "Search text files by substring."; }
   @Override public JsonNode inputSchema() {
@@ -28,8 +34,10 @@ public class GrepFilesTool implements ToolDefinition {
     Path root = context.cwd().resolve(JsonSchemas.text(input, "path", ".")).normalize();
     if (!context.permissions().canRead(root)) return ToolResult.error("Path is not allowed: " + root);
     List<String> matches = new ArrayList<>();
-    try (var paths = Files.walk(root)) {
-      for (Path file : paths.filter(Files::isRegularFile).limit(500).toList()) {
+    try (var paths = Files.walk(root, 20)) {
+      for (Path file : paths
+          .filter(p -> Files.isRegularFile(p) && !isExcludedDir(p))
+          .limit(500).toList()) {
         try {
           int lineNo = 0;
           for (String line : Files.readAllLines(file)) {
@@ -44,5 +52,14 @@ public class GrepFilesTool implements ToolDefinition {
       }
     }
     return ToolResult.ok(String.join("\n", matches));
+  }
+
+  private static boolean isExcludedDir(Path path) {
+    for (int i = 0; i < path.getNameCount(); i++) {
+      if (EXCLUDED_DIRS.contains(path.getName(i).toString())) {
+        return true;
+      }
+    }
+    return false;
   }
 }

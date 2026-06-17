@@ -27,15 +27,13 @@ public class UndoStore {
     try {
       Files.createDirectories(undoDir);
       String id = UUID.randomUUID().toString().substring(0, 8);
-      // Store path relative to cwd when under the workspace
+      // Only store paths within the workspace (relative to cwd).
       Path cwd = undoDir.getParent().getParent(); // undoDir is <cwd>/.codeauto/undo
-      String filePath;
-      try {
-        filePath = cwd.relativize(absoluteFilePath).toString();
-      } catch (IllegalArgumentException e) {
-        // absoluteFilePath is not under cwd; store as absolute
-        filePath = absoluteFilePath.toString();
+      Path normalized = absoluteFilePath.toAbsolutePath().normalize();
+      if (!normalized.startsWith(cwd.toAbsolutePath().normalize())) {
+        throw new SecurityException("Cannot save undo record for path outside workspace: " + absoluteFilePath);
       }
+      String filePath = cwd.relativize(normalized).toString();
       UndoRecord record = new UndoRecord(
           id, toolCallId, toolName, filePath, beforeContent == null ? "" : beforeContent,
           Instant.now(), false);
@@ -120,13 +118,17 @@ public class UndoStore {
     return list(false).size();
   }
 
-  /** Resolve a stored filePath back to an absolute Path, given the original cwd. */
+  /** Resolve a stored filePath back to an absolute Path within the workspace. */
   public Path resolveFilePath(String storedPath) {
-    Path cwd = undoDir.getParent().getParent();
-    Path resolved = cwd.resolve(storedPath).normalize();
-    // If the path is not under cwd, treat storedPath as absolute
-    if (storedPath.contains(":") || storedPath.startsWith("/")) {
-      return Path.of(storedPath).normalize();
+    Path cwd = undoDir.getParent().getParent().normalize().toAbsolutePath();
+    // Reject paths that look absolute or are obviously trying to escape.
+    if (storedPath.contains(":") || storedPath.startsWith("/") || storedPath.startsWith("\\")) {
+      throw new SecurityException("Undo path must be relative to workspace, got: " + storedPath);
+    }
+    Path resolved = cwd.resolve(storedPath).normalize().toAbsolutePath();
+    // Validate the resolved path stays within the workspace.
+    if (!resolved.startsWith(cwd)) {
+      throw new SecurityException("Undo path escapes workspace: " + storedPath + " -> " + resolved);
     }
     return resolved;
   }

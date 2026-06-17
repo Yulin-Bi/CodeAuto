@@ -27,6 +27,17 @@ class PermissionManagerTest {
   }
 
   @Test
+  void blocksDangerousCommandsInvokedViaAbsoluteExecutablePath() throws Exception {
+    PermissionManager permissions = new PermissionManager(Path.of("").toAbsolutePath(),
+        new PermissionStore(Files.createTempFile("permissions-abs-command", ".json")),
+        request -> PermissionDecision.DENY_ONCE);
+
+    assertFalse(permissions.canRun("C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+        List.of("-Command", "Remove-Item test.txt")));
+    assertFalse(permissions.canRun("/usr/bin/bash", List.of("-c", "rm -rf /tmp/test")));
+  }
+
+  @Test
   void canPersistAllowedCommandDecision() throws Exception {
     Path storePath = Files.createTempFile("permissions-persist", ".json");
     Path cwd = Path.of("").toAbsolutePath();

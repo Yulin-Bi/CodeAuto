@@ -103,15 +103,38 @@ public class PermissionManager {
   }
 
   public String classifyDangerousCommand(String command, List<String> args) {
-    if ("git".equals(command)) {
+    String canonical = canonicalCommand(command);
+    // Destructive file operations
+    if (List.of("rm", "rmdir", "del").contains(canonical)) return command + " can delete files";
+    if (List.of("chmod", "chown", "chgrp").contains(canonical)) return command + " can change file permissions/ownership";
+    if ("dd".equals(canonical)) return "dd can overwrite raw devices";
+    // Privilege escalation
+    if (List.of("sudo", "su").contains(canonical)) return command + " can escalate privileges";
+    // Process control
+    if (List.of("kill", "pkill", "taskkill").contains(canonical)) return command + " can terminate processes";
+    // System control
+    if (List.of("shutdown", "reboot", "halt", "poweroff").contains(canonical)) return command + " can shut down the system";
+    if (List.of("systemctl", "service", "launchctl").contains(canonical)) return command + " can control system services";
+    if ("crontab".equals(canonical)) return "crontab can schedule persistent tasks";
+    // Network / data exfiltration
+    if (List.of("curl", "wget").contains(canonical)) return command + " can transfer data to/from network";
+    if (List.of("nc", "ncat", "netcat").contains(canonical)) return command + " can open arbitrary network connections";
+    if (List.of("scp", "rsync", "sftp", "ftp").contains(canonical)) return command + " can transfer files over network";
+    // Container / orchestration
+    if ("docker".equals(canonical)) return "docker can affect container state on host";
+    if ("kubectl".equals(canonical)) return "kubectl can affect Kubernetes cluster state";
+    // Git
+    if ("git".equals(canonical)) {
       if (args.contains("reset") && args.contains("--hard")) return "git reset --hard can discard local changes";
       if (args.contains("clean")) return "git clean can delete untracked files";
       if (args.contains("checkout") && args.contains("--")) return "git checkout -- can overwrite files";
       if (args.contains("restore") && args.stream().anyMatch(arg -> arg.startsWith("--source"))) return "git restore --source can overwrite files";
       if (args.contains("push") && args.stream().anyMatch(arg -> arg.equals("--force") || arg.equals("-f"))) return "git push --force rewrites remote history";
     }
-    if ("npm".equals(command) && args.contains("publish")) return "npm publish affects a registry";
-    if (List.of("node", "python", "python3", "bash", "sh", "cmd", "pwsh", "powershell").contains(command)) {
+    // Package managers / registries
+    if ("npm".equals(canonical) && args.contains("publish")) return "npm publish affects a registry";
+    // Runtime interpreters
+    if (List.of("node", "python", "python3", "bash", "sh", "cmd", "pwsh", "powershell").contains(canonical)) {
       return command + " can execute arbitrary local code";
     }
     return null;
@@ -213,7 +236,22 @@ public class PermissionManager {
   }
 
   private Path normalize(Path path) {
-    return path.toAbsolutePath().normalize();
+    Path absolute = path.toAbsolutePath().normalize();
+    try {
+      // Resolve symlinks where possible to prevent symlink escape attacks.
+      // For existing files, resolve the full real path.
+      if (java.nio.file.Files.exists(absolute)) {
+        return absolute.toRealPath();
+      }
+      // For non-existing files, resolve the parent and append the filename.
+      Path parent = absolute.getParent();
+      if (parent != null && java.nio.file.Files.exists(parent)) {
+        return parent.toRealPath().resolve(absolute.getFileName()).normalize();
+      }
+    } catch (Exception ignored) {
+      // Fall through to basic normalization on I/O error.
+    }
+    return absolute;
   }
 
   private boolean matchesPath(Path normalized, Set<Path> roots) {
@@ -262,7 +300,7 @@ public class PermissionManager {
 
   private static Rule parseRule(String raw, String defaultToolName) {
     String trimmed = raw == null ? "" : raw.trim();
-    int open = trimmed.indexOf('(');
+    int open = trimmed.lastIndexOf('(');
     if (open > 0 && trimmed.endsWith(")")) {
       return new Rule(trimmed.substring(0, open), trimmed.substring(open + 1, trimmed.length() - 1));
     }
@@ -300,7 +338,7 @@ public class PermissionManager {
         regex.append(".*");
       } else if (ch == '?') {
         regex.append('.');
-      } else if ("\\.[]{}()+-^$|".indexOf(ch) >= 0) {
+      } else if (".[]{}()+-^$|".indexOf(ch) >= 0) {
         regex.append('\\').append(ch);
       } else {
         regex.append(ch);
@@ -317,6 +355,19 @@ public class PermissionManager {
 
   private static boolean hasWildcard(String pattern) {
     return pattern != null && (pattern.indexOf('*') >= 0 || pattern.indexOf('?') >= 0);
+  }
+
+  private static String canonicalCommand(String command) {
+    String normalized = command == null ? "" : command.trim().replace('\\', '/');
+    int slash = normalized.lastIndexOf('/');
+    String base = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+    String lower = base.toLowerCase();
+    for (String suffix : List.of(".exe", ".cmd", ".bat", ".com", ".ps1")) {
+      if (lower.endsWith(suffix) && lower.length() > suffix.length()) {
+        return lower.substring(0, lower.length() - suffix.length());
+      }
+    }
+    return lower;
   }
 
   private record Rule(String toolName, String specifier) {

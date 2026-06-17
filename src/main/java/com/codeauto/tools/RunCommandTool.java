@@ -9,6 +9,7 @@ import com.codeauto.tool.ToolResult;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +39,7 @@ public class RunCommandTool implements ToolDefinition {
     if (command.isBlank()) return ToolResult.error("command is required");
     boolean background = input != null && input.path("background").asBoolean(false);
     int timeoutSec = input != null && input.has("timeout")
-        ? Math.max(1, input.path("timeout").asInt(DEFAULT_TIMEOUT_SECONDS))
+        ? Math.clamp(input.path("timeout").asInt(DEFAULT_TIMEOUT_SECONDS), 1, 300)
         : DEFAULT_TIMEOUT_SECONDS;
     List<String> parts;
     try {
@@ -66,19 +67,30 @@ public class RunCommandTool implements ToolDefinition {
       var task = BackgroundTaskRegistry.get().start(command, process);
       return ToolResult.ok("Started background task " + task.id() + " pid=" + task.pid());
     }
-    CompletableFuture<String> outputFuture = CompletableFuture.supplyAsync(() -> {
+    OutputCollector collector = new OutputCollector(MAX_FOREGROUND_OUTPUT_BYTES);
+    CompletableFuture<Void> outputFuture = CompletableFuture.runAsync(() -> {
       try {
-        return readLimited(process.getInputStream(), MAX_FOREGROUND_OUTPUT_BYTES);
+        collector.readFrom(process.getInputStream());
       } catch (IOException error) {
-        return error.getMessage() == null ? error.toString() : error.getMessage();
+        collector.recordError(error);
       }
     });
     boolean done = process.waitFor(Duration.ofSeconds(timeoutSec).toMillis(), TimeUnit.MILLISECONDS);
     if (!done) {
+      process.descendants().forEach(ProcessHandle::destroyForcibly);
       process.destroyForcibly();
+      closeQuietly(process.getInputStream());
       return ToolResult.error("Command timed out after " + timeoutSec + "s: " + command);
     }
-    String output = outputFuture.get(2, TimeUnit.SECONDS);
+    String output;
+    try {
+      outputFuture.get(2, TimeUnit.SECONDS);
+      output = collector.text();
+    } catch (java.util.concurrent.TimeoutException timeout) {
+      closeQuietly(process.getInputStream());
+      output = collector.textWithSuffix(
+          "[command output stream remained open after process exit; returning partial output]");
+    }
     return new ToolResult(process.exitValue() == 0, output, false);
   }
 
@@ -86,21 +98,23 @@ public class RunCommandTool implements ToolDefinition {
     List<String> parts = new ArrayList<>();
     StringBuilder current = new StringBuilder();
     Character quote = null;
-    boolean escaping = false;
     for (int i = 0; i < command.length(); i++) {
       char ch = command.charAt(i);
-      if (escaping) {
-        current.append(ch);
-        escaping = false;
-        continue;
-      }
-      if (ch == '\\') {
-        escaping = true;
-        continue;
-      }
       if (quote != null) {
         if (ch == quote) {
           quote = null;
+        } else if (quote == '"' && ch == '\\') {
+          if (i + 1 < command.length()) {
+            char next = command.charAt(i + 1);
+            if (next == '"' || next == '\\') {
+              current.append(next);
+              i++;
+            } else {
+              current.append(ch);
+            }
+          } else {
+            current.append(ch);
+          }
         } else {
           current.append(ch);
         }
@@ -118,9 +132,6 @@ public class RunCommandTool implements ToolDefinition {
         continue;
       }
       current.append(ch);
-    }
-    if (escaping) {
-      current.append('\\');
     }
     if (quote != null) {
       throw new IllegalArgumentException("Unclosed quote in command");
@@ -161,9 +172,9 @@ public class RunCommandTool implements ToolDefinition {
 
   private static List<String> shellCommand(String command) {
     if (isWindows()) {
-      return List.of("cmd", "/c", stripTrailingBackgroundOperator(command));
+      return List.of("cmd", "/d", "/c", stripTrailingBackgroundOperator(command));
     }
-    return List.of("sh", "-lc", stripTrailingBackgroundOperator(command));
+    return List.of("sh", "-c", stripTrailingBackgroundOperator(command));
   }
 
   private static boolean isWindows() {
@@ -208,7 +219,7 @@ public class RunCommandTool implements ToolDefinition {
         "less", "Use more (Windows) or type <file> | more",
         "touch", "Use copy /b nul <file> or PowerShell New-Item");
 
-    String suggestion = linuxCommands.get(executable.toLowerCase());
+    String suggestion = linuxCommands.get(commandName(executable));
     if (suggestion != null) {
       return "'" + executable + "' is a Linux command not available on Windows cmd. "
           + suggestion + ".";
@@ -216,27 +227,77 @@ public class RunCommandTool implements ToolDefinition {
     return null;
   }
 
-  private static String readLimited(InputStream input, int maxBytes) throws IOException {
-    var output = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
-    byte[] buffer = new byte[8192];
-    int total = 0;
-    boolean truncated = false;
-    while (true) {
-      int read = input.read(buffer);
-      if (read < 0) break;
-      if (total + read <= maxBytes) {
-        output.write(buffer, 0, read);
-      } else {
-        int keep = Math.max(0, maxBytes - total);
-        if (keep > 0) output.write(buffer, 0, keep);
-        truncated = true;
+  private static String commandName(String executable) {
+    String normalized = executable == null ? "" : executable.trim().replace('\\', '/');
+    int slash = normalized.lastIndexOf('/');
+    String base = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+    return base.toLowerCase();
+  }
+
+  private static void closeQuietly(InputStream input) {
+    try {
+      input.close();
+    } catch (IOException ignored) {
+      // Best-effort cleanup only.
+    }
+  }
+
+  private static final class OutputCollector {
+    private final ByteArrayOutputStream output;
+    private final int maxBytes;
+    private int totalBytes;
+    private boolean truncated;
+    private String readError;
+
+    private OutputCollector(int maxBytes) {
+      this.output = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
+      this.maxBytes = maxBytes;
+    }
+
+    private synchronized void readFrom(InputStream input) throws IOException {
+      byte[] buffer = new byte[8192];
+      int read;
+      while ((read = input.read(buffer)) >= 0) {
+        if (read == 0) {
+          continue;
+        }
+        if (totalBytes < maxBytes) {
+          int keep = Math.min(read, maxBytes - totalBytes);
+          output.write(buffer, 0, keep);
+          if (keep < read) {
+            truncated = true;
+          }
+        } else {
+          truncated = true;
+        }
+        totalBytes += read;
       }
-      total += read;
     }
-    String text = output.toString();
-    if (truncated) {
-      text += "\n[truncated command output after " + maxBytes + " bytes]";
+
+    private synchronized void recordError(IOException error) {
+      readError = error.getMessage() == null ? error.toString() : error.getMessage();
     }
-    return text;
+
+    private synchronized String text() {
+      String text = output.toString(StandardCharsets.UTF_8);
+      if (truncated) {
+        text = appendLine(text, "[truncated command output after " + maxBytes + " bytes]");
+      }
+      if (readError != null && !readError.isBlank()) {
+        text = appendLine(text, "[output reader error: " + readError + "]");
+      }
+      return text;
+    }
+
+    private synchronized String textWithSuffix(String suffix) {
+      return appendLine(text(), suffix);
+    }
+
+    private static String appendLine(String base, String suffix) {
+      if (base == null || base.isEmpty()) {
+        return suffix;
+      }
+      return base.endsWith("\n") ? base + suffix : base + "\n" + suffix;
+    }
   }
 }

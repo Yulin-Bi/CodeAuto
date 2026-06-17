@@ -9,8 +9,8 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,7 +22,11 @@ public class ToolResultStorage {
   private final int thresholdChars;
   private final int previewChars;
   private final int batchBudgetChars;
-  private final Map<String, String> replacements = new HashMap<>();
+  private final Map<String, String> replacements = new LinkedHashMap<>() {
+    @Override protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+      return size() > 500; // Prevent unbounded memory growth in long sessions.
+    }
+  };
 
   public ToolResultStorage(int thresholdChars, int previewChars) {
     this(thresholdChars, previewChars, MAX_TOOL_RESULTS_PER_BATCH_CHARS);

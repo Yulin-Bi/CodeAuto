@@ -250,6 +250,33 @@ class GitCheckpointServiceTest {
     }
   }
 
+  @Test
+  void createCheckpointPreservesExistingIndexState() throws Exception {
+    assumeTrue(gitAvailable, "git not available on PATH");
+    Path cwd = Files.createTempDirectory("codeauto-git-checkpoint-index");
+    try {
+      runGit(cwd, "init");
+      Files.writeString(cwd.resolve("tracked.txt"), "base");
+      Files.writeString(cwd.resolve("other.txt"), "base");
+      runGit(cwd, "add", "-A");
+      runGit(cwd, "commit", "-m", "initial");
+
+      Files.writeString(cwd.resolve("tracked.txt"), "staged");
+      Files.writeString(cwd.resolve("other.txt"), "unstaged");
+      runGit(cwd, "add", "tracked.txt");
+      String statusBefore = gitOutput(cwd, "status", "--porcelain");
+
+      GitCheckpointService service = new GitCheckpointService();
+      Optional<String> hash = service.createCheckpoint(cwd, 2);
+
+      assertTrue(hash.isPresent(), "Checkpoint creation should succeed");
+      assertEquals(statusBefore, gitOutput(cwd, "status", "--porcelain"),
+          "Checkpoint creation must not alter the user's index/worktree state");
+    } finally {
+      deleteRecursively(cwd);
+    }
+  }
+
   private static void runGit(Path cwd, String... args) throws Exception {
     List<String> cmd = new java.util.ArrayList<>();
     cmd.add("git");
@@ -259,6 +286,18 @@ class GitCheckpointServiceTest {
     pb.redirectErrorStream(true);
     Process p = pb.start();
     p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+  }
+
+  private static String gitOutput(Path cwd, String... args) throws Exception {
+    List<String> cmd = new java.util.ArrayList<>();
+    cmd.add("git");
+    cmd.addAll(java.util.Arrays.asList(args));
+    ProcessBuilder pb = new ProcessBuilder(cmd);
+    pb.directory(cwd.toFile());
+    pb.redirectErrorStream(true);
+    Process p = pb.start();
+    p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+    return new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
   }
 
   private static void deleteRecursively(Path path) {

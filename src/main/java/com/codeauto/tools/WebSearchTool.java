@@ -19,7 +19,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class WebSearchTool implements ToolDefinition {
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+  private final HttpClient client = HttpClient.newBuilder()
+      .connectTimeout(Duration.ofSeconds(15))
+      .followRedirects(java.net.http.HttpClient.Redirect.NEVER)
+      .build();
 
   @Override public String name() { return "web_search"; }
   @Override public String description() { return "Search the web via CODEAUTO_SEARCH_URL or DuckDuckGo HTML fallback."; }
@@ -41,8 +44,15 @@ public class WebSearchTool implements ToolDefinition {
         : endpoint.contains("{query}")
             ? endpoint.replace("{query}", encoded)
             : endpoint + (endpoint.contains("?") ? "&" : "?") + "q=" + encoded;
+
+    String guardError = WebToolUrlGuard.validatePublicHttpUrl(url);
+    if (guardError != null) {
+      return ToolResult.error(guardError);
+    }
+    URI uri = URI.create(url);
+
     HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(url))
+        .uri(uri)
         .timeout(Duration.ofSeconds(30))
         .header("User-Agent", "CodeAuto/0.1")
         .GET()

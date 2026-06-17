@@ -12,7 +12,10 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 
 public class WebFetchTool implements ToolDefinition {
-  private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+  private final HttpClient client = HttpClient.newBuilder()
+      .connectTimeout(Duration.ofSeconds(15))
+      .followRedirects(java.net.http.HttpClient.Redirect.NEVER)
+      .build();
 
   @Override public String name() { return "web_fetch"; }
   @Override public String description() { return "Fetch text content from a URL."; }
@@ -27,8 +30,15 @@ public class WebFetchTool implements ToolDefinition {
   public ToolResult run(JsonNode input, ToolContext context) throws Exception {
     String url = JsonSchemas.text(input, "url", "");
     if (url.isBlank()) return ToolResult.error("url is required");
+
+    String guardError = WebToolUrlGuard.validatePublicHttpUrl(url);
+    if (guardError != null) {
+      return ToolResult.error(guardError);
+    }
+    URI uri = URI.create(url);
+
     HttpRequest request = HttpRequest.newBuilder()
-        .uri(URI.create(url))
+        .uri(uri)
         .timeout(Duration.ofSeconds(30))
         .GET()
         .build();
