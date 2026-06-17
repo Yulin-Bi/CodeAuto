@@ -1,5 +1,6 @@
 package com.codeauto.context;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.codeauto.core.AgentStep;
 import com.codeauto.core.ChatMessage;
 import com.codeauto.model.ModelAdapter;
@@ -314,15 +315,34 @@ public final class CompactService {
     if (index <= 1 || index >= messages.size()) return index;
     if (!(messages.get(index) instanceof ChatMessage.ToolResultMessage)) return index;
     int i = index;
-    while (i > 1) {
+    while (i > 1 && messages.get(i - 1) instanceof ChatMessage.ToolResultMessage) {
       i--;
-      ChatMessage msg = messages.get(i);
-      if (!(msg instanceof ChatMessage.ToolResultMessage)
-          && !(msg instanceof ChatMessage.AssistantToolCallMessage)) {
-        return i + 1;
+    }
+    while (i > 1) {
+      ChatMessage previous = messages.get(i - 1);
+      if (previous instanceof ChatMessage.AssistantToolCallMessage) {
+        i--;
+        continue;
+      }
+      if (previous instanceof ChatMessage.AssistantRawMessage raw && containsToolUseBlock(raw.content())) {
+        i--;
+        continue;
+      }
+      break;
+    }
+    return i;
+  }
+
+  private static boolean containsToolUseBlock(JsonNode content) {
+    if (content == null || !content.isArray()) {
+      return false;
+    }
+    for (JsonNode block : content) {
+      if ("tool_use".equals(block.path("type").asText())) {
+        return true;
       }
     }
-    return 1;
+    return false;
   }
 
   private static ChatMessage markUsageStale(ChatMessage message) {

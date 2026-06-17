@@ -1,5 +1,7 @@
 package com.codeauto;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.codeauto.context.CompactService;
 import com.codeauto.context.MicroCompactService;
 import com.codeauto.context.TokenEstimator;
@@ -16,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ContextTest {
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+
   @Test
   void computesEstimatedContextStats() {
     var stats = TokenEstimator.compute(List.of(
@@ -235,6 +239,41 @@ class ContextTest {
     // The second summary should reference the new turn content, not the first summary.
     assertTrue(secondSummary.content().contains("new turn"),
         "new summary should describe messages after boundary");
+  }
+
+  @Test
+  void compactionKeepsAssistantRawToolUseWithFollowingToolResults() {
+    ArrayNode rawContent = MAPPER.createArrayNode();
+    rawContent.addObject()
+        .put("type", "tool_use")
+        .put("id", "call-1")
+        .put("name", "read_file")
+        .set("input", MAPPER.createObjectNode().put("path", "README.md"));
+
+    List<ChatMessage> messages = new ArrayList<>();
+    messages.add(new ChatMessage.SystemMessage("system"));
+    messages.add(new ChatMessage.UserMessage("older 1"));
+    messages.add(new ChatMessage.AssistantMessage("older 2"));
+    messages.add(new ChatMessage.UserMessage("older 3"));
+    messages.add(new ChatMessage.AssistantRawMessage(rawContent, null));
+    messages.add(new ChatMessage.ToolResultMessage("call-1", "read_file", "file content", false));
+    messages.add(new ChatMessage.UserMessage("new question"));
+
+    var result = CompactService.compactWithStats(messages, 2, 200_000, null, null);
+
+    List<ChatMessage> compacted = result.messages();
+    assertTrue(compacted.stream().anyMatch(ChatMessage.AssistantRawMessage.class::isInstance));
+    int rawIndex = -1;
+    int resultIndex = -1;
+    for (int i = 0; i < compacted.size(); i++) {
+      if (compacted.get(i) instanceof ChatMessage.AssistantRawMessage) rawIndex = i;
+      if (compacted.get(i) instanceof ChatMessage.ToolResultMessage) {
+        resultIndex = i;
+        break;
+      }
+    }
+    assertTrue(rawIndex >= 0, "assistant raw tool_use should be preserved");
+    assertTrue(resultIndex == rawIndex + 1, "tool_result must remain immediately after its assistant tool_use");
   }
 
   @Test

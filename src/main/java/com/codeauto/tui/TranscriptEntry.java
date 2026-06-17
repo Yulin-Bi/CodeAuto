@@ -60,7 +60,7 @@ public sealed interface TranscriptEntry {
     if (input == null) return "";
     String json = input.toString();
     if (json.length() > 200) json = json.substring(0, 200) + "...";
-    return toolName + " " + json;
+    return json;
   }
 
   private static String rawAssistantText(com.fasterxml.jackson.databind.JsonNode content) {

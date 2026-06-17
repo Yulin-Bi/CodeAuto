@@ -21,6 +21,8 @@ public class Ansi {
   public static final String DARK_GRAY = "\033[38;5;240m";
   public static final String LIGHT_BLUE = "\033[38;5;117m";
   public static final String BORDER = "\033[38;5;31m";
+  public static final String USER_BG = "\033[48;5;237m";
+  public static final String USER_EDGE = "\033[38;5;110m";
 
   public static final String ENTER_ALT = "\033[?1049h";
   public static final String EXIT_ALT = "\033[?1049l";
@@ -30,15 +32,18 @@ public class Ansi {
 
   /** Disable win32 input mode (?9001l) so Windows Terminal delivers raw SGR mouse sequences.
    *  Then enable: basic tracking (?1000h), cell-motion/drag (?1002h), SGR extended (?1006h). */
-  public static final String ENABLE_SGR_MOUSE = "\033[?9001l\033[?1000h\033[?1002h\033[?1006h";
+  public static final String ENABLE_SGR_MOUSE = "\033[?9001l\033[?1000h\033[?1002h\033[?1006h\033[?1015h";
   /** Disable tracking and re-enable win32 input mode for normal terminal operation. */
-  public static final String DISABLE_SGR_MOUSE = "\033[?1000l\033[?1002l\033[?1006l\033[?9001h";
+  public static final String DISABLE_SGR_MOUSE = "\033[?1000l\033[?1002l\033[?1006l\033[?1015l\033[?9001h";
 
   public static String stripAnsi(String input) {
     return input.replaceAll("\033\\[[0-9;]*[a-zA-Z]", "");
   }
 
   public static int charDisplayWidth(int codePoint) {
+    if (isZeroWidthCodePoint(codePoint)) {
+      return 0;
+    }
     if (codePoint >= 0x1100 && (codePoint <= 0x115f || codePoint == 0x2329
         || codePoint == 0x232a
         || (codePoint >= 0x2e80 && codePoint <= 0xa4cf && codePoint != 0x303f)
@@ -53,6 +58,21 @@ public class Ansi {
       return 2;
     }
     return 1;
+  }
+
+  private static boolean isZeroWidthCodePoint(int codePoint) {
+    int type = Character.getType(codePoint);
+    if (type == Character.NON_SPACING_MARK
+        || type == Character.COMBINING_SPACING_MARK
+        || type == Character.ENCLOSING_MARK
+        || type == Character.FORMAT) {
+      return true;
+    }
+    return codePoint == 0x200D
+        || codePoint == 0xFE0E
+        || codePoint == 0xFE0F
+        || codePoint == 0x20E3
+        || (codePoint >= 0x1F3FB && codePoint <= 0x1F3FF);
   }
 
   public static int stringDisplayWidth(String input) {

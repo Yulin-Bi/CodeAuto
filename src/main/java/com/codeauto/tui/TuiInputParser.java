@@ -19,6 +19,12 @@ final class TuiInputParser {
     if (seq.charAt(2) == '<') {
       return last == 'M' || last == 'm';
     }
+    if (Character.isDigit(seq.charAt(2))) {
+      return last == 'M'
+          || last == 'm'
+          || last == '~'
+          || (last >= '@' && last <= '~' && !Character.isDigit(last) && last != ';');
+    }
     if (len == 3 && seq.charAt(2) == 'M') return false;
     return (last >= '@' && last <= '~');
   }
@@ -59,6 +65,9 @@ final class TuiInputParser {
     if (seq.length() > 3 && seq.charAt(2) == '<') {
       return parseSgrMouse(seq);
     }
+    if (seq.length() > 3 && Character.isDigit(seq.charAt(2))) {
+      return parseUrxvtMouse(seq);
+    }
     return null;
   }
 
@@ -79,6 +88,20 @@ final class TuiInputParser {
   private static Integer parseX10Mouse(String seq) {
     try {
       int btn = seq.charAt(3) - 0x20;
+      if ((btn & 0x40) != 0) {
+        return (btn & 0x01) == 0 ? -3 : 3;
+      }
+    } catch (Exception ignored) {
+    }
+    return null;
+  }
+
+  private static Integer parseUrxvtMouse(String seq) {
+    try {
+      String inner = seq.substring(2, seq.length() - 1);
+      String[] parts = inner.split(";");
+      if (parts.length != 3) return null;
+      int btn = Integer.parseInt(parts[0]);
       if ((btn & 0x40) != 0) {
         return (btn & 0x01) == 0 ? -3 : 3;
       }

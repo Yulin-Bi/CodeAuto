@@ -2,6 +2,7 @@ package com.codeauto.tui;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -17,5 +18,14 @@ class TuiAppEscapeSequenceTest {
     assertTrue(TuiInputParser.isCompleteEscapeSequence("\033[5~"));
     assertTrue(TuiInputParser.isCompleteEscapeSequence("\033[1;5B"));
     assertTrue(TuiInputParser.isCompleteEscapeSequence("\033[<64;10;5M"));
+    assertTrue(TuiInputParser.isCompleteEscapeSequence("\033[64;10;5M"));
+  }
+
+  @Test
+  void parsesMouseWheelAcrossSupportedProtocols() {
+    assertEquals(-3, TuiInputParser.parseMouseScroll("\033[<64;10;5M"));
+    assertEquals(3, TuiInputParser.parseMouseScroll("\033[<65;10;5M"));
+    assertEquals(-3, TuiInputParser.parseMouseScroll("\033[M`!!"));
+    assertEquals(-3, TuiInputParser.parseMouseScroll("\033[64;10;5M"));
   }
 }
