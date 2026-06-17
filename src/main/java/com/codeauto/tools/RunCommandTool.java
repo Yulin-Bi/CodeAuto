@@ -28,6 +28,10 @@ public class RunCommandTool implements ToolDefinition {
     ObjectNode props = schema.putObject("properties");
     props.set("command", JsonSchemas.stringProp("Shell command to run"));
     props.set("background", JsonSchemas.booleanProp("Run in background"));
+    props.set("app_id", JsonSchemas.stringProp("Stable managed app identifier for background tasks"));
+    props.set("health_url", JsonSchemas.stringProp("Optional readiness URL for managed background apps"));
+    props.set("health_port", JsonSchemas.integerProp("Optional readiness TCP port for managed background apps"));
+    props.set("startup_timeout", JsonSchemas.integerProp("Seconds to wait for readiness before failing (default: 20)"));
     props.set("timeout", JsonSchemas.integerProp("Timeout in seconds (default: 20)"));
     props.set("args", JsonSchemas.arrayProp("string", "Command arguments"));
     return JsonSchemas.required(schema, "command");
@@ -38,9 +42,21 @@ public class RunCommandTool implements ToolDefinition {
     String command = JsonSchemas.text(input, "command", "");
     if (command.isBlank()) return ToolResult.error("command is required");
     boolean background = input != null && input.path("background").asBoolean(false);
+    String appId = JsonSchemas.text(input, "app_id", "").trim();
+    String healthUrl = JsonSchemas.text(input, "health_url", "").trim();
+    int healthPort = input != null && input.has("health_port") ? Math.max(0, input.path("health_port").asInt(0)) : 0;
+    int startupTimeoutSec = input != null && input.has("startup_timeout")
+        ? Math.clamp(input.path("startup_timeout").asInt(20), 1, 300)
+        : 20;
     int timeoutSec = input != null && input.has("timeout")
         ? Math.clamp(input.path("timeout").asInt(DEFAULT_TIMEOUT_SECONDS), 1, 300)
         : DEFAULT_TIMEOUT_SECONDS;
+    if (!background && (!healthUrl.isBlank() || healthPort > 0)) {
+      return ToolResult.error("health_url/health_port are only supported for background tasks");
+    }
+    if (( !healthUrl.isBlank() || healthPort > 0) && appId.isBlank()) {
+      return ToolResult.error("app_id is required when using health_url or health_port");
+    }
     List<String> parts;
     try {
       parts = normalizeCommandInput(input, command);
@@ -59,13 +75,33 @@ public class RunCommandTool implements ToolDefinition {
     if (compatError != null) {
       return ToolResult.error(compatError);
     }
+    if (background && !appId.isBlank() && BackgroundTaskRegistry.get().hasRunningAppId(appId)) {
+      return ToolResult.error("Managed app already running: " + appId
+          + ". Use background_tasks restart or cancel before starting another instance.");
+    }
     Process process = new ProcessBuilder(parts)
         .directory(context.cwd().toFile())
         .redirectErrorStream(true)
         .start();
     if (background) {
-      var task = BackgroundTaskRegistry.get().start(command, process);
-      return ToolResult.ok("Started background task " + task.id() + " pid=" + task.pid());
+      var task = BackgroundTaskRegistry.get().start(appId, command, parts, context.cwd(), process,
+          healthUrl, healthPort, startupTimeoutSec);
+      if (!healthUrl.isBlank() || healthPort > 0) {
+        try {
+          task = BackgroundTaskRegistry.get().awaitReady(task.id());
+        } catch (IllegalStateException error) {
+          return ToolResult.error("Managed app failed readiness check: " + error.getMessage());
+        }
+      }
+      StringBuilder out = new StringBuilder("Started background task " + task.id());
+      if (task.appId() != null && !task.appId().isBlank()) {
+        out.append(" app=").append(task.appId());
+      }
+      out.append(" pid=").append(task.pid());
+      if (task.healthStatus() != null && !task.healthStatus().isBlank()) {
+        out.append(" health=").append(task.healthStatus());
+      }
+      return ToolResult.ok(out.toString());
     }
     OutputCollector collector = new OutputCollector(MAX_FOREGROUND_OUTPUT_BYTES);
     CompletableFuture<Void> outputFuture = CompletableFuture.runAsync(() -> {
@@ -203,7 +239,7 @@ public class RunCommandTool implements ToolDefinition {
    * Check if the executable is available on this platform. Returns an error message with
    * suggestions if the command is likely unavailable, or null if it should proceed.
    */
-  private static String checkCommandAvailability(String executable) {
+  static String checkCommandAvailability(String executable) {
     if (!isWindows()) return null;
 
     // Common Linux commands not available on Windows cmd

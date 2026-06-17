@@ -1368,26 +1368,90 @@ final class TuiRenderer {
     }
 
     var current = new StringBuilder();
+    var activeStyle = new StringBuilder();
     int currentWidth = 0;
+    for (DisplayToken token : tokenizeDisplayLine(line)) {
+      if (token.isAnsi()) {
+        current.append(token.text());
+        updateActiveStyle(activeStyle, token.text());
+        continue;
+      }
+      int tokenWidth = token.width();
+      if (currentWidth + tokenWidth > width && currentWidth > 0) {
+        parts.add(finishWrappedLine(current, activeStyle));
+        current = new StringBuilder();
+        if (!activeStyle.isEmpty()) {
+          current.append(activeStyle);
+        }
+        currentWidth = 0;
+      }
+      current.append(token.text());
+      currentWidth += tokenWidth;
+    }
+    if (!current.isEmpty()) {
+      parts.add(finishWrappedLine(current, activeStyle));
+    }
+    return parts;
+  }
+
+  private List<DisplayToken> tokenizeDisplayLine(String line) {
+    var tokens = new ArrayList<DisplayToken>();
+    var plain = new StringBuilder();
+    for (int i = 0; i < line.length(); i++) {
+      char ch = line.charAt(i);
+      if (ch == '\033' && i + 1 < line.length() && line.charAt(i + 1) == '[') {
+        if (!plain.isEmpty()) {
+          appendPlainTokens(tokens, plain.toString());
+          plain.setLength(0);
+        }
+        int end = i + 2;
+        while (end < line.length() && !Character.isLetter(line.charAt(end))) {
+          end++;
+        }
+        if (end < line.length()) {
+          tokens.add(new DisplayToken(line.substring(i, end + 1), 0, true));
+          i = end;
+          continue;
+        }
+      }
+      plain.append(ch);
+    }
+    if (!plain.isEmpty()) {
+      appendPlainTokens(tokens, plain.toString());
+    }
+    return tokens;
+  }
+
+  private void appendPlainTokens(List<DisplayToken> tokens, String plain) {
     BreakIterator iterator = BreakIterator.getCharacterInstance();
     iterator.setText(plain);
     for (int start = iterator.first(), end = iterator.next();
          end != BreakIterator.DONE;
          start = end, end = iterator.next()) {
       String cluster = plain.substring(start, end);
-      int cw = clusterDisplayWidth(cluster);
-      if (currentWidth + cw > width && currentWidth > 0) {
-        parts.add(current.toString());
-        current = new StringBuilder();
-        currentWidth = 0;
-      }
-      current.append(cluster);
-      currentWidth += cw;
+      tokens.add(new DisplayToken(cluster, clusterDisplayWidth(cluster), false));
     }
-    if (!current.isEmpty()) {
-      parts.add(current.toString());
+  }
+
+  private static void updateActiveStyle(StringBuilder activeStyle, String ansi) {
+    if (!ansi.endsWith("m")) {
+      return;
     }
-    return parts;
+    if (Ansi.RESET.equals(ansi) || "\033[0m".equals(ansi)) {
+      activeStyle.setLength(0);
+      return;
+    }
+    activeStyle.append(ansi);
+  }
+
+  private static String finishWrappedLine(StringBuilder current, StringBuilder activeStyle) {
+    if (current.isEmpty()) {
+      return "";
+    }
+    if (activeStyle.isEmpty()) {
+      return current.toString();
+    }
+    return current + Ansi.RESET;
   }
 
   private int clusterDisplayWidth(String cluster) {
@@ -1421,5 +1485,8 @@ final class TuiRenderer {
 
   private int termWidth() {
     return Math.max(20, terminal.getSize().getColumns());
+  }
+
+  private record DisplayToken(String text, int width, boolean isAnsi) {
   }
 }

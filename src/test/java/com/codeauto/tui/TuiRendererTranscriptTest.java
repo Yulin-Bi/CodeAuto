@@ -1,8 +1,10 @@
 package com.codeauto.tui;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TuiRendererTranscriptTest {
   @Test
@@ -43,5 +45,19 @@ class TuiRendererTranscriptTest {
         "activity 3 events  tools 2", "tool grep ok\ntool read ok\nprogress [+]"));
 
     assertEquals("activity 3 events  tools 2\n> tool grep ok\n> tool read ok\n> progress [+]", plain);
+  }
+
+  @Test
+  void wrappedUserTranscriptKeepsGrayBackgroundOnEveryWrappedLine() {
+    TuiRenderer renderer = new TuiRenderer(null, null, 0);
+    String block = TuiRenderer.renderUserTranscriptBlock("this is a long user line that should wrap and keep background");
+
+    List<String> lines = renderer.wrapDisplayLines(List.of(block), 18);
+
+    assertTrue(lines.size() > 1, lines.toString());
+    for (String line : lines) {
+      assertTrue(line.contains(Ansi.USER_BG), line);
+      assertTrue(line.endsWith(Ansi.RESET), line);
+    }
   }
 }
