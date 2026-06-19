@@ -60,4 +60,18 @@ class TuiRendererTranscriptTest {
       assertTrue(line.endsWith(Ansi.RESET), line);
     }
   }
+
+  @Test
+  void progressDetailsRenderOnlyWhenExplicitlyRequested() {
+    String body = TuiRenderer.PROGRESS_RUNNING + "Running edit_file\n"
+        + TuiRenderer.PROGRESS_SUCCESS + "Processed edit_file\n"
+        + TuiRenderer.PROGRESS_INFO + "Refreshing prompt state";
+
+    String plain = Ansi.stripAnsi(TuiRenderer.renderProgressDetails(body, 40));
+
+    assertTrue(plain.contains("progress"));
+    assertTrue(plain.contains("Running edit_file"));
+    assertTrue(plain.contains("Processed edit_file"));
+    assertTrue(plain.contains("Refreshing prompt state"));
+  }
 }

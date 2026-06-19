@@ -45,6 +45,7 @@ final class TuiCommands {
       new SlashCommand("/fork", "Save current transcript into a new session"),
       new SlashCommand("/rename <name>", "Rename current session metadata"),
       new SlashCommand("/compact", "Compact middle conversation messages"),
+      new SlashCommand("/progress", "Toggle detailed progress view"),
       new SlashCommand("/config-paths", "Show config home directory"),
       new SlashCommand("/permissions", "Show permission storage and rule counts"),
       new SlashCommand("/exit", "Exit")
@@ -80,6 +81,7 @@ final class TuiCommands {
     if (text.startsWith("/resume")) { handleResume(text, app); return true; }
     if (text.startsWith("/rename ")) { app.renameSession(text.substring("/rename ".length()).trim()); return true; }
     if (text.equals("/compact")) { app.runCompact(); return true; }
+    if (text.equals("/progress")) { app.toggleProgressDetails(); return true; }
     if (text.equals("/config-paths")) { app.addEntry(assistant(app.nextEntryId(), configPathsText())); return true; }
     if (text.equals("/permissions")) { app.addEntry(assistant(app.nextEntryId(), app.permissionsSummary())); return true; }
     return false;
@@ -116,6 +118,7 @@ final class TuiCommands {
         /fork       Save current transcript into a new session
         /rename <n> Rename current session metadata
         /compact    Compact middle conversation messages
+        /progress   Toggle detailed progress view
         /config-paths Show config home directory
         /permissions Show permission storage and rule counts
         /exit       Exit""";

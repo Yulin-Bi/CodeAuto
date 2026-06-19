@@ -85,8 +85,8 @@ final class TuiRenderer {
       bottomPanel = renderPromptPanelV2(width, app);
     }
 
-    String thinkingBlock = buildThinkingBlock(width, app);
-    int thinkingLines = thinkingBlock != null ? lineCount(thinkingBlock) + 1 : 0;
+    String auxiliaryBlock = buildThinkingBlock(width, app);
+    int thinkingLines = auxiliaryBlock != null ? lineCount(auxiliaryBlock) + 1 : 0;
     int topTodoLines = !useTodoSidebar && !todoPanel.isEmpty() ? lineCount(todoPanel) + 1 : 0;
     int transcriptMaxLines = computeTranscriptMaxLines(
         height,
@@ -123,7 +123,7 @@ final class TuiRenderer {
           mainContent,
           bottomPanel,
           footerBar,
-          thinkingBlock);
+          auxiliaryBlock);
       int overflow = lineCount(screenContent) - height;
       if (overflow <= 0 || transcriptMaxLines <= MIN_TRANSCRIPT_LINES) {
         break;
@@ -218,6 +218,10 @@ final class TuiRenderer {
       secondary.add(renderContextBadge(app.contextStats()));
     }
     sb.append(joinBadgeTokens(secondary, termWidth));
+    String statusLine = renderHeaderStatusLine(termWidth, app);
+    if (!statusLine.isBlank()) {
+      sb.append("\n").append(statusLine);
+    }
     return sb.toString();
   }
 
@@ -249,9 +253,7 @@ final class TuiRenderer {
   // --- Transcript ---
 
   private String buildTranscriptBody(int termWidth, int maxLines, TuiApp app) {
-    var pinnedProgress = buildPinnedProgressLines(termWidth, app);
-    int pinnedLines = pinnedProgress.size();
-    int transcriptBudget = Math.max(1, maxLines - pinnedLines);
+    int transcriptBudget = Math.max(1, maxLines);
     var lines = wrapDisplayLines(renderTranscriptLines(app), Math.max(1, termWidth - 4));
     if (lines.isEmpty()) {
       lines = List.of("Type /help for commands.");
@@ -277,11 +279,6 @@ final class TuiRenderer {
 
     int start = offset;
     var sb = new StringBuilder();
-    if (!pinnedProgress.isEmpty()) {
-      sb.append(String.join("\n", pinnedProgress));
-      if (transcriptBudget > 0) sb.append("\n");
-    }
-
     if (start > 0) {
       sb.append(Ansi.DIM).append("↑ ").append(start).append(" more line").append(start != 1 ? "s" : "").append(Ansi.RESET).append("\n");
     }
@@ -758,20 +755,32 @@ final class TuiRenderer {
   // --- Footer ---
 
   private String buildThinkingBlock(int width, TuiApp app) {
+    var sections = new ArrayList<String>();
     String thinking = app.thinkingText();
-    if (thinking == null || thinking.isBlank()) return null;
-    String[] lines = thinking.split("\n");
-    int start = Math.max(0, lines.length - 3);
-    var sb = new StringBuilder();
-    for (int i = start; i < lines.length; i++) {
-      String line = lines[i];
-      if (line.length() > width - 10) {
-        line = line.substring(0, Math.max(0, width - 13)) + "...";
+    if (thinking != null && !thinking.isBlank()) {
+      String[] lines = thinking.split("\n");
+      int start = Math.max(0, lines.length - 3);
+      var sb = new StringBuilder();
+      for (int i = start; i < lines.length; i++) {
+        String line = lines[i];
+        if (line.length() > width - 10) {
+          line = line.substring(0, Math.max(0, width - 13)) + "...";
+        }
+        sb.append(Ansi.YELLOW).append("  think: ").append(line).append(Ansi.RESET);
+        if (i < lines.length - 1) sb.append("\n");
       }
-      sb.append(Ansi.YELLOW).append("  think: ").append(line).append(Ansi.RESET);
-      if (i < lines.length - 1) sb.append("\n");
+      sections.add(sb.toString());
     }
-    return sb.toString();
+    if (app.showProgressDetails()) {
+      String details = renderProgressDetails(app.turnProgressTraceSnapshot(), width);
+      if (!details.isBlank()) {
+        sections.add(details);
+      }
+    }
+    if (sections.isEmpty()) {
+      return null;
+    }
+    return String.join("\n", sections);
   }
 
   private String renderFooterBar(int termWidth, TuiApp app) {
@@ -827,15 +836,6 @@ final class TuiRenderer {
 
   private String renderFooterBarV2(int termWidth, TuiApp app) {
     var left = new ArrayList<String>();
-    String statusText = app.statusText();
-    int spinnerFrame = app.spinnerFrame();
-    if (statusText != null) {
-      left.add(Ansi.YELLOW + Ansi.BOLD + SPINNER_FRAMES[spinnerFrame] + " "
-          + app.statusWithElapsed() + Ansi.RESET);
-    } else {
-      left.add(Ansi.DIM + "ready" + Ansi.RESET);
-    }
-
     if (app.transcriptScrollOffset() > 0) {
       left.add(Ansi.DIM + "scroll lock" + Ansi.RESET);
     }
@@ -850,6 +850,10 @@ final class TuiRenderer {
     String compactNotification = app.compactNotification();
     if (compactNotification != null) {
       right.add(metric("compact", compactNotification, Ansi.YELLOW));
+    }
+
+    if (left.isEmpty() && right.isEmpty() && !app.isBusy()) {
+      left.add(Ansi.DIM + "ready" + Ansi.RESET);
     }
 
     int contentWidth = Math.max(1, termWidth - 2);
@@ -867,6 +871,17 @@ final class TuiRenderer {
     int gap = Math.max(1, contentWidth - leftLen - rightLen);
 
     return leftText + " ".repeat(gap) + rightText;
+  }
+
+  private String renderHeaderStatusLine(int termWidth, TuiApp app) {
+    String status = app.statusText();
+    if (status == null || status.isBlank()) {
+      return "";
+    }
+    String line = Ansi.YELLOW + Ansi.BOLD + SPINNER_FRAMES[app.spinnerFrame()] + Ansi.RESET
+        + " "
+        + Ansi.YELLOW + app.statusWithElapsed() + Ansi.RESET;
+    return padHeaderLine(line, Math.max(1, termWidth));
   }
 
   // --- Entry rendering ---
@@ -1072,7 +1087,7 @@ final class TuiRenderer {
     String body = progress.body() == null ? "" : progress.body();
     List<String> lines = new ArrayList<>(List.of(body.split("\n", -1)));
     lines.removeIf(String::isBlank);
-    lines.replaceAll(this::renderProgressLine);
+    lines.replaceAll(TuiRenderer::renderProgressLine);
     boolean expanded = app != null && app.expandedProgressContains(progress.id());
     if (expanded || lines.size() <= 4) {
       return String.join("\n", lines);
@@ -1091,7 +1106,25 @@ final class TuiRenderer {
     return String.join("\n", compact);
   }
 
-  private String renderProgressLine(String raw) {
+  static String renderProgressDetails(String body, int width) {
+    if (body == null || body.isBlank()) {
+      return "";
+    }
+    var lines = new ArrayList<String>();
+    lines.add(Ansi.YELLOW + Ansi.BOLD + "  progress" + Ansi.RESET);
+    for (String raw : body.split("\n", -1)) {
+      if (raw == null || raw.isBlank()) {
+        continue;
+      }
+      String rendered = renderProgressLine(raw);
+      for (String wrapped : wrapDisplayLines(List.of(rendered), Math.max(8, width - 6))) {
+        lines.add(Ansi.DIM + "    " + Ansi.RESET + wrapped);
+      }
+    }
+    return String.join("\n", lines);
+  }
+
+  private static String renderProgressLine(String raw) {
     if (raw.startsWith(PROGRESS_RUNNING)) {
       return SPINNER_FRAMES[0] + " " + raw.substring(PROGRESS_RUNNING.length());
     }
@@ -1385,6 +1418,16 @@ final class TuiRenderer {
   private static String padDisplayLine(String line, int width) {
     String safe = line == null ? "" : line;
     int safeWidth = Math.max(1, width - 1);
+    int current = Ansi.stringDisplayWidth(safe);
+    if (current > safeWidth) {
+      return Ansi.truncatePlain(Ansi.stripAnsi(safe), safeWidth);
+    }
+    return safe + " ".repeat(Math.max(0, safeWidth - current));
+  }
+
+  private static String padHeaderLine(String line, int width) {
+    String safe = line == null ? "" : line;
+    int safeWidth = Math.max(1, width);
     int current = Ansi.stringDisplayWidth(safe);
     if (current > safeWidth) {
       return Ansi.truncatePlain(Ansi.stripAnsi(safe), safeWidth);

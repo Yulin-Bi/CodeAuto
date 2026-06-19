@@ -96,6 +96,7 @@ public class TuiApp {
   final List<String> turnProgressTrace = new ArrayList<>();
   Integer progressTraceEntryId;
   final Set<Integer> expandedProgressEntries = new HashSet<>();
+  volatile boolean showProgressDetails;
   volatile boolean cursorBlinkVisible = true;
   private ScheduledExecutorService cursorBlinker;
 
@@ -157,6 +158,7 @@ public class TuiApp {
   boolean transcriptAutoScroll() { return transcriptAutoScroll; }
   int transcriptScrollOffset() { return transcriptScrollOffset; }
   Integer progressTraceEntryId() { return progressTraceEntryId; }
+  boolean showProgressDetails() { return showProgressDetails; }
   boolean approvalFeedbackMode() { return approvalFeedbackMode; }
   String approvalFeedbackText() { return approvalFeedbackInput.toString(); }
   PendingApproval pendingApproval() { return pendingApproval; }
@@ -632,6 +634,7 @@ public class TuiApp {
     isBusy = true;
     busyStartedAtMillis = System.currentTimeMillis();
     progressTraceEntryId = null;
+    showProgressDetails = false;
     thinkingText = null;
     synchronized (turnProgressTrace) {
       turnProgressTrace.clear();
@@ -664,7 +667,6 @@ public class TuiApp {
         }
       } finally {
         clearStatusLine();
-        materializeProgressTrace();
         isBusy = false;
         busyStartedAtMillis = 0;
         agentFuture = null;
@@ -685,8 +687,8 @@ public class TuiApp {
     streamingAssistantEntryId = null;
     streamingAssistantBuffer.setLength(0);
     thinkingText = null;
-    materializeProgressTrace();
     progressTraceEntryId = null;
+    showProgressDetails = false;
     synchronized (turnProgressTrace) {
       turnProgressTrace.clear();
     }
@@ -1153,6 +1155,14 @@ public class TuiApp {
   }
 
   private void toggleLastProgressExpanded() {
+    synchronized (turnProgressTrace) {
+      if (!turnProgressTrace.isEmpty()) {
+        showProgressDetails = !showProgressDetails;
+        compactNotification = showProgressDetails ? "progress shown" : "progress hidden";
+        render();
+        return;
+      }
+    }
     Integer id = null;
     synchronized (transcript) {
       for (int i = transcript.size() - 1; i >= 0; i--) {
@@ -1176,16 +1186,25 @@ public class TuiApp {
 
   private void updateStatusLine() {
     String text = statusLineText;
-    if (text == null || text.isBlank()) return;
-    materializeProgressTrace();
+    statusText = (text == null || text.isBlank()) ? null : text;
   }
 
   private void clearStatusLine() {
-    synchronized (transcript) {
-      if (transcript.removeIf(e -> e instanceof TranscriptEntry.Status)) {
-        transcriptDirty = true;
+    statusLineText = null;
+    statusText = null;
+  }
+
+  void toggleProgressDetails() {
+    synchronized (turnProgressTrace) {
+      if (turnProgressTrace.isEmpty()) {
+        compactNotification = "no progress";
+        render();
+        return;
       }
     }
+    showProgressDetails = !showProgressDetails;
+    compactNotification = showProgressDetails ? "progress shown" : "progress hidden";
+    render();
   }
 
   // --- Permission prompt ---
