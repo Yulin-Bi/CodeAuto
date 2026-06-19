@@ -106,6 +106,10 @@ public class MemoryManager {
       Files.createDirectories(root);
       Instant now = Instant.now();
       String id = slug(title) + "-" + UUID.randomUUID().toString().substring(0, 8);
+      String normalizedBulletId = MemoryEntry.normalizeBulletId(bulletId);
+      if ((bulletId != null && !bulletId.isBlank()) && normalizedBulletId.isBlank()) {
+        normalizedBulletId = "bullet-" + UUID.randomUUID().toString().substring(0, 8);
+      }
       MemoryEntry entry = new MemoryEntry(
           id,
           type == null ? MemoryType.PROJECT : type,
@@ -116,10 +120,18 @@ public class MemoryManager {
           now,
           content == null ? "" : content.trim(),
           root.resolve(id + ".md"),
-          bulletId == null ? "" : bulletId,
+          normalizedBulletId,
           0,
           0,
-          section == null ? "" : section);
+          section == null ? "" : section,
+          "warm",
+          0,
+          0,
+          Instant.EPOCH,
+          Instant.EPOCH,
+          Instant.EPOCH,
+          Instant.EPOCH,
+          Instant.EPOCH);
       write(entry);
       return entry;
     } catch (Exception error) {
@@ -356,7 +368,55 @@ public class MemoryManager {
           entry.path(), entry.bulletId(),
           entry.helpfulCount() + helpfulDelta,
           entry.harmfulCount() + harmfulDelta,
-          entry.section());
+          entry.section(),
+          deriveTier(entry.helpfulCount() + helpfulDelta, entry.harmfulCount() + harmfulDelta),
+          entry.supportCount(),
+          entry.retrieveCount(),
+          entry.lastRetrievedAt(),
+          entry.lastInjectedAt(),
+          entry.lastSupportedAt(),
+          helpfulDelta > 0 ? Instant.now() : entry.lastHelpfulAt(),
+          harmfulDelta > 0 ? Instant.now() : entry.lastHarmfulAt());
+      write(updated);
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  public boolean recordRetrieval(String bulletId) {
+    return updateBulletUsage(bulletId, true, false);
+  }
+
+  public boolean recordInjection(String bulletId) {
+    return updateBulletUsage(bulletId, false, true);
+  }
+
+  public boolean recordSupport(String bulletId, List<String> additionalTags) {
+    if (bulletId == null || bulletId.isBlank()) return false;
+    java.util.Optional<MemoryEntry> found = list().stream()
+        .filter(e -> e.bulletId().equals(bulletId) && e.isBullet())
+        .findFirst();
+    if (found.isEmpty()) return false;
+    MemoryEntry entry = found.get();
+    Instant now = Instant.now();
+    List<String> mergedTags = new ArrayList<>(entry.tags());
+    if (additionalTags != null) {
+      for (String tag : additionalTags) {
+        if (tag != null && !tag.isBlank() && !mergedTags.contains(tag)) {
+          mergedTags.add(tag);
+        }
+      }
+    }
+    try {
+      MemoryEntry updated = new MemoryEntry(
+          entry.id(), entry.type(), entry.title(), entry.project(),
+          mergedTags, entry.createdAt(), now, entry.content(),
+          entry.path(), entry.bulletId(),
+          entry.helpfulCount(), entry.harmfulCount(), entry.section(),
+          entry.tier(), entry.supportCount() + 1, entry.retrieveCount(),
+          entry.lastRetrievedAt(), entry.lastInjectedAt(), now,
+          entry.lastHelpfulAt(), entry.lastHarmfulAt());
       write(updated);
       return true;
     } catch (Exception e) {
@@ -378,6 +438,9 @@ public class MemoryManager {
   }
 
   private void write(MemoryEntry entry) throws Exception {
+    if (entry.path().getParent() != null) {
+      Files.createDirectories(entry.path().getParent());
+    }
     StringBuilder out = new StringBuilder();
     out.append("---\n");
     out.append("id: ").append(entry.id()).append("\n");
@@ -389,15 +452,33 @@ public class MemoryManager {
     out.append("updatedAt: ").append(entry.updatedAt()).append("\n");
     if (!entry.bulletId().isBlank()) {
       out.append("bulletId: ").append(escape(entry.bulletId())).append("\n");
+      out.append("tier: ").append(entry.tier()).append("\n");
+      out.append("supportCount: ").append(entry.supportCount()).append("\n");
+      out.append("retrieveCount: ").append(entry.retrieveCount()).append("\n");
     }
-    if (entry.helpfulCount() > 0) {
+    if (entry.isBullet() || entry.helpfulCount() > 0) {
       out.append("helpfulCount: ").append(Integer.toString(entry.helpfulCount())).append("\n");
     }
-    if (entry.harmfulCount() > 0) {
+    if (entry.isBullet() || entry.harmfulCount() > 0) {
       out.append("harmfulCount: ").append(Integer.toString(entry.harmfulCount())).append("\n");
     }
     if (!entry.section().isBlank()) {
       out.append("section: ").append(escape(entry.section())).append("\n");
+    }
+    if (entry.isBullet() && !entry.lastRetrievedAt().equals(Instant.EPOCH)) {
+      out.append("lastRetrievedAt: ").append(entry.lastRetrievedAt()).append("\n");
+    }
+    if (entry.isBullet() && !entry.lastInjectedAt().equals(Instant.EPOCH)) {
+      out.append("lastInjectedAt: ").append(entry.lastInjectedAt()).append("\n");
+    }
+    if (entry.isBullet() && !entry.lastSupportedAt().equals(Instant.EPOCH)) {
+      out.append("lastSupportedAt: ").append(entry.lastSupportedAt()).append("\n");
+    }
+    if (entry.isBullet() && !entry.lastHelpfulAt().equals(Instant.EPOCH)) {
+      out.append("lastHelpfulAt: ").append(entry.lastHelpfulAt()).append("\n");
+    }
+    if (entry.isBullet() && !entry.lastHarmfulAt().equals(Instant.EPOCH)) {
+      out.append("lastHarmfulAt: ").append(entry.lastHarmfulAt()).append("\n");
     }
     out.append("---\n\n");
     out.append(entry.content()).append("\n");
@@ -416,6 +497,9 @@ public class MemoryManager {
       int helpfulCount = parseIntSafe(meta.get("helpfulCount"));
       int harmfulCount = parseIntSafe(meta.get("harmfulCount"));
       String section = meta.getOrDefault("section", "");
+      String tier = meta.getOrDefault("tier", "");
+      int supportCount = parseIntSafe(meta.get("supportCount"));
+      int retrieveCount = parseIntSafe(meta.get("retrieveCount"));
       return java.util.Optional.of(new MemoryEntry(
           meta.getOrDefault("id", stripExtension(path.getFileName().toString())),
           MemoryType.from(meta.get("type")),
@@ -429,10 +513,56 @@ public class MemoryManager {
           bulletId,
           helpfulCount,
           harmfulCount,
-          section));
+          section,
+          tier,
+          supportCount,
+          retrieveCount,
+          instant(meta.get("lastRetrievedAt")),
+          instant(meta.get("lastInjectedAt")),
+          instant(meta.get("lastSupportedAt")),
+          instant(meta.get("lastHelpfulAt")),
+          instant(meta.get("lastHarmfulAt"))));
     } catch (Exception ignored) {
       return java.util.Optional.empty();
     }
+  }
+
+  private boolean updateBulletUsage(String bulletId, boolean markRetrieved, boolean markInjected) {
+    if (bulletId == null || bulletId.isBlank()) return false;
+    java.util.Optional<MemoryEntry> found = list().stream()
+        .filter(e -> e.bulletId().equals(bulletId) && e.isBullet())
+        .findFirst();
+    if (found.isEmpty()) return false;
+    MemoryEntry entry = found.get();
+    Instant now = Instant.now();
+    try {
+      MemoryEntry updated = new MemoryEntry(
+          entry.id(), entry.type(), entry.title(), entry.project(),
+          entry.tags(), entry.createdAt(), now, entry.content(),
+          entry.path(), entry.bulletId(),
+          entry.helpfulCount(), entry.harmfulCount(), entry.section(),
+          entry.tier(), entry.supportCount(),
+          markRetrieved ? entry.retrieveCount() + 1 : entry.retrieveCount(),
+          markRetrieved ? now : entry.lastRetrievedAt(),
+          markInjected ? now : entry.lastInjectedAt(),
+          entry.lastSupportedAt(),
+          entry.lastHelpfulAt(),
+          entry.lastHarmfulAt());
+      write(updated);
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  private static String deriveTier(int helpfulCount, int harmfulCount) {
+    if (harmfulCount >= helpfulCount + 2) {
+      return "cold";
+    }
+    if (helpfulCount >= harmfulCount + 2) {
+      return "hot";
+    }
+    return "warm";
   }
 
   private static Map<String, String> parseFrontmatter(String raw) {

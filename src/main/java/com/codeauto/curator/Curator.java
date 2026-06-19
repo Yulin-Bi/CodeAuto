@@ -57,36 +57,44 @@ public final class Curator {
     }
   }
 
+  public MemoryEntry applyAddAndReturn(Path project, BulletDelta.Add add) {
+    String existingId = findSimilarBullet(project, add.content(), add.title(), add.section());
+    if (existingId != null) {
+      memory.recordSupport(existingId, add.tags());
+      return findBulletByBulletId(project, existingId).orElse(null);
+    }
+    return memory.saveBullet(
+        MemoryType.PROJECT,
+        add.title(),
+        project,
+        add.tags() == null ? List.of() : add.tags(),
+        add.content(),
+        add.bulletId(),
+        add.section() == null ? "" : add.section());
+  }
+
   private void applySingle(Path project, BulletDelta delta) {
     switch (delta) {
-      case BulletDelta.Add add -> {
-        String existingId = findSimilarBullet(project, add.content(), add.title(), add.section());
-        if (existingId != null) {
-          memory.incrementCounters(existingId, 1, 0);
-        } else {
-          memory.saveBullet(
-              MemoryType.PROJECT,
-              add.title(),
-              project,
-              add.tags() == null ? List.of() : add.tags(),
-              add.content(),
-              add.bulletId(),
-              add.section() == null ? "" : add.section());
-        }
-      }
+      case BulletDelta.Add add -> applyAddAndReturn(project, add);
       case BulletDelta.Update update -> {
         Optional<MemoryEntry> found = findBulletByBulletId(project, update.bulletId());
         if (found.isEmpty()) return;
         MemoryEntry entry = found.get();
         String newContent = update.newContent() != null ? update.newContent() : entry.content();
         String newSection = update.newSection() != null ? update.newSection() : entry.section();
-        memory.delete(entry.id());
-        MemoryEntry created = memory.saveBullet(
-            entry.type(), entry.title(), project, entry.tags(),
-            newContent, entry.bulletId(), newSection);
-        if (update.helpfulDelta() != 0 || update.harmfulDelta() != 0) {
-          memory.incrementCounters(created.bulletId(), update.helpfulDelta(), update.harmfulDelta());
-        }
+        int newHelpful = entry.helpfulCount() + update.helpfulDelta();
+        int newHarmful = entry.harmfulCount() + update.harmfulDelta();
+        Instant now = Instant.now();
+        MemoryEntry updated = new MemoryEntry(
+            entry.id(), entry.type(), entry.title(), entry.project(),
+            entry.tags(), entry.createdAt(), now, newContent,
+            entry.path(), entry.bulletId(),
+            newHelpful, newHarmful, newSection,
+            "", entry.supportCount(), entry.retrieveCount(),
+            entry.lastRetrievedAt(), entry.lastInjectedAt(), entry.lastSupportedAt(),
+            update.helpfulDelta() > 0 ? now : entry.lastHelpfulAt(),
+            update.harmfulDelta() > 0 ? now : entry.lastHarmfulAt());
+        memory.overwrite(updated);
       }
       case BulletDelta.Tag tag -> {
         Optional<MemoryEntry> found = findBulletByBulletId(project, tag.bulletId());
@@ -105,7 +113,9 @@ public final class Curator {
             entry.id(), entry.type(), entry.title(), entry.project(),
             newTags, entry.createdAt(), Instant.now(), entry.content(),
             entry.path(), entry.bulletId(),
-            entry.helpfulCount(), entry.harmfulCount(), entry.section());
+            entry.helpfulCount(), entry.harmfulCount(), entry.section(),
+            entry.tier(), entry.supportCount(), entry.retrieveCount(), entry.lastRetrievedAt(),
+            entry.lastInjectedAt(), entry.lastSupportedAt(), entry.lastHelpfulAt(), entry.lastHarmfulAt());
         memory.overwrite(updated);
       }
       case BulletDelta.Remove remove -> {

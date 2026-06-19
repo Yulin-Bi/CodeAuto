@@ -201,6 +201,7 @@ class ReflectionServiceTest {
       assertEquals("common_mistakes", bullet.section());
       assertTrue(bullet.tags().contains("reflection"));
       assertTrue(bullet.tags().contains("auto"));
+      assertTrue(bullet.tags().contains("imports"));
 
       reflectionManager.delete(reflectionEntry.id());
       bulletManager.delete(bullet.id());
@@ -369,6 +370,7 @@ class ReflectionServiceTest {
           "Tool error bullets go to common_mistakes section");
       assertTrue(bullet.tags().contains("reflection"));
       assertTrue(bullet.tags().contains("auto"));
+      assertTrue(bullet.tags().contains("imports"));
       // Lesson is 57 chars truncated
       assertTrue(bullet.title().endsWith("..."),
           "Title should be truncated to 57 chars + '...'");
@@ -385,6 +387,131 @@ class ReflectionServiceTest {
       MemoryManager reflectionManager = new MemoryManager(home.resolve("reflections"));
       reflectionManager.delete(feedback.id());
       bulletManager.delete(bullet.id());
+    } finally {
+      System.clearProperty("codeauto.home");
+    }
+  }
+
+  @Test
+  void autoCreatedBulletGetsContextualTags() throws Exception {
+    Path home = Files.createTempDirectory("codeauto-reflection-tags");
+    Path project = Files.createTempDirectory("codeauto-reflection-tags-project");
+    System.setProperty("codeauto.home", home.toString());
+    try {
+      String reflectionText = ""
+          + "### What Went Wrong\n"
+          + "Started a background task in PowerShell and then used cmd.exe without checking the service port.\n\n"
+          + "### Root Cause\n"
+          + "Mixed Windows shell behavior and skipped verifying the server health_url.\n\n"
+          + "### What Should Have Been Done Differently\n"
+          + "Use run_command consistently, keep the service in one shell context, and verify the health_port.\n\n"
+          + "### Reusable Lesson\n"
+          + "On Windows, keep background task and service verification in a consistent shell, then confirm health_url before proceeding.\n";
+
+      ModelAdapter mockModel = messages ->
+          new AgentStep.AssistantStep(reflectionText, AgentStep.Kind.FINAL, null);
+
+      List<ChatMessage> messages = List.of(
+          new ChatMessage.SystemMessage("system"),
+          new ChatMessage.UserMessage("start the app"),
+          new ChatMessage.AssistantMessage("starting service"),
+          new ChatMessage.ToolResultMessage("call1", "run_command", "port already in use", true));
+
+      Optional<MemoryEntry> result = ReflectionService.reflectIfNeeded(messages, mockModel, project);
+      assertTrue(result.isPresent());
+
+      MemoryManager bulletManager = new MemoryManager(project.resolve(".codeauto/bullets"));
+      MemoryEntry bullet = bulletManager.list().stream()
+          .filter(MemoryEntry::isBullet)
+          .findFirst()
+          .orElseThrow();
+
+      assertTrue(bullet.tags().contains("tool_error"));
+      assertTrue(bullet.tags().contains("windows"));
+      assertTrue(bullet.tags().contains("background_tasks"));
+      assertTrue(bullet.tags().contains("service"));
+      assertTrue(bullet.tags().contains("run_command"));
+
+      Path summary = project.resolve(".codeauto/reflection-summaries").resolve(bullet.bulletId() + ".md");
+      assertFalse(Files.exists(summary));
+    } finally {
+      System.clearProperty("codeauto.home");
+    }
+  }
+
+  @Test
+  void genericReflectionDoesNotCreateBullet() throws Exception {
+    Path home = Files.createTempDirectory("codeauto-reflection-generic");
+    System.setProperty("codeauto.home", home.toString());
+    try {
+      String reflectionText = ""
+          + "### What Went Wrong\nDid not handle it well.\n\n"
+          + "### Root Cause\nRushed the turn.\n\n"
+          + "### What Should Have Been Done Differently\nSlow down.\n\n"
+          + "### Reusable Lesson\nBe more careful.\n";
+
+      ModelAdapter mockModel = messages ->
+          new AgentStep.AssistantStep(reflectionText, AgentStep.Kind.FINAL, null);
+
+      List<ChatMessage> messages = List.of(
+          new ChatMessage.SystemMessage("system"),
+          new ChatMessage.UserMessage("fix the bug"),
+          new ChatMessage.ToolResultMessage("call1", "run_command", "BUILD FAILURE", true));
+
+      Optional<MemoryEntry> result = ReflectionService.reflectIfNeeded(messages, mockModel, null);
+      assertTrue(result.isPresent());
+
+      MemoryManager bulletManager = new MemoryManager(home.resolve("bullets"));
+      assertTrue(bulletManager.list().isEmpty());
+    } finally {
+      System.clearProperty("codeauto.home");
+    }
+  }
+
+  @Test
+  void repeatedSimilarReflectionsUpdateCanonicalSummary() throws Exception {
+    Path home = Files.createTempDirectory("codeauto-reflection-summary");
+    Path project = Files.createTempDirectory("codeauto-reflection-summary-project");
+    System.setProperty("codeauto.home", home.toString());
+    try {
+      String reflectionOne = ""
+          + "### What Went Wrong\nMissed import alignment.\n\n"
+          + "### Root Cause\nAdded a class without checking existing imports.\n\n"
+          + "### What Should Have Been Done Differently\nRead nearby imports first.\n\n"
+          + "### Reusable Lesson\nAlways check existing imports before adding a new class reference.\n";
+      String reflectionTwo = ""
+          + "### What Went Wrong\nImport block broke build again.\n\n"
+          + "### Root Cause\nRepeated the same import mistake in another file.\n\n"
+          + "### What Should Have Been Done Differently\nMatch project import patterns before editing.\n\n"
+          + "### Reusable Lesson\nAlways check existing imports before adding a new class reference.\n";
+
+      ModelAdapter modelOne = messages ->
+          new AgentStep.AssistantStep(reflectionOne, AgentStep.Kind.FINAL, null);
+      ModelAdapter modelTwo = messages ->
+          new AgentStep.AssistantStep(reflectionTwo, AgentStep.Kind.FINAL, null);
+
+      List<ChatMessage> messages = List.of(
+          new ChatMessage.SystemMessage("system"),
+          new ChatMessage.UserMessage("fix imports"),
+          new ChatMessage.ToolResultMessage("call1", "mvn", "COMPILATION ERROR", true));
+
+      Optional<MemoryEntry> first = ReflectionService.reflectIfNeeded(messages, modelOne, project);
+      Optional<MemoryEntry> second = ReflectionService.reflectIfNeeded(messages, modelTwo, project);
+      assertTrue(first.isPresent());
+      assertTrue(second.isPresent());
+
+      MemoryManager bulletManager = new MemoryManager(project.resolve(".codeauto/bullets"));
+      MemoryEntry bullet = bulletManager.list().stream()
+          .filter(MemoryEntry::isBullet)
+          .findFirst()
+          .orElseThrow();
+      assertEquals(1, bullet.supportCount());
+
+      Path summary = project.resolve(".codeauto/reflection-summaries").resolve(bullet.bulletId() + ".md");
+      String raw = Files.readString(summary);
+      assertTrue(raw.contains("reflectionCount: 2"));
+      assertTrue(raw.contains(second.get().id()));
+      assertTrue(raw.contains("Repeated the same import mistake"));
     } finally {
       System.clearProperty("codeauto.home");
     }

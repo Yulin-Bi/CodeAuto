@@ -16,6 +16,7 @@ import java.util.UUID;
 public class TodoStore {
   private static final ObjectMapper MAPPER = new ObjectMapper()
       .registerModule(new JavaTimeModule());
+  private static final int SUMMARY_NEXT_LIMIT = 2;
   private static final TypeReference<List<TodoEntry>> LIST_TYPE = new TypeReference<>() {
   };
 
@@ -96,8 +97,49 @@ public class TodoStore {
     long inProgress = todos.stream().filter(t -> "in_progress".equals(t.status())).count();
     long active = pending + inProgress;
     if (active == 0) return "";
-    return active + " unfinished todos (" + pending + " pending, " + inProgress + " in progress). "
-        + "Call todo_list to review them and ask the user whether to continue or mark completed.";
+    List<TodoEntry> ordered = todos.stream()
+        .filter(t -> "pending".equals(t.status()) || "in_progress".equals(t.status()))
+        .sorted(Comparator.comparingInt(TodoStore::priority)
+            .thenComparing(TodoEntry::createdAt)
+            .thenComparing(TodoEntry::updatedAt, Comparator.reverseOrder()))
+        .toList();
+
+    StringBuilder summary = new StringBuilder();
+    summary.append(active)
+        .append(" unfinished todos (")
+        .append(pending)
+        .append(" pending, ")
+        .append(inProgress)
+        .append(" in progress).");
+
+    ordered.stream()
+        .filter(t -> "in_progress".equals(t.status()))
+        .findFirst()
+        .ifPresent(current -> summary.append(" Current: ")
+            .append(textForSummary(current, true))
+            .append("."));
+
+    List<String> nextItems = ordered.stream()
+        .filter(t -> !"in_progress".equals(t.status()))
+        .limit(SUMMARY_NEXT_LIMIT)
+        .map(t -> textForSummary(t, false))
+        .toList();
+    if (!nextItems.isEmpty()) {
+      summary.append(" Next: ").append(String.join(" | ", nextItems)).append(".");
+    }
+
+    summary.append(" Call todo_list to review them and ask the user whether to continue or mark completed.");
+    return summary.toString();
+  }
+
+  public List<String> activeContextTexts() {
+    return load().stream()
+        .filter(t -> "pending".equals(t.status()) || "in_progress".equals(t.status()))
+        .flatMap(t -> java.util.stream.Stream.of(t.content(), t.activeForm()))
+        .filter(text -> text != null && !text.isBlank())
+        .map(text -> text.replaceAll("\\s+", " ").trim())
+        .distinct()
+        .toList();
   }
 
   public static TodoStore forProject(Path cwd) {
@@ -130,5 +172,29 @@ public class TodoStore {
   private Path todoFile() {
     String project = cwd.toString().replaceAll("[/\\\\:]+", "-").replaceAll("^-+", "");
     return RuntimeConfig.homeDir().resolve("todos").resolve(project + ".json");
+  }
+
+  private static int priority(TodoEntry entry) {
+    return switch (entry.status()) {
+      case "in_progress" -> 0;
+      case "pending" -> 1;
+      default -> 2;
+    };
+  }
+
+  private static String textForSummary(TodoEntry entry, boolean preferActiveForm) {
+    String text = preferActiveForm && entry.activeForm() != null && !entry.activeForm().isBlank()
+        ? entry.activeForm()
+        : entry.content();
+    return truncate(text, 48);
+  }
+
+  private static String truncate(String value, int maxChars) {
+    if (value == null) return "";
+    String normalized = value.replaceAll("\\s+", " ").trim();
+    if (normalized.length() <= maxChars) {
+      return normalized;
+    }
+    return normalized.substring(0, Math.max(0, maxChars - 3)) + "...";
   }
 }

@@ -10,8 +10,10 @@ import com.codeauto.memory.MemoryManager;
 import com.codeauto.memory.MemoryType;
 import com.codeauto.model.ModelAdapter;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -80,6 +82,8 @@ public final class ReflectionService {
     Path projectRoot = cwd != null ? cwd.resolve(".codeauto") : RuntimeConfig.homeDir();
     MemoryManager reflectionMemory = new MemoryManager(projectRoot.resolve("reflections"));
     MemoryManager bulletMemory = new MemoryManager(projectRoot.resolve("bullets"));
+    ReflectionSummaryService summaryService =
+        new ReflectionSummaryService(projectRoot.resolve("reflection-summaries"));
 
     MemoryEntry entry = reflectionMemory.save(
         MemoryType.FEEDBACK,
@@ -89,14 +93,16 @@ public final class ReflectionService {
         reflection);
 
     String lesson = extractReusableLesson(reflection);
-    if (!lesson.isBlank()) {
+    if (shouldWriteBullet(lesson, reflection)) {
       try {
         Curator curator = new Curator(bulletMemory);
         String bulletId = "ref-" + UUID.randomUUID().toString().substring(0, 6);
         String title = lesson.length() > 60 ? lesson.substring(0, 57) + "..." : lesson;
         String section = sectionForTrigger(trigger);
-        curator.applyDeltas(cwd, List.of(
-            new BulletDelta.Add(bulletId, title, lesson, section, List.of("reflection", "auto"))));
+        MemoryEntry bullet = curator.applyAddAndReturn(cwd,
+            new BulletDelta.Add(
+                bulletId, title, lesson, section, buildBulletTags(trigger, lesson, reflection)));
+        summaryService.update(bullet, entry, trigger, reflection);
       } catch (Exception ignored) {
         // curator is best-effort; reflection already saved
       }
@@ -327,5 +333,78 @@ public final class ReflectionService {
       case USER_DISSATISFACTION -> "common_mistakes";
       default -> "general";
     };
+  }
+
+  private static List<String> buildBulletTags(
+      ReflectionTrigger trigger, String lesson, String reflection) {
+    LinkedHashSet<String> tags = new LinkedHashSet<>();
+    tags.add("reflection");
+    tags.add("auto");
+    tags.add(trigger.name().toLowerCase());
+
+    String lower = (lesson + "\n" + reflection).toLowerCase();
+    addTagIf(tags, "windows", containsAny(lower, "windows", "powershell", "cmd.exe", "findstr"));
+    addTagIf(tags, "background_tasks",
+        containsAny(lower, "background task", "background_tasks", "health_url", "health_port"));
+    addTagIf(tags, "service",
+        containsAny(lower, "service", "server", "port", "spring boot", "next dev"));
+    addTagIf(tags, "run_command",
+        containsAny(lower, "run_command", "shell command", "cmd.exe", "powershell"));
+    addTagIf(tags, "edit_file", containsAny(lower, "edit_file", "oldtext", "oldtext was not found"));
+    addTagIf(tags, "write_file", containsAny(lower, "write_file"));
+    addTagIf(tags, "build", containsAny(lower, "compile", "compilation", "build failed", "mvn compile"));
+    addTagIf(tags, "testing",
+        containsAny(lower, "mvn test", "test suite", "run tests", "pytest", "gradle test"));
+    addTagIf(tags, "imports", containsAny(lower, " import ", " imports", "import."));
+    addTagIf(tags, "streaming", containsAny(lower, "sse", "stream", "streaming"));
+
+    return new ArrayList<>(tags);
+  }
+
+  private static void addTagIf(Set<String> tags, String tag, boolean condition) {
+    if (condition) {
+      tags.add(tag);
+    }
+  }
+
+  private static boolean containsAny(String text, String... needles) {
+    for (String needle : needles) {
+      if (text.contains(needle)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static boolean shouldWriteBullet(String lesson, String reflection) {
+    if (lesson == null || lesson.isBlank()) {
+      return false;
+    }
+    String normalized = lesson.replaceAll("\\s+", " ").trim().toLowerCase();
+    if (normalized.length() < 28) {
+      return false;
+    }
+    if (normalized.equals("nothing.") || normalized.equals("be more careful.")
+        || normalized.equals("be more careful") || normalized.equals("try again")) {
+      return false;
+    }
+    if (containsAny(normalized, "more careful", "pay more attention", "do better", "be careful")
+        && !containsSpecificitySignal(normalized + "\n" + reflection.toLowerCase())) {
+      return false;
+    }
+    return containsActionSignal(normalized) && containsSpecificitySignal(normalized + "\n" + reflection.toLowerCase());
+  }
+
+  private static boolean containsActionSignal(String text) {
+    return containsAny(text,
+        "before", "after", "when", "use ", "avoid", "check", "verify",
+        "run ", "grep", "read ", "write ", "keep ", "confirm");
+  }
+
+  private static boolean containsSpecificitySignal(String text) {
+    return containsAny(text,
+        "windows", "powershell", "cmd.exe", "run_command", "edit_file", "write_file",
+        "mvn", "gradle", "pytest", "import", "server", "port", "health_url",
+        "background task", "stream", "sse", ".java", ".md");
   }
 }

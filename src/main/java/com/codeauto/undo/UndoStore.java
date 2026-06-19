@@ -34,9 +34,10 @@ public class UndoStore {
         throw new SecurityException("Cannot save undo record for path outside workspace: " + absoluteFilePath);
       }
       String filePath = cwd.relativize(normalized).toString();
+      Instant timestamp = nextTimestamp();
       UndoRecord record = new UndoRecord(
           id, toolCallId, toolName, filePath, beforeContent == null ? "" : beforeContent,
-          Instant.now(), false);
+          timestamp, false);
       Path file = undoDir.resolve(id + ".json");
       Files.writeString(file, MAPPER.writeValueAsString(record));
       return record;
@@ -116,6 +117,27 @@ public class UndoStore {
 
   public int count() throws Exception {
     return list(false).size();
+  }
+
+  private Instant nextTimestamp() throws Exception {
+    Instant now = Instant.now();
+    if (!Files.isDirectory(undoDir)) {
+      return now;
+    }
+    Instant latest = Instant.EPOCH;
+    try (var paths = Files.list(undoDir)) {
+      for (Path file : paths.filter(p -> p.getFileName().toString().endsWith(".json")).toList()) {
+        try {
+          UndoRecord record = MAPPER.readValue(Files.readString(file), UndoRecord.class);
+          if (record.timestamp().isAfter(latest)) {
+            latest = record.timestamp();
+          }
+        } catch (Exception ignored) {
+          // Ignore malformed records when deriving monotonic save timestamps.
+        }
+      }
+    }
+    return now.isAfter(latest) ? now : latest.plusNanos(1);
   }
 
   /** Resolve a stored filePath back to an absolute Path within the workspace. */

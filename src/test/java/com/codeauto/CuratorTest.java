@@ -35,6 +35,7 @@ class CuratorTest {
     assertEquals("tip-001", entry.bulletId());
     assertEquals("tool_usage", entry.section());
     assertTrue(entry.tags().contains("files"));
+    assertEquals(0, entry.supportCount());
 
     manager.delete(entry.id());
   }
@@ -97,6 +98,7 @@ class CuratorTest {
     assertEquals("tip-004", entry.bulletId());
     assertEquals(3, entry.helpfulCount());
     assertEquals(1, entry.harmfulCount());
+    assertEquals(0, entry.supportCount());
   }
 
   @Test
@@ -169,6 +171,24 @@ class CuratorTest {
     var playbook = curator.getPlaybook(project);
     assertEquals(1, playbook.size());
     assertEquals("tip-006", playbook.getFirst().bulletId());
-    assertEquals(1, playbook.getFirst().helpfulCount());
+    assertEquals(0, playbook.getFirst().helpfulCount());
+    assertEquals(1, playbook.getFirst().supportCount());
+  }
+
+  @Test
+  void invalidBulletIdIsNormalized() throws Exception {
+    Path root = Files.createTempDirectory("codeauto-curator-normalize");
+    Path project = Files.createTempDirectory("codeauto-curator-project7");
+    MemoryManager manager = new MemoryManager(root);
+    Curator curator = new Curator(manager);
+
+    curator.applyDeltas(project, List.of(
+        new BulletDelta.Add("../Tip Cache Review", "Cache review",
+            "Review cache invalidation before restarting the service.",
+            "common_mistakes", List.of("cache"))));
+
+    var playbook = curator.getPlaybook(project);
+    assertEquals(1, playbook.size());
+    assertEquals("tip-cache-review", playbook.getFirst().bulletId());
   }
 }
