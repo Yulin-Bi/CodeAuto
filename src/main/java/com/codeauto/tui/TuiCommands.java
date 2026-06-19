@@ -39,7 +39,7 @@ final class TuiCommands {
       new SlashCommand("/patch <path>::<search>::<replace>...", "Batch replace local file with review"),
       new SlashCommand("/cmd <command>", "Run local command without model call"),
       new SlashCommand("/memory", "List, add, or delete persistent memories"),
-      new SlashCommand("/todo", "List, add, update, or delete todo tasks"),
+      new SlashCommand("/todo", "List grouped todo tasks, or add, update, or delete them"),
       new SlashCommand("/new", "Start a new session"),
       new SlashCommand("/resume", "Open saved session picker"),
       new SlashCommand("/fork", "Save current transcript into a new session"),
@@ -108,7 +108,8 @@ final class TuiCommands {
         /memory list [query] List persistent memories
         /memory add <type>::<title>::<content> Save a memory
         /memory delete <id> Delete a memory
-        /todo       List tasks, or add/done/undo/delete/clear
+        /todo       List grouped tasks, or add/done/undo/delete/clear
+        /todo active List recent unfinished task groups
         /new        Start a new session
         /resume    Open saved session picker
         /resume <id> Load a saved session by id
@@ -254,30 +255,51 @@ final class TuiCommands {
     TodoStore store = new TodoStore(cwd);
     String rest = text.equals("/todo") ? "list" : text.substring("/todo ".length()).trim();
 
-    if (rest.equals("list")) {
-      var todos = store.list(null);
-      if (todos.isEmpty()) return "(no todos)";
+    if (rest.equals("list") || rest.equals("active")) {
+      boolean activeOnly = rest.equals("active");
+      var groups = activeOnly ? store.recentActiveGroups() : store.groups();
+      if (groups.isEmpty()) return "(no todos)";
       StringBuilder out = new StringBuilder();
       int pending = 0, inProgress = 0, completed = 0;
-      for (var t : todos) {
-        String icon = switch (t.status()) {
-          case "completed" -> { completed++; yield "[x]"; }
-          case "in_progress" -> { inProgress++; yield "[>]"; }
-          default -> { pending++; yield "[ ]"; }
-        };
-        out.append(icon).append(" ").append(t.id()).append(": ").append(t.content()).append("\n");
+      for (var group : groups) {
+        out.append(group.title())
+            .append(" [groupId=").append(group.id()).append("] ")
+            .append(group.hasActiveItems() ? "进行中" : "已完成")
+            .append(" (")
+            .append(group.inProgressCount()).append(" 进行中, ")
+            .append(group.pendingCount()).append(" 未完成, ")
+            .append(group.completedCount()).append(" 已完成)")
+            .append("\n");
+        for (var t : group.entries()) {
+          String icon = switch (t.status()) {
+            case "completed" -> {
+              completed++;
+              yield "[x]";
+            }
+            case "in_progress" -> {
+              inProgress++;
+              yield "[>]";
+            }
+            default -> {
+              pending++;
+              yield "[ ]";
+            }
+          };
+          out.append("  ").append(icon).append(" ").append(t.id()).append(": ").append(t.content()).append("\n");
+        }
       }
-      out.append("--- ").append(todos.size()).append(" total (")
+      out.append("--- ").append(groups.size()).append(" group(s), ")
+          .append(pending + inProgress + completed).append(" todo(s) (")
           .append(pending).append(" pending, ")
           .append(inProgress).append(" in progress, ")
           .append(completed).append(" completed)");
-      return out.toString();
+      return out.toString().trim();
     }
     if (rest.startsWith("add ")) {
       String content = rest.substring("add ".length()).trim();
       if (content.isBlank()) return "Usage: /todo add <content>";
       var entry = store.add(content, content);
-      return "Added todo " + entry.id() + ": " + entry.content();
+      return "Added todo " + entry.id() + " in group " + entry.groupId() + ": " + entry.content();
     }
     if (rest.startsWith("done ")) {
       String id = rest.substring("done ".length()).trim();
@@ -299,7 +321,7 @@ final class TuiCommands {
       int removed = store.clearCompleted();
       return "Cleared " + removed + " completed todo(s)";
     }
-    return "Usage: /todo [list] | /todo add <content> | /todo done <id> | /todo undo <id> | /todo delete <id> | /todo clear";
+    return "Usage: /todo [list|active] | /todo add <content> | /todo done <id> | /todo undo <id> | /todo delete <id> | /todo clear";
   }
 
   static String runMemoryCommand(String text, TuiApp app) {

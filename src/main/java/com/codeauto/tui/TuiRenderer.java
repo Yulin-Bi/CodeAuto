@@ -20,6 +20,8 @@ final class TuiRenderer {
   private static final int SLASH_MENU_MAX_ROWS = 7;
   private static final int LIVE_PROGRESS_MAX_LINES = 5;
   private static final int MIN_TRANSCRIPT_LINES = 1;
+  private static final int TODO_ACTIVE_LIMIT = 3;
+  private static final int TODO_COMPLETED_LIMIT = 2;
 
   private static final String[] SPINNER_FRAMES = {"|", "/", "-", "\\"};
   static final String PROGRESS_RUNNING = "RUNNING::";
@@ -222,7 +224,7 @@ final class TuiRenderer {
   private String buildTodoPanel(int termWidth, TuiApp app) {
     try {
       var todos = new TodoStore(app.cwd()).list(null);
-      String body = renderTodoSnapshot(todos);
+      String body = renderTodoPanelBody(todos, termWidth);
       if (body.isBlank()) {
         return "";
       }
@@ -1168,16 +1170,19 @@ final class TuiRenderer {
 
   private String renderTodoBadge(TuiApp app) {
     try {
-      var todos = new TodoStore(app.cwd()).list(null);
-      if (todos.isEmpty()) return "";
-      long inProgress = todos.stream().filter(t -> "in_progress".equals(t.status())).count();
-      long pending = todos.stream().filter(t -> "pending".equals(t.status())).count();
-      long completed = todos.stream().filter(t -> "completed".equals(t.status())).count();
-      long active = pending + inProgress;
-      if (active == 0 && completed > 0) {
-        return metric("todos", "all done", Ansi.GREEN);
+      TodoStore store = new TodoStore(app.cwd());
+      var groups = store.recentActiveGroups();
+      if (groups.isEmpty()) {
+        long completed = store.groups().stream().mapToLong(TodoStore.TodoGroup::completedCount).sum();
+        if (completed > 0) {
+          return metric("todos", "done", Ansi.GREEN);
+        }
+        return "";
       }
-      return metric("todos", active + "/" + todos.size(), Ansi.YELLOW);
+      long activeTodos = groups.stream()
+          .mapToLong(group -> group.pendingCount() + group.inProgressCount())
+          .sum();
+      return metric("todos", groups.size() + "g " + activeTodos + "t", Ansi.YELLOW);
     } catch (Exception ignored) {
       return "";
     }
@@ -1188,46 +1193,133 @@ final class TuiRenderer {
       return "";
     }
 
-    var doing = todos.stream()
-        .filter(t -> "in_progress".equals(t.status()))
+    var groups = TodoStore.groupTodos(todos).stream()
+        .filter(TodoStore.TodoGroup::hasActiveItems)
+        .limit(2)
         .toList();
-    var pending = todos.stream()
-        .filter(t -> "pending".equals(t.status()))
+    if (!groups.isEmpty()) {
+      var lines = new ArrayList<String>();
+      boolean firstGroup = true;
+      for (var group : groups) {
+        if (!firstGroup) {
+          lines.add("");
+        }
+        lines.add(Ansi.BOLD + group.title() + Ansi.RESET);
+
+        var activeEntries = group.entries().stream()
+            .filter(todo -> "in_progress".equals(todo.status()) || "pending".equals(todo.status()))
+            .toList();
+        int shownActive = 0;
+        for (TodoEntry todo : activeEntries) {
+          if (shownActive >= TODO_ACTIVE_LIMIT) {
+            break;
+          }
+          String marker = "in_progress".equals(todo.status())
+              ? Ansi.YELLOW + "▣" + Ansi.RESET
+              : Ansi.DIM + "☐" + Ansi.RESET;
+          lines.add(marker + " " + todoText(todo));
+          shownActive++;
+        }
+        if (activeEntries.size() > shownActive) {
+          lines.add(Ansi.DIM + "还有 " + (activeEntries.size() - shownActive) + " 项未完成" + Ansi.RESET);
+        }
+
+        var completedEntries = group.entries().stream()
+            .filter(todo -> "completed".equals(todo.status()))
+            .toList();
+        int shownCompleted = 0;
+        for (TodoEntry todo : completedEntries) {
+          if (shownCompleted >= TODO_COMPLETED_LIMIT) {
+            break;
+          }
+          lines.add(Ansi.GREEN + "☑" + Ansi.RESET + " " + todo.content());
+          shownCompleted++;
+        }
+        if (completedEntries.size() > shownCompleted) {
+          lines.add(Ansi.DIM + "还有 " + (completedEntries.size() - shownCompleted) + " 项已完成" + Ansi.RESET);
+        }
+        firstGroup = false;
+      }
+      return String.join("\n", lines);
+    }
+
+    var active = todos.stream()
+        .filter(t -> "in_progress".equals(t.status()) || "pending".equals(t.status()))
+        .sorted(java.util.Comparator.comparingInt(TuiRenderer::todoPriority)
+            .thenComparing(TodoEntry::createdAt)
+            .thenComparing(TodoEntry::updatedAt, java.util.Comparator.reverseOrder()))
         .toList();
-    long completed = todos.stream().filter(t -> "completed".equals(t.status())).count();
-    if (doing.isEmpty() && pending.isEmpty()) {
+    var completed = todos.stream()
+        .filter(t -> "completed".equals(t.status()))
+        .sorted(java.util.Comparator.comparing(TodoEntry::updatedAt, java.util.Comparator.reverseOrder()))
+        .toList();
+    if (active.isEmpty()) {
       return "";
     }
 
     var lines = new ArrayList<String>();
-    String summary = Ansi.YELLOW + Ansi.BOLD + ">> " + doing.size() + Ansi.RESET
-        + "  " + Ansi.DIM + "- " + pending.size() + Ansi.RESET;
-    if (completed > 0) {
-      summary += "  " + Ansi.GREEN + Ansi.BOLD + "x " + completed + Ansi.RESET;
-    }
-    lines.add(summary);
 
-    if (!doing.isEmpty()) {
-      var current = doing.getFirst();
-      String text = current.activeForm() != null && !current.activeForm().isBlank()
-          ? current.activeForm()
-          : current.content();
-      lines.add(Ansi.YELLOW + Ansi.BOLD + ">> " + Ansi.RESET + Ansi.truncatePlain(text, 72));
-    }
-
-    int nextCount = 0;
-    for (TodoEntry todo : pending) {
-      lines.add(Ansi.DIM + "- " + Ansi.RESET + Ansi.truncatePlain(todo.content(), 72));
-      nextCount++;
-      if (nextCount >= 2) {
+    lines.add(Ansi.BOLD + "未完成" + Ansi.RESET);
+    int shownActive = 0;
+    for (TodoEntry todo : active) {
+      if (shownActive >= TODO_ACTIVE_LIMIT) {
         break;
       }
+      String text = todoText(todo);
+      String marker = "in_progress".equals(todo.status())
+          ? Ansi.YELLOW + "☐" + Ansi.RESET
+          : Ansi.DIM + "☐" + Ansi.RESET;
+      lines.add(marker + " " + Ansi.truncatePlain(text, 72));
+      shownActive++;
+    }
+    if (active.size() > shownActive) {
+      lines.add(Ansi.DIM + "还有 " + (active.size() - shownActive) + " 项未完成" + Ansi.RESET);
     }
 
-    if (pending.size() > nextCount) {
-      lines.add(Ansi.DIM + "+ " + (pending.size() - nextCount) + Ansi.RESET);
+    if (!completed.isEmpty()) {
+      lines.add("");
+      lines.add(Ansi.BOLD + "已完成" + Ansi.RESET);
+      int shownCompleted = 0;
+      for (TodoEntry todo : completed) {
+        if (shownCompleted >= TODO_COMPLETED_LIMIT) {
+          break;
+        }
+        lines.add(Ansi.GREEN + "☑" + Ansi.RESET + " " + Ansi.truncatePlain(todo.content(), 72));
+        shownCompleted++;
+      }
+      if (completed.size() > shownCompleted) {
+        lines.add(Ansi.DIM + "还有 " + (completed.size() - shownCompleted) + " 项已完成" + Ansi.RESET);
+      }
     }
     return String.join("\n", lines);
+  }
+
+  static String renderTodoPanelBody(List<TodoEntry> todos, int termWidth) {
+    String body = renderTodoSnapshot(todos);
+    if (body == null || body.isBlank()) {
+      return "";
+    }
+    return String.join("\n", wrapDisplayLines(List.of(body.split("\n", -1)), Math.max(8, termWidth - 1)));
+  }
+
+  private static int todoPriority(TodoEntry entry) {
+    return switch (entry.status()) {
+      case "in_progress" -> 0;
+      case "pending" -> 1;
+      default -> 2;
+    };
+  }
+
+  private static String todoText(TodoEntry todo) {
+    if (todo == null) {
+      return "";
+    }
+    if ("in_progress".equals(todo.status())
+        && todo.activeForm() != null
+        && !todo.activeForm().isBlank()) {
+      return todo.activeForm();
+    }
+    return todo.content() == null ? "" : todo.content();
   }
 
   static int computeTranscriptMaxLines(
@@ -1346,7 +1438,7 @@ final class TuiRenderer {
 
   // --- Line wrapping ---
 
-  List<String> wrapDisplayLines(List<String> inputLines, int width) {
+  static List<String> wrapDisplayLines(List<String> inputLines, int width) {
     var wrapped = new ArrayList<String>();
     for (String line : inputLines) {
       wrapped.addAll(wrapDisplayLine(line, width));
@@ -1354,7 +1446,7 @@ final class TuiRenderer {
     return wrapped;
   }
 
-  private List<String> wrapDisplayLine(String line, int width) {
+  private static List<String> wrapDisplayLine(String line, int width) {
     var parts = new ArrayList<String>();
     if (line == null || line.isEmpty() || width <= 0) {
       parts.add("");
@@ -1394,7 +1486,7 @@ final class TuiRenderer {
     return parts;
   }
 
-  private List<DisplayToken> tokenizeDisplayLine(String line) {
+  private static List<DisplayToken> tokenizeDisplayLine(String line) {
     var tokens = new ArrayList<DisplayToken>();
     var plain = new StringBuilder();
     for (int i = 0; i < line.length(); i++) {
@@ -1422,7 +1514,7 @@ final class TuiRenderer {
     return tokens;
   }
 
-  private void appendPlainTokens(List<DisplayToken> tokens, String plain) {
+  private static void appendPlainTokens(List<DisplayToken> tokens, String plain) {
     BreakIterator iterator = BreakIterator.getCharacterInstance();
     iterator.setText(plain);
     for (int start = iterator.first(), end = iterator.next();
@@ -1454,7 +1546,7 @@ final class TuiRenderer {
     return current + Ansi.RESET;
   }
 
-  private int clusterDisplayWidth(String cluster) {
+  private static int clusterDisplayWidth(String cluster) {
     if (cluster == null || cluster.isEmpty()) {
       return 0;
     }
@@ -1475,7 +1567,7 @@ final class TuiRenderer {
     return width;
   }
 
-  private boolean isEmojiLikeCodePoint(int codePoint) {
+  private static boolean isEmojiLikeCodePoint(int codePoint) {
     return (codePoint >= 0x1F1E6 && codePoint <= 0x1F1FF)
         || (codePoint >= 0x1F300 && codePoint <= 0x1FAFF)
         || codePoint == 0x20E3;

@@ -158,7 +158,7 @@ class InstructionLoaderTest {
   }
 
   @Test
-  void systemPromptPlacesTodoSummaryAfterPastExperience() throws Exception {
+  void systemPromptPlacesActiveTodoGroupsAfterPastExperience() throws Exception {
     String previousHome = System.getProperty("codeauto.home");
     String previousUserHome = System.getProperty("user.home");
     java.nio.file.Path userHome = Files.createTempDirectory("codeauto-order-user-home");
@@ -167,10 +167,12 @@ class InstructionLoaderTest {
     try {
       System.setProperty("user.home", userHome.toString());
       System.setProperty("codeauto.home", codeautoHome.toString());
-      new com.codeauto.todo.TodoStore(project).add("Fix cache behavior", "正在修复缓存行为");
+      new com.codeauto.todo.TodoStore(project).add(
+          "Fix cache behavior", "正在修复缓存行为", "cache-fix", "Cache fix", "turn-a");
 
       String prompt = InstructionLoader.systemPrompt(project, "ok");
-      assertInOrder(prompt, "# Past experience", "# Todo summary");
+      assertInOrder(prompt, "# Past experience", "# Active todo groups");
+      assertTrue(prompt.contains("groupId=cache-fix"));
     } finally {
       restoreProperty("codeauto.home", previousHome);
       restoreProperty("user.home", previousUserHome);

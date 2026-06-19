@@ -1,0 +1,1 @@
+{"id":"8afbc021","toolCallId":null,"toolName":"undo","filePath":"CLAUDE.md","beforeContent":"\r\n## CodeAuto Memory\r\n\r\n- 项目根目录下的 src 文件夹是 CodeAuto 的本体（self）。日常 AI Agent 运行时不得修改 src。开发/实现新功能时允许修改，完成后恢复保护规则。\n\n<!-- UNDO TEST LINE: 这是一行用于测试 undo 功能的临时内容 -->\r\n","timestamp":1781847515.184189000,"undone":false}

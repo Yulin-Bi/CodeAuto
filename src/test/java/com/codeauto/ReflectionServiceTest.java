@@ -303,6 +303,57 @@ class ReflectionServiceTest {
     }
   }
 
+  @Test
+  void reflectionCanTagPromptBulletsWithoutExplicitAssistantCitation() throws Exception {
+    Path home = Files.createTempDirectory("codeauto-prompt-bullet-tag-test");
+    Path project = Files.createTempDirectory("codeauto-prompt-bullet-tag-project");
+    System.setProperty("codeauto.home", home.toString());
+    try {
+      java.nio.file.Path bulletsDir = project.resolve(".codeauto/bullets");
+      MemoryManager bulletManager = new MemoryManager(bulletsDir);
+      Curator curator = new Curator(bulletManager);
+      curator.applyDeltas(project, List.of(
+          new BulletDelta.Add("tip-undo", "Omit default undo id",
+              "If a tool says omit a parameter for default behavior, do not pass placeholders.",
+              "tool_usage", List.of("tool_usage", "undo"))));
+
+      ModelAdapter mockModel = messages -> {
+        ChatMessage.UserMessage request = (ChatMessage.UserMessage) messages.get(1);
+        assertTrue(request.content().contains("Available bullets from prompt context"));
+        assertTrue(request.content().contains("[bullet:tip-undo]"));
+        String reflectionWithTags = ""
+            + "### What Went Wrong\nUsed the wrong undo parameter.\n\n"
+            + "### Root Cause\nAssumed placeholder strings were supported.\n\n"
+            + "### What Should Have Been Done Differently\nOmit the parameter or look up an id first.\n\n"
+            + "### Reusable Lesson\nWhen a tool says a parameter may be omitted for default behavior, do not pass placeholder values.\n\n"
+            + "### Bullet Tags\n"
+            + "[bullet:tip-undo]: harmful\n";
+        return new AgentStep.AssistantStep(reflectionWithTags, AgentStep.Kind.FINAL, null);
+      };
+
+      List<ChatMessage> messages = List.of(
+          new ChatMessage.SystemMessage("""
+              # Past experience
+              ## Bullet index
+              - [bullet:tip-undo] Omit default undo id
+              """),
+          new ChatMessage.UserMessage("undo the last change"),
+          new ChatMessage.AssistantMessage("Trying the undo flow now."),
+          new ChatMessage.ToolResultMessage("call1", "undo", "Undo record not found: last", true));
+
+      Optional<MemoryEntry> result = ReflectionService.reflectIfNeeded(messages, mockModel, project);
+      assertTrue(result.isPresent());
+
+      MemoryEntry bullet = bulletManager.list().stream()
+          .filter(e -> e.bulletId().equals("tip-undo"))
+          .findFirst()
+          .orElseThrow();
+      assertEquals(1, bullet.harmfulCount());
+    } finally {
+      System.clearProperty("codeauto.home");
+    }
+  }
+
   /**
    * Full pipeline test: tool error → FEEDBACK memory saved → bullet created in playbook.
    * Verifies the bullet can be rediscovered via Curator.getPlaybook().
@@ -512,6 +563,55 @@ class ReflectionServiceTest {
       assertTrue(raw.contains("reflectionCount: 2"));
       assertTrue(raw.contains(second.get().id()));
       assertTrue(raw.contains("Repeated the same import mistake"));
+    } finally {
+      System.clearProperty("codeauto.home");
+    }
+  }
+
+  @Test
+  void toolParameterDefaultBehaviorLessonCreatesBullet() throws Exception {
+    Path home = Files.createTempDirectory("codeauto-reflection-tool-params");
+    Path project = Files.createTempDirectory("codeauto-reflection-tool-params-project");
+    System.setProperty("codeauto.home", home.toString());
+    try {
+      String reflectionText = """
+          ### What Went Wrong
+          The undo tool was called with id="last", which is not a valid undo record ID.
+
+          ### Root Cause
+          The agent assumed the tool accepts a placeholder string instead of omitting the parameter.
+
+          ### What Should Have Been Done Differently
+          Omit the id parameter to get the default behavior, or call undo_list first.
+
+          ### Reusable Lesson
+          When a tool parameter description says "omit to get default behavior", do not pass placeholder strings like "last" or "latest". Exclude the parameter entirely, and if you need a specific record, look it up first via the corresponding list operation.
+
+          ### Bullet Tags
+          None.
+          """;
+
+      ModelAdapter mockModel = messages ->
+          new AgentStep.AssistantStep(reflectionText, AgentStep.Kind.FINAL, null);
+
+      List<ChatMessage> messages = List.of(
+          new ChatMessage.SystemMessage("system"),
+          new ChatMessage.UserMessage("undo the last edit"),
+          new ChatMessage.AssistantMessage("trying undo"),
+          new ChatMessage.ToolResultMessage("call1", "undo", "Undo record not found: last", true));
+
+      Optional<MemoryEntry> result = ReflectionService.reflectIfNeeded(messages, mockModel, project);
+      assertTrue(result.isPresent());
+
+      MemoryManager bulletManager = new MemoryManager(project.resolve(".codeauto/bullets"));
+      MemoryEntry bullet = bulletManager.list().stream()
+          .filter(MemoryEntry::isBullet)
+          .findFirst()
+          .orElseThrow();
+
+      assertTrue(bullet.content().contains("omit to get default behavior"));
+      assertTrue(bullet.tags().contains("tool_usage"));
+      assertTrue(bullet.tags().contains("undo"));
     } finally {
       System.clearProperty("codeauto.home");
     }

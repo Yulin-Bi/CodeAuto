@@ -179,7 +179,8 @@ public class CodeAutoCli implements Runnable {
               /compact             Compact middle conversation messages
               /config-paths        Show config home
               /permissions         Show permission storage and rule counts
-              /todo                List todos, or add/done/undo/delete/clear
+              /todo                List grouped todos, or add/done/undo/delete/clear
+              /todo active         List recent unfinished todo groups
               /exit                Exit
               """);
           continue;
@@ -526,30 +527,51 @@ public class CodeAutoCli implements Runnable {
     TodoStore store = new TodoStore(cwd);
     String rest = input.equals("/todo") ? "list" : input.substring("/todo ".length()).trim();
 
-    if (rest.equals("list")) {
-      var todos = store.list(null);
-      if (todos.isEmpty()) return "(no todos)";
+    if (rest.equals("list") || rest.equals("active")) {
+      boolean activeOnly = rest.equals("active");
+      var groups = activeOnly ? store.recentActiveGroups() : store.groups();
+      if (groups.isEmpty()) return "(no todos)";
       StringBuilder out = new StringBuilder();
       int pending = 0, inProgress = 0, completed = 0;
-      for (var t : todos) {
-        String icon = switch (t.status()) {
-          case "completed" -> { completed++; yield "[x]"; }
-          case "in_progress" -> { inProgress++; yield "[>]"; }
-          default -> { pending++; yield "[ ]"; }
-        };
-        out.append(icon).append(" ").append(t.id()).append(": ").append(t.content()).append("\n");
+      for (var group : groups) {
+        out.append(group.title())
+            .append(" [groupId=").append(group.id()).append("] ")
+            .append(group.hasActiveItems() ? "active" : "completed")
+            .append(" (")
+            .append(group.inProgressCount()).append(" in progress, ")
+            .append(group.pendingCount()).append(" pending, ")
+            .append(group.completedCount()).append(" completed)")
+            .append("\n");
+        for (var t : group.entries()) {
+          String icon = switch (t.status()) {
+            case "completed" -> {
+              completed++;
+              yield "[x]";
+            }
+            case "in_progress" -> {
+              inProgress++;
+              yield "[>]";
+            }
+            default -> {
+              pending++;
+              yield "[ ]";
+            }
+          };
+          out.append("  ").append(icon).append(" ").append(t.id()).append(": ").append(t.content()).append("\n");
+        }
       }
-      out.append("--- ").append(todos.size()).append(" total (")
+      out.append("--- ").append(groups.size()).append(" group(s), ")
+          .append(pending + inProgress + completed).append(" todo(s) (")
           .append(pending).append(" pending, ")
           .append(inProgress).append(" in progress, ")
           .append(completed).append(" completed)");
-      return out.toString();
+      return out.toString().trim();
     }
     if (rest.startsWith("add ")) {
       String content = rest.substring("add ".length()).trim();
       if (content.isBlank()) return "Usage: /todo add <content>";
       var entry = store.add(content, content);
-      return "Added todo " + entry.id() + ": " + entry.content();
+      return "Added todo " + entry.id() + " in group " + entry.groupId() + ": " + entry.content();
     }
     if (rest.startsWith("done ")) {
       String id = rest.substring("done ".length()).trim();
@@ -571,7 +593,7 @@ public class CodeAutoCli implements Runnable {
       int removed = store.clearCompleted();
       return "Cleared " + removed + " completed todo(s)";
     }
-    return "Usage: /todo [list] | /todo add <content> | /todo done <id> | /todo undo <id> | /todo delete <id> | /todo clear";
+    return "Usage: /todo [list|active] | /todo add <content> | /todo done <id> | /todo undo <id> | /todo delete <id> | /todo clear";
   }
 
   private static String[] splitMemoryPayload(String payload, int limit) {

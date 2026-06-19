@@ -27,9 +27,10 @@ public class InstructionLoader {
   public static String systemPrompt(Path cwd, String permissionSummary) {
     String base = "You are CodeAuto. Permissions: " + permissionSummary
         + "\nTodo behavior: when the user gives a multi-step task (3+ distinct steps), use todo_create to break it "
-        + "down into manageable items. Mark a task as in_progress BEFORE starting work on it, and mark it completed "
-        + "IMMEDIATELY after finishing. Only ONE task in_progress at a time. "
-        + "Use todo_list to review what's left to do at the start of each turn."
+        + "down into manageable items. Keep items for the same user task in one todo group. For a new plan, set a "
+        + "concise groupTitle. Reuse the same groupId when you extend an unfinished plan in a later turn. Mark a "
+        + "task as in_progress BEFORE starting work on it, and mark it completed IMMEDIATELY after finishing. Only "
+        + "ONE task in_progress at a time. Use todo_list to review active groups at the start of each turn."
         + "\nTesting behavior: after making any code changes, you MUST run the project's test suite to verify your "
         + "changes work correctly. If tests fail, fix the issues and re-run tests until all pass. Never mark a task "
         + "as completed without test verification, unless the user explicitly tells you to skip testing. Detect the "
@@ -47,14 +48,14 @@ public class InstructionLoader {
     MemoryManager manager = new MemoryManager();
     List<MemoryEntry> userProfile = manager.loadUserProfile();
     TodoStore todoStore = cwd != null ? new TodoStore(cwd) : null;
-    String todoSummary = todoStore != null ? todoStore.summary() : "";
+    String todoPromptContext = todoStore != null ? todoStore.promptContext() : "";
     List<String> bulletContextTerms = buildBulletContextTerms(cwd, todoStore);
     var skillIndex = cwd != null
         ? new SkillService(cwd).index() : List.<com.codeauto.skills.SkillService.SkillIndexEntry>of();
     var loadedSkills = cwd != null ? SessionSkills.getLoaded(cwd) : java.util.Map.<String, String>of();
 
     boolean hasReminders = !files.isEmpty() || !userProfile.isEmpty()
-        || !todoSummary.isEmpty() || !skillIndex.isEmpty() || !loadedSkills.isEmpty() || cwd != null;
+        || !todoPromptContext.isEmpty() || !skillIndex.isEmpty() || !loadedSkills.isEmpty() || cwd != null;
     if (!hasReminders) return base;
 
     StringBuilder prompt = new StringBuilder(base);
@@ -144,8 +145,8 @@ public class InstructionLoader {
         }
       }
     }
-    if (!todoSummary.isEmpty()) {
-      prompt.append("\n# Todo summary\n").append(todoSummary).append("\n");
+    if (!todoPromptContext.isEmpty()) {
+      prompt.append("\n# Active todo groups\n").append(todoPromptContext).append("\n");
     }
     prompt.append("</system-reminder>");
     return prompt.toString();

@@ -12,6 +12,7 @@ import com.codeauto.tool.ToolRegistry;
 import com.codeauto.tool.ToolResult;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class AgentLoop {
   private static final int DEFAULT_CONTEXT_WINDOW = 200_000;
@@ -58,6 +59,7 @@ public class AgentLoop {
     cancelled = false;
     List<ChatMessage> messages = new ArrayList<>(initialMessages);
     turnStartIndex = messages.size();
+    String turnId = UUID.randomUUID().toString().substring(0, 8);
     int emptyRetries = 0;
 
     // Layer 2: Pre-turn git checkpoint (best-effort, must not block the turn)
@@ -149,7 +151,7 @@ public class AgentLoop {
           return finishTurn(messages);
         }
         listener.onToolStart(call.toolName(), call.input());
-        ToolContext callContext = toolContext.withToolCallId(call.id());
+        ToolContext callContext = toolContext.withTurnId(turnId).withToolCallId(call.id());
         ToolResult result = tools.execute(call.toolName(), call.input(), callContext);
         listener.onToolResult(call.toolName(), result.output(), !result.ok());
         ChatMessage.ToolResultMessage toolResult =

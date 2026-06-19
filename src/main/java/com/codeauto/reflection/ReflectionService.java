@@ -44,10 +44,10 @@ public final class ReflectionService {
       [A concise, general rule that could help in future similar situations. 1-3 sentences.]
 
       ### Bullet Tags
-      For each bullet cited in the turn (listed above as "Cited bullets"), tag it:
+      For each bullet listed above as "Cited bullets" or "Available bullets from prompt context", tag it when relevant:
       [bullet:<id>]: helpful
       [bullet:<id>]: harmful
-      Write "None." if no bullets were cited.
+      Write "None." only if none of those bullets were relevant to the turn.
 
       Rules:
       - Be CONCISE. Focus on the most impactful lesson.
@@ -73,8 +73,9 @@ public final class ReflectionService {
     if (trigger == ReflectionTrigger.NONE) return Optional.empty();
 
     Set<String> citedBullets = extractCitations(messages);
+    Set<String> promptBullets = extractPromptBullets(messages);
 
-    String reflection = generateReflection(model, messages, trigger, citedBullets);
+    String reflection = generateReflection(model, messages, trigger, citedBullets, promptBullets);
     if (reflection == null || reflection.isBlank()) return Optional.empty();
 
     // Per-project storage: reflections and bullets go under <project>/.codeauto/
@@ -166,11 +167,11 @@ public final class ReflectionService {
 
   private static String generateReflection(
       ModelAdapter model, List<ChatMessage> messages, ReflectionTrigger trigger,
-      Set<String> citedBullets) {
+      Set<String> citedBullets, Set<String> promptBullets) {
 
     List<ChatMessage> request = List.of(
         new ChatMessage.SystemMessage(REFLECTION_SYSTEM_PROMPT),
-        buildReflectionUserMessage(messages, trigger, citedBullets));
+        buildReflectionUserMessage(messages, trigger, citedBullets, promptBullets));
 
     try {
       AgentStep step = model.next(request);
@@ -185,7 +186,10 @@ public final class ReflectionService {
   }
 
   private static ChatMessage.UserMessage buildReflectionUserMessage(
-      List<ChatMessage> messages, ReflectionTrigger trigger, Set<String> citedBullets) {
+      List<ChatMessage> messages,
+      ReflectionTrigger trigger,
+      Set<String> citedBullets,
+      Set<String> promptBullets) {
 
     StringBuilder sb = new StringBuilder();
     sb.append("Reflect on this completed agent turn.\n\n");
@@ -193,6 +197,13 @@ public final class ReflectionService {
     if (!citedBullets.isEmpty()) {
       sb.append("Cited bullets: ");
       for (String id : citedBullets) {
+        sb.append("[bullet:").append(id).append("] ");
+      }
+      sb.append("\n\n");
+    }
+    if (!promptBullets.isEmpty()) {
+      sb.append("Available bullets from prompt context: ");
+      for (String id : promptBullets) {
         sb.append("[bullet:").append(id).append("] ");
       }
       sb.append("\n\n");
@@ -260,6 +271,19 @@ public final class ReflectionService {
       Matcher matcher = BULLET_CITE.matcher(haystack);
       while (matcher.find()) {
         ids.add(matcher.group(1));
+      }
+    }
+    return ids;
+  }
+
+  static Set<String> extractPromptBullets(List<ChatMessage> messages) {
+    Set<String> ids = new HashSet<>();
+    for (ChatMessage msg : messages) {
+      if (msg instanceof ChatMessage.SystemMessage m && m.content() != null) {
+        Matcher matcher = BULLET_CITE.matcher(m.content());
+        while (matcher.find()) {
+          ids.add(matcher.group(1));
+        }
       }
     }
     return ids;
@@ -356,6 +380,9 @@ public final class ReflectionService {
     addTagIf(tags, "testing",
         containsAny(lower, "mvn test", "test suite", "run tests", "pytest", "gradle test"));
     addTagIf(tags, "imports", containsAny(lower, " import ", " imports", "import."));
+    addTagIf(tags, "tool_usage",
+        containsAny(lower, "tool parameter", "parameter description", "function call", "tool call", "list operation"));
+    addTagIf(tags, "undo", containsAny(lower, "undo", "undo_list"));
     addTagIf(tags, "streaming", containsAny(lower, "sse", "stream", "streaming"));
 
     return new ArrayList<>(tags);
@@ -398,13 +425,16 @@ public final class ReflectionService {
   private static boolean containsActionSignal(String text) {
     return containsAny(text,
         "before", "after", "when", "use ", "avoid", "check", "verify",
-        "run ", "grep", "read ", "write ", "keep ", "confirm");
+        "run ", "grep", "read ", "write ", "keep ", "confirm",
+        "omit ", "exclude ", "look up", "call ");
   }
 
   private static boolean containsSpecificitySignal(String text) {
     return containsAny(text,
         "windows", "powershell", "cmd.exe", "run_command", "edit_file", "write_file",
         "mvn", "gradle", "pytest", "import", "server", "port", "health_url",
-        "background task", "stream", "sse", ".java", ".md");
+        "background task", "stream", "sse", ".java", ".md",
+        "tool parameter", "parameter description", "function call", "tool call",
+        "list operation", "undo", "undo_list");
   }
 }
