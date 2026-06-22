@@ -10,9 +10,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public class TodoStore {
@@ -130,20 +132,23 @@ public class TodoStore {
       return "";
     }
     StringBuilder summary = new StringBuilder();
-    summary.append("Recent unfinished todo groups. Keep these plans in sync until every item is completed.\n");
+    summary.append("Active todo groups. Keep them in sync until every item is completed.\n");
     for (TodoGroup group : groups) {
-      summary.append("- groupId=").append(group.id())
-          .append(" title=").append(group.title())
+      summary.append("- ")
+          .append(group.title())
+          .append(" [groupId=")
+          .append(group.id())
+          .append("]")
           .append(" (")
           .append(group.inProgressCount()).append(" in progress, ")
           .append(group.pendingCount()).append(" pending, ")
           .append(group.completedCount()).append(" completed)")
           .append("\n");
-      appendStateLine(summary, "current", group.entries(), "in_progress", true);
+      appendStateLine(summary, "now", group.entries(), "in_progress", true);
       appendStateLine(summary, "pending", group.entries(), "pending", false);
       appendStateLine(summary, "done", group.entries(), "completed", false);
     }
-    summary.append("Call todo_list to review grouped tasks. Reuse groupId when adding more items to an unfinished plan.");
+    summary.append("Use todo_list for full grouped state. Reuse groupId for follow-up items.");
     return summary.toString().trim();
   }
 
@@ -156,6 +161,12 @@ public class TodoStore {
         .map(text -> text.replaceAll("\\s+", " ").trim())
         .distinct()
         .toList();
+  }
+
+  public Set<String> activeGroupIds() {
+    return new LinkedHashSet<>(recentActiveGroups().stream()
+        .map(TodoGroup::id)
+        .toList());
   }
 
   public static TodoStore forProject(Path cwd) {

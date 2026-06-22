@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.codeauto.skills.SessionSkills;
 import com.codeauto.skills.SkillService;
+import com.codeauto.todo.TodoStore;
 import com.codeauto.tool.ToolContext;
 import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolResult;
@@ -66,14 +67,16 @@ public class LoadSkillTool implements ToolDefinition {
       return ToolResult.error("Skill path is not allowed: " + summary.get().skillFile());
     }
     String content = skills.load(name);
-    SessionSkills.markLoaded(context.cwd(), name, content);
+    SessionSkills.markLoaded(context.cwd(), name, new TodoStore(context.cwd()).activeGroupIds());
     return ToolResult.ok(content);
   }
 
   private static ToolResult list(SkillService skills, java.nio.file.Path cwd) {
     var entries = skills.index();
     if (entries.isEmpty()) return ToolResult.ok("(no skills available)");
-    var loadedNames = SessionSkills.getLoadedNames(cwd);
+    var loadedNames = new TodoStore(cwd).activeGroupIds().isEmpty()
+        ? java.util.Set.<String>of()
+        : SessionSkills.getLoadedNames(cwd, new TodoStore(cwd).activeGroupIds());
     StringBuilder out = new StringBuilder();
     for (var entry : entries) {
       out.append("• ").append(entry.name());

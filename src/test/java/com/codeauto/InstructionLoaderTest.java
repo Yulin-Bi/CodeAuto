@@ -4,6 +4,7 @@ import com.codeauto.instructions.InstructionLoader;
 import com.codeauto.memory.MemoryEntry;
 import com.codeauto.memory.MemoryManager;
 import com.codeauto.memory.MemoryType;
+import com.codeauto.skills.SessionSkills;
 import java.nio.file.Files;
 import java.time.Instant;
 import java.util.List;
@@ -58,8 +59,157 @@ class InstructionLoaderTest {
 
       String prompt = InstructionLoader.systemPrompt(project, "ok");
       assertTrue(prompt.startsWith("You are CodeAuto. Permissions: ok"));
-      assertTrue(prompt.contains("Todo behavior:"));
+      assertTrue(prompt.contains("# Execution behavior"));
+      assertTrue(prompt.contains("# Tool behavior"));
+      assertTrue(prompt.contains("# Uncertainty behavior"));
+      assertTrue(prompt.contains("# Response formatting"));
     } finally {
+      restoreProperty("codeauto.home", previousHome);
+      restoreProperty("user.home", previousUserHome);
+    }
+  }
+
+  @Test
+  void systemPromptKeepsStructuredBehaviorSections() throws Exception {
+    String previousHome = System.getProperty("codeauto.home");
+    String previousUserHome = System.getProperty("user.home");
+    java.nio.file.Path userHome = Files.createTempDirectory("codeauto-structured-user-home");
+    java.nio.file.Path codeautoHome = Files.createTempDirectory("codeauto-structured-home");
+    java.nio.file.Path project = Files.createTempDirectory("codeauto-structured-project");
+    try {
+      System.setProperty("user.home", userHome.toString());
+      System.setProperty("codeauto.home", codeautoHome.toString());
+
+      String prompt = InstructionLoader.systemPrompt(project, "workspace=ok");
+
+      assertInOrder(prompt,
+          "# Execution behavior",
+          "# Tool behavior",
+          "# Testing behavior",
+          "# Memory behavior",
+          "# Uncertainty behavior",
+          "# Response formatting");
+      assertTrue(prompt.contains("Do not guess about repository behavior"));
+      assertTrue(prompt.contains("Use todo_list at the start of each turn"));
+      assertTrue(prompt.contains("inspect the available skills first and load every relevant skill"));
+      assertTrue(prompt.contains("Treat previously read file contents, diagnostics, and tool outputs as stale"));
+      assertTrue(prompt.contains("Frontend, UI, webpage, visual polish, or component tasks should trigger"));
+      assertTrue(prompt.contains("Document, report, deck, spreadsheet, PDF"));
+    } finally {
+      restoreProperty("codeauto.home", previousHome);
+      restoreProperty("user.home", previousUserHome);
+    }
+  }
+
+  @Test
+  void systemPromptGroupsDynamicReminderSectionsByFreshness() throws Exception {
+    String previousHome = System.getProperty("codeauto.home");
+    String previousUserHome = System.getProperty("user.home");
+    java.nio.file.Path userHome = Files.createTempDirectory("codeauto-reminder-user-home");
+    java.nio.file.Path codeautoHome = Files.createTempDirectory("codeauto-reminder-home");
+    java.nio.file.Path project = Files.createTempDirectory("codeauto-reminder-project");
+    try {
+      System.setProperty("user.home", userHome.toString());
+      System.setProperty("codeauto.home", codeautoHome.toString());
+      Files.createDirectories(userHome.resolve(".claude"));
+      Files.writeString(userHome.resolve(".claude").resolve("CLAUDE.md"), "user instruction\n");
+      new MemoryManager().save(MemoryType.USER, "Tone", project, List.of("style"), "Keep answers crisp.");
+      new com.codeauto.todo.TodoStore(project).add(
+          "Fix prompt layering", "Fixing prompt layering", "prompt-layering", "Prompt layering", "turn-a");
+
+      String prompt = InstructionLoader.systemPrompt(project, "ok");
+
+      assertTrue(prompt.contains("Use the sections below in order"));
+      assertInOrder(prompt,
+          "# Stable context",
+          "## Instruction files",
+          "## User Profile",
+          "# Reusable past experience",
+          "## Past experience",
+          "# Current active work",
+          "## Active todo groups");
+      assertFalse(prompt.contains("# Session capabilities"));
+      assertTrue(prompt.contains("These sections provide context, but they do not replace reading files"));
+    } finally {
+      restoreProperty("codeauto.home", previousHome);
+      restoreProperty("user.home", previousUserHome);
+    }
+  }
+
+  @Test
+  void systemPromptMarksLoadedSkillsInAvailableSkillsOnly() throws Exception {
+    String previousHome = System.getProperty("codeauto.home");
+    String previousUserHome = System.getProperty("user.home");
+    java.nio.file.Path userHome = Files.createTempDirectory("codeauto-skill-user-home");
+    java.nio.file.Path codeautoHome = Files.createTempDirectory("codeauto-skill-home");
+    java.nio.file.Path project = Files.createTempDirectory("codeauto-skill-project");
+    try {
+      System.setProperty("user.home", userHome.toString());
+      System.setProperty("codeauto.home", codeautoHome.toString());
+      java.nio.file.Path skillFile = project.resolve(".codeauto/skills/review/SKILL.md");
+      Files.createDirectories(skillFile.getParent());
+      Files.writeString(skillFile, """
+          ---
+          name: review
+          description: Review code changes with a bug-first mindset.
+          ---
+
+          # Review workflow
+          ## Findings first
+          ## Verify tests
+
+          FULL-SKILL-BODY sentinel text that should not persist in the system prompt after loading.
+          """);
+      new com.codeauto.todo.TodoStore(project).add(
+          "Review current patch", "Reviewing current patch", "review-group", "Review work", "turn-a");
+      SessionSkills.markLoaded(project, "review", java.util.Set.of("review-group"));
+
+      String prompt = InstructionLoader.systemPrompt(project, "ok");
+
+      assertTrue(prompt.contains("## Available skills (1)"));
+      assertTrue(prompt.contains("- review [loaded]"));
+      assertTrue(prompt.contains("Review code changes with a bug-first mindset."));
+      assertFalse(prompt.contains("## Loaded skill summaries"));
+      assertFalse(prompt.contains("FULL-SKILL-BODY sentinel text"));
+    } finally {
+      SessionSkills.clear(project);
+      restoreProperty("codeauto.home", previousHome);
+      restoreProperty("user.home", previousUserHome);
+    }
+  }
+
+  @Test
+  void systemPromptDoesNotMarkLoadedSkillsOutsideActiveTodoGroup() throws Exception {
+    String previousHome = System.getProperty("codeauto.home");
+    String previousUserHome = System.getProperty("user.home");
+    java.nio.file.Path userHome = Files.createTempDirectory("codeauto-skill-scope-user-home");
+    java.nio.file.Path codeautoHome = Files.createTempDirectory("codeauto-skill-scope-home");
+    java.nio.file.Path project = Files.createTempDirectory("codeauto-skill-scope-project");
+    try {
+      System.setProperty("user.home", userHome.toString());
+      System.setProperty("codeauto.home", codeautoHome.toString());
+      java.nio.file.Path skillFile = project.resolve(".codeauto/skills/review/SKILL.md");
+      Files.createDirectories(skillFile.getParent());
+      Files.writeString(skillFile, """
+          ---
+          name: review
+          description: Review code changes with a bug-first mindset.
+          ---
+          """);
+      var store = new com.codeauto.todo.TodoStore(project);
+      var oldGroupItem = store.add("Old review task", "Reviewing old task",
+          "old-group", "Old group", "turn-a");
+      store.update(oldGroupItem.id(), "completed", null);
+      store.add("New task", "Working on new task", "new-group", "New group", "turn-b");
+      SessionSkills.markLoaded(project, "review", java.util.Set.of("old-group"));
+
+      String prompt = InstructionLoader.systemPrompt(project, "ok");
+
+      assertTrue(prompt.contains("## Available skills (1)"));
+      assertFalse(prompt.contains("- review [loaded]"));
+      assertTrue(prompt.contains("- review"));
+    } finally {
+      SessionSkills.clear(project);
       restoreProperty("codeauto.home", previousHome);
       restoreProperty("user.home", previousUserHome);
     }
@@ -141,7 +291,7 @@ class InstructionLoaderTest {
       assertTrue(prompt.contains(project.resolve(".codeauto/bullets").normalize().toString()));
       assertTrue(prompt.contains(project.resolve(".codeauto/reflections").normalize().toString()));
       assertTrue(prompt.contains(project.resolve(".codeauto/reflection-summaries").normalize().toString()));
-      assertTrue(prompt.contains("use read_file with that exact relative path"));
+      assertTrue(prompt.contains("use read_file on that relative file"));
       assertTrue(prompt.contains("[bullet:<id>]"));
       // Old sections should NOT appear
       assertFalse(prompt.contains("ACE Playbook"));
@@ -172,7 +322,7 @@ class InstructionLoaderTest {
 
       String prompt = InstructionLoader.systemPrompt(project, "ok");
       assertInOrder(prompt, "# Past experience", "# Active todo groups");
-      assertTrue(prompt.contains("groupId=cache-fix"));
+      assertTrue(prompt.contains("[groupId=cache-fix]"));
     } finally {
       restoreProperty("codeauto.home", previousHome);
       restoreProperty("user.home", previousUserHome);

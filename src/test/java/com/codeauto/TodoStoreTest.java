@@ -32,10 +32,9 @@ class TodoStoreTest {
           "tui-sidebar", "TUI polish", "turn-b");
 
       String prompt = store.promptContext();
-      assertTrue(prompt.contains("groupId=tui-sidebar"));
-      assertTrue(prompt.contains("groupId=reflection-fix"));
-      assertTrue(prompt.contains("title=TUI polish"));
-      assertTrue(prompt.contains("current: Fixing reflection injection"));
+      assertTrue(prompt.contains("TUI polish [groupId=tui-sidebar]"));
+      assertTrue(prompt.contains("Reflection follow-up [groupId=reflection-fix]"));
+      assertTrue(prompt.contains("now: Fixing reflection injection"));
       assertTrue(prompt.contains("pending: Reduce bullet prompt volume"));
       assertFalse(prompt.contains("Legacy fix"));
       assertTrue(prompt.contains("Reuse groupId"));
@@ -64,6 +63,27 @@ class TodoStoreTest {
       assertTrue(texts.contains("Todo injection"));
       assertTrue(texts.contains("Improve todo injection"));
       assertFalse(texts.contains("Old task"));
+    } finally {
+      restoreProperty("codeauto.home", previousHome);
+    }
+  }
+
+  @Test
+  void activeGroupIdsFollowRecentActiveGroups() throws Exception {
+    String previousHome = System.getProperty("codeauto.home");
+    Path home = Files.createTempDirectory("codeauto-todo-groups-home");
+    Path project = Files.createTempDirectory("codeauto-todo-groups-project");
+    try {
+      System.setProperty("codeauto.home", home.toString());
+      TodoStore store = new TodoStore(project);
+
+      var done = store.add("Done task", "Done task", "done-group", "Done group", "turn-a");
+      store.update(done.id(), "completed", null);
+      store.add("Active task", "Working active", "active-group", "Active group", "turn-b");
+
+      var ids = store.activeGroupIds();
+      assertTrue(ids.contains("active-group"));
+      assertFalse(ids.contains("done-group"));
     } finally {
       restoreProperty("codeauto.home", previousHome);
     }

@@ -25,25 +25,49 @@ public class InstructionLoader {
   private static final int SUMMARY_RELEVANCE_BOOST = 2;
 
   public static String systemPrompt(Path cwd, String permissionSummary) {
-    String base = "You are CodeAuto. Permissions: " + permissionSummary
-        + "\nTodo behavior: when the user gives a multi-step task (3+ distinct steps), use todo_create to break it "
-        + "down into manageable items. Keep items for the same user task in one todo group. For a new plan, set a "
-        + "concise groupTitle. Reuse the same groupId when you extend an unfinished plan in a later turn. Mark a "
-        + "task as in_progress BEFORE starting work on it, and mark it completed IMMEDIATELY after finishing. Only "
-        + "ONE task in_progress at a time. Use todo_list to review active groups at the start of each turn."
-        + "\nTesting behavior: after making any code changes, you MUST run the project's test suite to verify your "
-        + "changes work correctly. If tests fail, fix the issues and re-run tests until all pass. Never mark a task "
-        + "as completed without test verification, unless the user explicitly tells you to skip testing. Detect the "
-        + "project's test command from its build files (e.g., 'mvn test' for Maven, 'gradle test' for Gradle, "
-        + "'npm test' for Node, 'go test ./...' for Go, 'cargo test' for Rust, 'pytest' for Python)."
-        + "\nMemory behavior: when the user explicitly asks you to remember something, call save_memory immediately. "
-        + "Also proactively save when the user states a preference (\"I prefer...\", \"I don't like...\", "
-        + "\"always use...\", \"never use...\"), a project fact (build commands, conventions, tech stack), "
-        + "or a decision (\"let's use X instead of Y\"). Before saving, call list_memory to check for "
-        + "contradictory or outdated memories on the same topic and delete_memory them. "
-        + "User preferences and personal style choices use destination=store - they become part of "
-        + "your user profile (loaded in full each turn). "
-        + "Project facts and conventions use destination=project to write into the project's CLAUDE.md.";
+    String base = """
+        You are CodeAuto. Permissions: %s
+
+        # Execution behavior
+        Read the relevant code, config, or files before making changes or making claims about repository behavior.
+        Treat previously read file contents, diagnostics, and tool outputs as stale after any edit, write, patch, generated file, or tool result that could have changed them.
+        Re-read the target files before making a second round of edits, and re-check the latest tool output before reasoning from it again.
+        Prefer the smallest coherent change that solves the user's request. Do not expand scope unless the user asks or the current approach is clearly broken.
+        Finish the task end-to-end when feasible instead of stopping at partial analysis.
+
+        # Tool behavior
+        For any task that will write code, edit or create files, generate deliverables, or run tools likely covered by a skill, inspect the available skills first and load every relevant skill before proceeding.
+        If a skill might apply, prefer loading it before making changes. Skills are task-specific operating constraints, not optional reference material.
+        Frontend, UI, webpage, visual polish, or component tasks should trigger the relevant frontend or design skill first.
+        Document, report, deck, spreadsheet, PDF, or other file-format deliverables should trigger the matching file or document skill before touching the artifact.
+        When the user mentions an uploaded file, unfamiliar file type, or existing artifact you have not inspected yet, first load the routing or file-reading skill before choosing tools.
+        When the user gives a multi-step task with 3 or more distinct steps, use todo_create to break it down.
+        Keep items for the same user task in one todo group. For a new plan, set a concise groupTitle. Reuse the same groupId when extending an unfinished plan in a later turn.
+        Use todo_list at the start of each turn to review active groups before continuing unfinished work.
+        Mark a task as in_progress before starting it and completed immediately after finishing it. Only one task may be in_progress at a time.
+        Before editing files, inspect the relevant files first. When a tool fails or the user reports an error, inspect the relevant outputs and local context before choosing the next step.
+
+        # Testing behavior
+        After making any code changes, you must run the project's test suite to verify the changes work correctly.
+        If tests fail, fix the issues and re-run tests until all pass. Never mark a task as completed without test verification unless the user explicitly tells you to skip testing.
+        Detect the project's test command from its build files or tooling, for example mvn test, gradle test, npm test, go test ./..., cargo test, or pytest.
+
+        # Memory behavior
+        When the user explicitly asks you to remember something, call save_memory immediately.
+        Also proactively save durable user preferences, project facts, conventions, or explicit decisions.
+        Before saving, call list_memory to check for contradictory or outdated memories on the same topic and delete_memory them.
+        User preferences and personal style choices use destination=store and become part of the user profile loaded each turn.
+        Project facts and conventions use destination=project and should be written into the project's CLAUDE.md.
+
+        # Uncertainty behavior
+        Do not guess about repository behavior, build commands, tool effects, or current project state. Verify through code, configuration, tests, or tool output first.
+        Resolve uncertainty by inspecting the local context before concluding. If something is still uncertain after checking, state that briefly instead of presenting speculation as fact.
+
+        # Response formatting
+        Lead with the outcome, then verification, then only the most relevant supporting detail.
+        Use short prose by default. Use lists only when they materially improve clarity.
+        Keep the response focused on what changed, what was verified, and any remaining concrete risk.
+        """.formatted(permissionSummary).trim();
     List<InstructionFile> files = load(cwd);
     MemoryManager manager = new MemoryManager();
     List<MemoryEntry> userProfile = manager.loadUserProfile();
@@ -52,35 +76,43 @@ public class InstructionLoader {
     List<String> bulletContextTerms = buildBulletContextTerms(cwd, todoStore);
     var skillIndex = cwd != null
         ? new SkillService(cwd).index() : List.<com.codeauto.skills.SkillService.SkillIndexEntry>of();
-    var loadedSkills = cwd != null ? SessionSkills.getLoaded(cwd) : java.util.Map.<String, String>of();
+    var activeGroupIds = todoStore != null ? todoStore.activeGroupIds() : java.util.Set.<String>of();
+    var loadedNames = cwd != null ? SessionSkills.getLoadedNames(cwd, activeGroupIds) : java.util.Set.<String>of();
 
     boolean hasReminders = !files.isEmpty() || !userProfile.isEmpty()
-        || !todoPromptContext.isEmpty() || !skillIndex.isEmpty() || !loadedSkills.isEmpty() || cwd != null;
+        || !todoPromptContext.isEmpty() || !skillIndex.isEmpty() || !loadedNames.isEmpty() || cwd != null;
     if (!hasReminders) return base;
 
     StringBuilder prompt = new StringBuilder(base);
     prompt.append("\n\n<system-reminder>\n");
+    prompt.append("Use the sections below in order: stable context first, then session capabilities, then reusable past experience, then the current active work.\n");
+    prompt.append("These sections provide context, but they do not replace reading files, checking tool output, or validating current repository state.\n");
     if (!files.isEmpty()) {
+      prompt.append("\n# Stable context\n");
       prompt.append("Additional user and project instructions are loaded below. ");
       prompt.append("Follow the later, more local files when instructions conflict.\n");
+      prompt.append("\n## Instruction files\n");
       for (InstructionFile file : files) {
-        prompt.append("\n# ").append(file.label()).append(" (").append(file.path()).append(")\n");
+        prompt.append("\n### ").append(file.label()).append(" (").append(file.path()).append(")\n");
         prompt.append(file.content().trim()).append("\n");
       }
     }
     if (!userProfile.isEmpty()) {
-      prompt.append("\n# User Profile\n");
+      if (files.isEmpty()) {
+        prompt.append("\n# Stable context\n");
+      }
+      prompt.append("\n## User Profile\n");
       prompt.append("These are your user's preferences, habits, and style choices. ");
       prompt.append("Always keep them in mind - they apply to every response.\n");
       for (MemoryEntry entry : userProfile) {
-        prompt.append("\n## ").append(entry.title()).append("\n");
+        prompt.append("\n### ").append(entry.title()).append("\n");
         prompt.append(entry.content().trim()).append("\n");
       }
     }
     if (!skillIndex.isEmpty()) {
-      prompt.append("\n# Available skills (").append(skillIndex.size()).append(")\n");
+      prompt.append("\n# Session capabilities\n");
+      prompt.append("\n## Available skills (").append(skillIndex.size()).append(")\n");
       prompt.append("Call load_skill <name> to load full instructions for a skill when you need it.\n");
-      var loadedNames = SessionSkills.getLoadedNames(cwd);
       for (var entry : skillIndex) {
         prompt.append("- ").append(entry.name());
         if (loadedNames.contains(entry.name())) prompt.append(" [loaded]");
@@ -90,27 +122,17 @@ public class InstructionLoader {
         }
       }
     }
-    if (!loadedSkills.isEmpty()) {
-      prompt.append("\n# Loaded skill instructions\n");
-      prompt.append("These skills have been loaded and their instructions apply for the rest of this session.\n");
-      for (var entry : loadedSkills.entrySet()) {
-        prompt.append("\n## ").append(entry.getKey()).append("\n");
-        prompt.append(entry.getValue().trim()).append("\n");
-      }
-    }
     if (cwd != null) {
-      prompt.append("\n# Past experience\n");
-      prompt.append("When you encounter an error or the user reports a problem, grep ");
+      prompt.append("\n# Reusable past experience\n");
+      prompt.append("\n## Past experience\n");
+      prompt.append("Use ");
       prompt.append(cwd.resolve(".codeauto/bullets").normalize().toString());
-      prompt.append(" for compact one-line lessons from past mistakes. Each lesson has a [bullet:<id>] ");
-      prompt.append("identifier plus lightweight state such as helpful/harmful/support counters. ");
-      prompt.append("For full analysis of a particular past error, read the corresponding reflection in ");
+      prompt.append(" as the fast index for recurring mistakes. Each line is a compact [bullet:<id>] lesson with counters and tags.\n");
+      prompt.append("Read detailed analysis only when needed from ");
       prompt.append(cwd.resolve(".codeauto/reflections").normalize().toString()).append(".\n");
-      prompt.append("Some repeated-failure bullets also have canonical summaries under ");
-      prompt.append(cwd.resolve(".codeauto/reflection-summaries").normalize().toString());
-      prompt.append("; inspect them only when a bullet shows repeated support or the problem recurs. ");
-      prompt.append("If a bullet line includes summaryPath=..., use read_file with that exact relative path.\n");
-      prompt.append("Cite relevant lessons as [bullet:<id>] in your response.\n");
+      prompt.append("If a bullet includes summaryPath=..., use read_file on that relative file under ");
+      prompt.append(cwd.resolve(".codeauto/reflection-summaries").normalize().toString()).append(".\n");
+      prompt.append("Cite reused lessons as [bullet:<id>].\n");
       MemoryManager bulletManager = new MemoryManager(cwd.resolve(".codeauto/bullets"));
       List<MemoryEntry> allBullets = bulletManager.list();
       int totalBullets = (int) allBullets.stream().filter(MemoryEntry::isBullet).count();
@@ -146,7 +168,8 @@ public class InstructionLoader {
       }
     }
     if (!todoPromptContext.isEmpty()) {
-      prompt.append("\n# Active todo groups\n").append(todoPromptContext).append("\n");
+      prompt.append("\n# Current active work\n");
+      prompt.append("\n## Active todo groups\n").append(todoPromptContext).append("\n");
     }
     prompt.append("</system-reminder>");
     return prompt.toString();
