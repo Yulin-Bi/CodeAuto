@@ -8,266 +8,210 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg-primary: #0a0c0e;
-  --bg-secondary: #0f1215;
-  --bg-card: #14181c;
-  --bg-card-hover: #1a1f24;
-  --bg-terminal: #080a0c;
-  --nav-bg: rgba(10, 12, 14, 0.8);
-  --border-color: #1e2832;
-  --border-active: #2a3a4a;
-  --text-primary: #e8edf2;
-  --text-secondary: #8899aa;
-  --text-muted: #4a5a6a;
-  --accent-green: #00ff41;
-  --accent-green-dim: #00cc34;
-  --accent-blue: #38bdf8;
-  --accent-cyan: #22d3ee;
-  --accent-purple: #a78bfa;
-  --accent-orange: #fb923c;
-  --accent-rose: #fb7185;
-  --glow-green: rgba(0, 255, 65, 0.08);
-  --glow-blue: rgba(56, 189, 248, 0.06);
-  --radius: 12px;
-  --radius-sm: 8px;
-  --radius-lg: 16px;
-}
-[data-theme="light"] {
-  --bg-primary: #f4f6f9;
-  --bg-secondary: #e8ecf2;
-  --bg-card: #ffffff;
-  --bg-card-hover: #f0f3f8;
-  --bg-terminal: #f8fafc;
-  --nav-bg: rgba(244, 246, 249, 0.85);
-  --border-color: #d0d7de;
-  --border-active: #a0aab8;
-  --text-primary: #1f2937;
-  --text-secondary: #4b5563;
-  --text-muted: #94a3b8;
-  --accent-green: #10b981;
-  --accent-green-dim: #059669;
-  --accent-blue: #3b82f6;
-  --accent-cyan: #06b6d4;
-  --accent-purple: #8b5cf6;
-  --accent-orange: #f59e0b;
-  --accent-rose: #f43f5e;
-  --glow-green: rgba(16, 185, 129, 0.07);
-  --glow-blue: rgba(59, 130, 246, 0.05);
-  --glow-spot-green: rgba(16, 185, 129, 0.06);
-  --glow-spot-blue: rgba(59, 130, 246, 0.04);
+  --bg: #f5f5f7;
+  --card-bg: rgba(255,255,255,0.54);
+  --card-hover: rgba(255,255,255,0.72);
+  --card-border: rgba(0,0,0,0.06);
+  --card-border-hover: rgba(0,0,0,0.10);
+  --card-shadow: 0 2px 12px rgba(0,0,0,0.04), 0 0 0 0.5px rgba(255,255,255,0.6) inset;
+  --card-shadow-hover: 0 8px 28px rgba(0,0,0,0.06), 0 0 0 0.5px rgba(255,255,255,0.7) inset;
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #aeaeb2;
+  --accent: #0071e3;
+  --accent-dim: #0066cc;
+  --accent-bg: rgba(0,113,227,0.07);
+  --accent-border: rgba(0,113,227,0.15);
+  --divider: rgba(0,0,0,0.06);
+  --terminal-bg: rgba(0,0,0,0.02);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-lg: 22px;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
 }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: smooth; font-size: 16px; }
 body {
-  font-family: 'DM Sans', sans-serif;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  font-family: var(--font);
+  background: linear-gradient(165deg, #f2f2f7 0%, #eaeaef 20%, #f0f0f4 45%, #e8e8ed 70%, #f5f5f7 100%);
+  background-attachment: fixed;
+  color: var(--text);
   line-height: 1.6;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-body::before {
-  content: '';
-  position: fixed; inset: 0; z-index: -1; opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 256px 256px; pointer-events: none; transition: opacity 0.4s;
-}
-[data-theme="light"] body::before { opacity: 0.015; }
-.grid-bg {
-  position: fixed; inset: 0; z-index: -1;
-  background-image:
-    linear-gradient(rgba(30, 40, 50, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(30, 40, 50, 0.12) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 15%, black 20%, transparent 70%);
-  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 15%, black 20%, transparent 70%);
-}
-.glow-spot { position: fixed; border-radius: 50%; filter: blur(100px); pointer-events: none; z-index: -1; }
-.glow-spot--green { width: 600px; height: 600px; background: var(--glow-spot-green, rgba(0, 255, 65, 0.04)); top: -200px; left: -100px; }
-.glow-spot--blue { width: 500px; height: 500px; background: var(--glow-spot-blue, rgba(56, 189, 248, 0.03)); bottom: -150px; right: -100px; }
+body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; }
+body::before { width: 620px; height: 620px; background: rgba(0,113,227,0.09); top: -220px; left: -120px; }
+body::after { width: 480px; height: 480px; background: rgba(100,100,255,0.06); bottom: -180px; right: -100px; }
 
 /* Nav */
-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); background: var(--nav-bg); border-bottom: 1px solid var(--border-color); transition: border-color 0.3s; }
-nav.scrolled { border-color: var(--border-active); }
-.nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 24px; height: 60px; display: flex; align-items: center; justify-content: space-between; }
-.nav-logo { display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1.1rem; text-decoration: none; color: var(--text-primary); }
-.nav-logo .logo-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-green); box-shadow: 0 0 12px rgba(0, 255, 65, 0.4); animation: pulse-dot 2s ease-in-out infinite; }
-@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.85); } }
-.nav-links { display: flex; align-items: center; gap: 6px; }
-.nav-links a { padding: 6px 16px; border-radius: 6px; font-size: 0.875rem; font-weight: 500; text-decoration: none; color: var(--text-secondary); transition: all 0.2s; }
-.nav-links a:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
-.nav-links .btn-gh { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.875rem; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; }
-.nav-links .btn-gh:hover { border-color: var(--accent-green); color: var(--accent-green); background: var(--glow-green); }
-.nav-links .btn-gh svg { width: 16px; height: 16px; fill: currentColor; }
-.lang-toggle { display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); margin: 0 4px; }
-.lang-btn { padding: 3px 8px; border-radius: 4px; border: none; background: transparent; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-.lang-btn.active { background: var(--accent-green); color: #0a0c0e; }
+nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(245,245,247,0.68); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); border-bottom: 1px solid var(--divider); }
+nav.scrolled { background: rgba(245,245,247,0.82); }
+.nav-inner { max-width: 1140px; margin: 0 auto; padding: 0 28px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.nav-logo { display: flex; align-items: center; gap: 8px; font-family: var(--font); font-weight: 700; font-size: 1.15rem; text-decoration: none; color: var(--text); letter-spacing: -0.01em; }
+.nav-logo .logo-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.nav-links { display: flex; align-items: center; gap: 2px; }
+.nav-links a { padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; color: var(--text-secondary); transition: all 0.2s; }
+.nav-links a:hover { color: var(--text); background: rgba(0,0,0,0.04); }
+.nav-links .btn-gh { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid var(--card-border); border-radius: 8px; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); text-decoration: none; transition: all 0.2s; }
+.nav-links .btn-gh:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+.nav-links .btn-gh svg { width: 15px; height: 15px; fill: currentColor; }
+.lang-toggle { display: flex; align-items: center; gap: 1px; padding: 3px; border-radius: 8px; background: rgba(0,0,0,0.03); margin: 0 4px; }
+.lang-btn { padding: 3px 8px; border-radius: 6px; border: none; background: transparent; color: var(--text-tertiary); font-family: var(--font); font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.lang-btn.active { background: rgba(255,255,255,0.9); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
 .lang-btn:not(.active):hover { color: var(--text-secondary); }
-.theme-toggle { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border-color); background: transparent; cursor: pointer; color: var(--text-muted); transition: all 0.2s; flex-shrink: 0; }
-.theme-toggle:hover { color: var(--accent-green); border-color: var(--accent-green); background: var(--glow-green); }
-.theme-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.4s ease; }
-.theme-toggle .sun-icon { display: none; }
-.theme-toggle .moon-icon { display: block; }
-[data-theme="light"] .theme-toggle .sun-icon { display: block; }
-[data-theme="light"] .theme-toggle .moon-icon { display: none; }
 
 /* Sections */
-section { padding: 100px 24px; }
-.section-inner { max-width: 1100px; margin: 0 auto; }
+section { padding: 90px 24px; position: relative; z-index: 1; }
+.section-inner { max-width: 1060px; margin: 0 auto; }
 
 /* Hero */
-.hero { min-height: 100vh; display: flex; align-items: center; padding-top: 80px; position: relative; }
-.hero .section-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
-.hero-tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 100px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; background: rgba(0, 255, 65, 0.06); color: var(--accent-green); border: 1px solid rgba(0, 255, 65, 0.15); margin-bottom: 24px; }
-.hero-tag .live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-green); animation: pulse-dot 1.5s ease-in-out infinite; }
-.hero h1 { font-family: 'JetBrains Mono', monospace; font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; margin-bottom: 20px; }
-.hero h1 .highlight { background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.hero p { font-size: 1.05rem; color: var(--text-secondary); max-width: 480px; line-height: 1.7; margin-bottom: 32px; }
-.hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 28px; border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; font-weight: 600; text-decoration: none; transition: all 0.25s; cursor: pointer; border: none; }
-.btn--primary { background: var(--accent-green); color: #0a0c0e; box-shadow: 0 0 24px rgba(0, 255, 65, 0.15); }
-.btn--primary:hover { background: var(--accent-green-dim); box-shadow: 0 0 40px rgba(0, 255, 65, 0.25); transform: translateY(-1px); }
-.btn--gh { border: 1px solid var(--border-color); color: var(--text-secondary); background: transparent; }
-.btn--gh:hover { border-color: var(--accent-green); color: var(--accent-green); background: var(--glow-green); transform: translateY(-1px); }
-.btn--gh svg { width: 18px; height: 18px; fill: currentColor; }
+.hero { min-height: 100vh; display: flex; align-items: center; padding-top: 80px; }
+.hero .section-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+.hero-tag { display: inline-flex; align-items: center; gap: 7px; padding: 5px 14px; border-radius: 100px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.03em; background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent-border); margin-bottom: 22px; }
+.hero-tag .live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse-dot 2s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
+.hero h1 { font-family: var(--font); font-size: clamp(2.2rem, 5vw, 3.4rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.025em; margin-bottom: 18px; }
+.hero h1 .highlight { color: var(--accent); }
+.hero p { font-size: 1.05rem; color: var(--text-secondary); max-width: 500px; line-height: 1.65; margin-bottom: 30px; }
+.hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 7px; padding: 12px 26px; border-radius: 100px; font-family: var(--font); font-size: 0.9rem; font-weight: 600; text-decoration: none; transition: all 0.25s; cursor: pointer; border: none; letter-spacing: -0.01em; }
+.btn--primary { background: var(--accent); color: #fff; }
+.btn--primary:hover { background: var(--accent-dim); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,113,227,0.2); }
+.btn--gh { border: 1px solid var(--card-border); color: var(--text-secondary); background: rgba(255,255,255,0.6); backdrop-filter: blur(8px); }
+.btn--gh:hover { border-color: var(--accent); color: var(--accent); background: rgba(255,255,255,0.85); transform: translateY(-1px); }
+.btn--gh svg { width: 17px; height: 17px; fill: currentColor; }
 
 /* Terminal */
 .terminal-wrapper { position: relative; }
-.terminal { background: var(--bg-terminal); border: 1px solid var(--border-color); border-radius: var(--radius-lg); overflow: hidden; box-shadow: 0 0 60px rgba(0, 255, 65, 0.04), 0 20px 80px rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); position: relative; }
-.terminal::before { content: ''; position: absolute; inset: -1px; border-radius: var(--radius-lg); padding: 1px; background: linear-gradient(135deg, rgba(0,255,65,0.15), transparent 40%, transparent 60%, rgba(56,189,248,0.1)); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
-.terminal-header { display: flex; align-items: center; padding: 12px 16px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-color); gap: 8px; }
-.terminal-dots { display: flex; gap: 6px; }
-.terminal-dot { width: 10px; height: 10px; border-radius: 50%; }
-.terminal-dot--r { background: #ff5f56; }
-.terminal-dot--y { background: #ffbd2e; }
-.terminal-dot--g { background: #27c93f; }
-.terminal-title { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-muted); margin-left: 8px; }
-.terminal-body { padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; line-height: 1.7; min-height: 280px; color: var(--text-secondary); }
-.terminal-line { opacity: 0; animation: term-fade-in 0.4s ease-out forwards; white-space: pre-wrap; word-break: break-all; }
-.terminal-line .prompt { color: var(--accent-green); }
-.terminal-line .cmd { color: var(--text-primary); }
+.terminal { background: var(--terminal-bg); border: 1px solid var(--card-border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--card-shadow); }
+.terminal-header { display: flex; align-items: center; padding: 14px 18px; background: rgba(0,0,0,0.02); border-bottom: 1px solid var(--divider); gap: 10px; }
+.terminal-dots { display: flex; gap: 7px; }
+.terminal-dot { width: 11px; height: 11px; border-radius: 50%; }
+.terminal-dot--r { background: #ee5a5f; }
+.terminal-dot--y { background: #f5bd4f; }
+.terminal-dot--g { background: #61c454; }
+.terminal-title { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-tertiary); margin-left: 6px; }
+.terminal-body { padding: 22px; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.75; min-height: 260px; color: var(--text-secondary); }
+.terminal-line { white-space: pre-wrap; word-break: break-all; }
+.terminal-line .prompt { color: var(--accent); }
+.terminal-line .cmd { color: var(--text); font-weight: 500; }
 .terminal-line .output { color: var(--text-secondary); }
-.terminal-line .output-green { color: var(--accent-green); }
-.terminal-line .output-blue { color: var(--accent-blue); }
-.terminal-line .output-purple { color: var(--accent-purple); }
-.terminal-line .output-orange { color: var(--accent-orange); }
-.terminal-line .dim { color: var(--text-muted); }
-.terminal-cursor { display: inline-block; width: 8px; height: 16px; background: var(--accent-green); animation: blink 1s step-end infinite; vertical-align: text-bottom; margin-left: 2px; }
+.terminal-line .output-green { color: #34c759; }
+.terminal-line .output-blue { color: var(--accent); }
+.terminal-line .output-purple { color: #af52de; }
+.terminal-line .output-orange { color: #ff9f0a; }
+.terminal-line .dim { color: var(--text-tertiary); }
+.terminal-cursor { display: inline-block; width: 8px; height: 15px; background: var(--accent); animation: blink 1s step-end infinite; vertical-align: text-bottom; margin-left: 2px; border-radius: 1px; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-@keyframes term-fade-in { to { opacity: 1; } }
 
 /* Section headers */
-.section-label { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; }
-.section-title { font-family: 'JetBrains Mono', monospace; font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 700; letter-spacing: -0.02em; margin-bottom: 16px; }
-.section-desc { font-size: 1.05rem; color: var(--text-secondary); max-width: 600px; line-height: 1.7; }
+.section-label { font-family: var(--font); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 10px; }
+.section-title { font-family: var(--font); font-size: clamp(1.8rem, 3.5vw, 2.5rem); font-weight: 700; letter-spacing: -0.025em; margin-bottom: 14px; }
+.section-desc { font-size: 1.05rem; color: var(--text-secondary); max-width: 620px; line-height: 1.65; }
 
 /* Features */
-.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px; }
-.feature-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 28px; transition: all 0.3s; position: relative; overflow: hidden; }
-.feature-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; opacity: 0; transition: opacity 0.3s; }
-.feature-card:hover::before { opacity: 1; }
-.feature-card:nth-child(1)::before { background: var(--accent-green); }
-.feature-card:nth-child(2)::before { background: var(--accent-blue); }
-.feature-card:nth-child(3)::before { background: var(--accent-purple); }
-.feature-card:nth-child(4)::before { background: var(--accent-orange); }
-.feature-card:nth-child(5)::before { background: var(--accent-cyan); }
-.feature-card:nth-child(6)::before { background: var(--accent-green); }
-.feature-card:hover { background: var(--bg-card-hover); border-color: var(--border-active); transform: translateY(-2px); }
-.feature-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; font-size: 1.15rem; border: 1px solid var(--border-color); }
-.feature-card:nth-child(1) .feature-icon { background: rgba(0,255,65,0.06); color: var(--accent-green); }
-.feature-card:nth-child(2) .feature-icon { background: rgba(56,189,248,0.06); color: var(--accent-blue); }
-.feature-card:nth-child(3) .feature-icon { background: rgba(167,139,250,0.06); color: var(--accent-purple); }
-.feature-card:nth-child(4) .feature-icon { background: rgba(251,146,60,0.06); color: var(--accent-orange); }
-.feature-card:nth-child(5) .feature-icon { background: rgba(34,211,238,0.06); color: var(--accent-cyan); }
-.feature-card:nth-child(6) .feature-icon { background: rgba(0,255,65,0.06); color: var(--accent-green); }
-.feature-card h3 { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
-.feature-card p { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; }
-.feature-card .feature-tags { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
-.feature-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-muted); }
+.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
+.feature-card { background: var(--card-bg); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 28px 28px 24px; transition: all 0.3s; box-shadow: var(--card-shadow); }
+.feature-card:hover { background: var(--card-hover); border-color: var(--card-border-hover); transform: translateY(-3px); box-shadow: var(--card-shadow-hover); }
+.feature-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 15px; }
+.feature-icon svg, .hl-icon svg { width: 20px; height: 20px; flex-shrink: 0; }
+.feature-card:nth-child(1) .feature-icon { background: rgba(0,113,227,0.08); color: var(--accent); }
+.feature-card:nth-child(2) .feature-icon { background: rgba(52,199,89,0.08); color: #34c759; }
+.feature-card:nth-child(3) .feature-icon { background: rgba(175,82,222,0.08); color: #af52de; }
+.feature-card:nth-child(4) .feature-icon { background: rgba(255,149,0,0.08); color: #ff9500; }
+.feature-card:nth-child(5) .feature-icon { background: rgba(0,199,190,0.08); color: #00c7be; }
+.feature-card:nth-child(6) .feature-icon { background: rgba(0,113,227,0.08); color: var(--accent); }
+.feature-card h3 { font-family: var(--font); font-size: 1rem; font-weight: 650; margin-bottom: 6px; letter-spacing: -0.01em; }
+.feature-card p { font-size: 0.86rem; color: var(--text-secondary); line-height: 1.6; }
+.feature-card .feature-tags { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+.feature-tag { font-family: var(--font); font-size: 0.68rem; font-weight: 500; padding: 3px 10px; border-radius: 6px; background: rgba(0,0,0,0.04); color: var(--text-secondary); }
 
-/* ─── Highlights section ─── */
-#highlights { background: var(--bg-secondary); }
-.highlight-card { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; margin-top: 48px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); overflow: hidden; transition: all 0.3s; }
-.highlight-card:hover { border-color: var(--border-active); box-shadow: 0 8px 40px rgba(0,0,0,0.3); }
-.highlight-card + .highlight-card { margin-top: 24px; }
-.highlight-visual { padding: 32px; display: flex; align-items: center; justify-content: center; min-height: 280px; background: var(--bg-terminal); border-right: 1px solid var(--border-color); position: relative; overflow: hidden; }
-.highlight-visual::after { content: ''; position: absolute; inset: 0; opacity: 0.04; background: radial-gradient(circle at 50% 50%, currentColor, transparent 70%); pointer-events: none; }
-.highlight-visual.agent { color: var(--accent-green); }
-.highlight-visual.todo { color: var(--accent-orange); }
-.highlight-visual.mcp { color: var(--accent-blue); }
-.highlight-visual.memory { color: var(--accent-purple); }
-.highlight-text { padding: 32px 32px 32px 0; }
-.highlight-text .hl-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; font-size: 1.2rem; border: 1px solid var(--border-color); }
-.highlight-text .hl-icon.agent { background: rgba(0,255,65,0.06); color: var(--accent-green); }
-.highlight-text .hl-icon.todo { background: rgba(251,146,60,0.06); color: var(--accent-orange); }
-.highlight-text .hl-icon.mcp { background: rgba(56,189,248,0.06); color: var(--accent-blue); }
-.highlight-text .hl-icon.memory { background: rgba(167,139,250,0.06); color: var(--accent-purple); }
-.highlight-text h3 { font-family: 'JetBrains Mono', monospace; font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; }
-.highlight-text .hl-subtitle { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px; }
+/* Highlights */
+#highlights { background: rgba(0,0,0,0.015); }
+.highlight-card { display: grid; grid-template-columns: 1fr 1fr; gap: 0; align-items: center; margin-top: 40px; background: var(--card-bg); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); border: 1px solid var(--card-border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--card-shadow); transition: all 0.3s; }
+.highlight-card:hover { border-color: var(--card-border-hover); box-shadow: var(--card-shadow-hover); }
+.highlight-card + .highlight-card { margin-top: 22px; }
+.highlight-visual { padding: 36px 28px; display: flex; align-items: center; justify-content: center; min-height: 280px; background: transparent; position: relative; }
+.highlight-visual.agent { color: var(--accent); }
+.highlight-visual.todo { color: #ff9500; }
+.highlight-visual.mcp { color: #af52de; }
+.highlight-visual.memory { color: var(--accent); }
+.highlight-text { padding: 36px 36px 36px 0; }
+.highlight-text .hl-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+.highlight-text .hl-icon.agent { background: rgba(0,113,227,0.08); color: var(--accent); }
+.highlight-text .hl-icon.todo { background: rgba(255,149,0,0.08); color: #ff9500; }
+.highlight-text .hl-icon.mcp { background: rgba(175,82,222,0.08); color: #af52de; }
+.highlight-text .hl-icon.memory { background: rgba(0,113,227,0.08); color: var(--accent); }
+.highlight-text .hl-icon.safety { background: rgba(0,199,190,0.08); color: #00c7be; }
+.highlight-text h3 { font-family: var(--font); font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.015em; }
+.highlight-text .hl-subtitle { font-size: 0.86rem; color: var(--text-tertiary); margin-bottom: 15px; }
 .highlight-text .hl-desc { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.7; margin-bottom: 16px; }
-.highlight-text .hl-features { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-.highlight-text .hl-features li { font-size: 0.82rem; color: var(--text-secondary); padding-left: 18px; position: relative; }
-.highlight-text .hl-features li::before { content: '>'; position: absolute; left: 0; color: var(--accent-green); font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+.highlight-text .hl-features { list-style: none; display: flex; flex-direction: column; gap: 9px; margin-bottom: 16px; }
+.highlight-text .hl-features li { font-size: 0.84rem; color: var(--text-secondary); padding-left: 18px; position: relative; line-height: 1.55; }
+.highlight-text .hl-features li::before { content: ''; position: absolute; left: 0; top: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: 0.45; }
 .highlight-text .hl-tags { display: flex; gap: 6px; flex-wrap: wrap; }
 
-/* ASCII diagram in visual */
-.ascii-diagram { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; line-height: 1.35; white-space: pre; color: var(--text-secondary); user-select: none; }
-.ascii-diagram .fg { color: var(--accent-green); }
-.ascii-diagram .fb { color: var(--accent-blue); }
-.ascii-diagram .fp { color: var(--accent-purple); }
-.ascii-diagram .fo { color: var(--accent-orange); }
-.ascii-diagram .fc { color: var(--accent-cyan); }
-.ascii-diagram .fr { color: var(--accent-rose); }
+/* ASCII diagram */
+.ascii-diagram { font-family: var(--font-mono); font-size: 0.68rem; line-height: 1.4; white-space: pre; color: var(--text-secondary); user-select: none; }
+.ascii-diagram .fg { color: var(--accent); }
+.ascii-diagram .fb { color: #0071e3; }
+.ascii-diagram .fp { color: #af52de; }
+.ascii-diagram .fo { color: #ff9500; }
+.ascii-diagram .fc { color: #00c7be; }
+.ascii-diagram .fr { color: #ee5a5f; }
 .ascii-diagram .b { font-weight: 700; }
 
 /* Stats bar */
-.stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border-color); border-radius: var(--radius); overflow: hidden; margin-top: 48px; }
-.stat-item { background: var(--bg-card); padding: 24px; text-align: center; }
-.stat-number { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; font-weight: 700; color: var(--accent-green); margin-bottom: 4px; }
-.stat-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
+.stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 40px; }
+.stat-item { background: var(--card-bg); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 22px; text-align: center; box-shadow: var(--card-shadow); }
+.stat-number { font-family: var(--font); font-size: 1.8rem; font-weight: 700; color: var(--accent); margin-bottom: 2px; letter-spacing: -0.02em; }
+.stat-label { font-size: 0.8rem; color: var(--text-tertiary); font-weight: 500; }
 
 /* Quick Start */
-#quickstart { background: var(--bg-secondary); }
-.quickstart-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; align-items: start; }
-.code-block { background: var(--bg-terminal); border: 1px solid var(--border-color); border-radius: var(--radius); overflow: hidden; }
-.code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border-color); background: rgba(255,255,255,0.015); }
-.code-block-label { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-muted); font-weight: 500; }
-.code-block-copy { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: all 0.2s; }
-.code-block-copy:hover { color: var(--accent-green); background: var(--glow-green); }
-.code-block-body { padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; line-height: 1.8; color: var(--text-secondary); overflow-x: auto; }
-.code-block-body .comment { color: var(--text-muted); font-style: italic; }
-.code-block-body .keyword { color: var(--accent-purple); }
-.code-block-body .string { color: var(--accent-orange); }
-.code-block-body .fn { color: var(--accent-blue); }
-.quickstart-info { display: flex; flex-direction: column; gap: 16px; }
-.quickstart-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px 24px; transition: all 0.2s; }
-.quickstart-card:hover { border-color: var(--border-active); }
-.quickstart-card .qs-label { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px; }
-.quickstart-card .qs-title { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; }
+#quickstart { background: rgba(0,0,0,0.015); }
+.quickstart-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 36px; align-items: start; }
+.code-block { background: var(--card-bg); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); border: 1px solid var(--card-border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--card-shadow); }
+.code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid var(--divider); }
+.code-block-label { font-family: var(--font); font-size: 0.72rem; color: var(--text-tertiary); font-weight: 500; }
+.code-block-copy { font-family: var(--font); font-size: 0.72rem; color: var(--text-tertiary); background: none; border: none; cursor: pointer; padding: 3px 10px; border-radius: 6px; transition: all 0.2s; font-weight: 500; }
+.code-block-copy:hover { color: var(--accent); background: var(--accent-bg); }
+.code-block-body { padding: 18px; font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.85; color: var(--text-secondary); overflow-x: auto; }
+.code-block-body .comment { color: var(--text-tertiary); }
+.code-block-body .keyword { color: #af52de; }
+.code-block-body .string { color: #ff9500; }
+.code-block-body .fn { color: var(--accent); }
+.quickstart-info { display: flex; flex-direction: column; gap: 14px; }
+.quickstart-card { background: var(--card-bg); backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--card-shadow); transition: all 0.2s; }
+.quickstart-card:hover { border-color: var(--card-border-hover); }
+.quickstart-card .qs-label { font-family: var(--font); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 6px; }
+.quickstart-card .qs-title { font-family: var(--font); font-size: 0.95rem; font-weight: 650; margin-bottom: 4px; }
 .quickstart-card .qs-desc { font-size: 0.85rem; color: var(--text-secondary); }
-.quickstart-card .qs-cmd { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--accent-green); margin-top: 8px; padding: 6px 12px; background: rgba(0,255,65,0.03); border-radius: 4px; display: inline-block; }
-.commands-showcase { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 32px; }
-.cmd-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; transition: all 0.2s; }
-.cmd-item:hover { border-color: var(--border-active); background: var(--bg-card-hover); }
-.cmd-key { padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); color: var(--accent-green); font-weight: 600; white-space: nowrap; }
+.quickstart-card .qs-cmd { font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent); margin-top: 8px; padding: 6px 12px; background: rgba(0,113,227,0.05); border-radius: 6px; display: inline-block; font-weight: 500; }
+.commands-showcase { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 28px; }
+.cmd-item { display: flex; align-items: center; gap: 10px; padding: 10px 15px; background: rgba(0,0,0,0.02); border: 1px solid var(--divider); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 0.8rem; transition: all 0.2s; }
+.cmd-item:hover { background: rgba(255,255,255,0.6); border-color: var(--card-border-hover); }
+.cmd-key { padding: 2px 8px; border-radius: 5px; background: var(--accent-bg); color: var(--accent); font-weight: 600; white-space: nowrap; }
 .cmd-desc { color: var(--text-secondary); }
 
 /* Footer */
-footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
-.footer-inner { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
-.footer-copy { font-size: 0.8rem; color: var(--text-muted); }
+footer { border-top: 1px solid var(--divider); padding: 36px 24px; }
+.footer-inner { max-width: 1060px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+.footer-copy { font-size: 0.82rem; color: var(--text-tertiary); }
 .footer-links { display: flex; gap: 20px; }
-.footer-links a { font-size: 0.8rem; color: var(--text-muted); text-decoration: none; transition: color 0.2s; }
+.footer-links a { font-size: 0.82rem; color: var(--text-tertiary); text-decoration: none; transition: color 0.2s; }
 .footer-links a:hover { color: var(--text-secondary); }
 
 /* Responsive */
 @media (max-width: 900px) {
   .hero .section-inner, .highlight-card, .quickstart-layout { grid-template-columns: 1fr; }
-  .hero h1 { font-size: 1.8rem; }
+  .hero h1 { font-size: 1.9rem; }
   .features-grid { grid-template-columns: repeat(2, 1fr); }
-  .highlight-visual { border-right: none; border-bottom: 1px solid var(--border-color); min-height: 180px; }
-  .highlight-text { padding: 24px; }
+  .highlight-visual { border-bottom: 1px solid var(--divider); min-height: 180px; }
+  .highlight-text { padding: 28px; }
 }
 @media (max-width: 640px) {
   section { padding: 60px 16px; }
@@ -281,10 +225,6 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
 </head>
 <body>
 
-<div class="glow-spot glow-spot--green"></div>
-<div class="glow-spot glow-spot--blue"></div>
-<div class="grid-bg"></div>
-
 <nav id="navbar">
   <div class="nav-inner">
     <a href="#" class="nav-logo"><span class="logo-dot"></span>CodeAuto</a>
@@ -296,10 +236,6 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
         <button class="lang-btn active" data-lang="zh" onclick="switchLang('zh')">Cn</button>
         <button class="lang-btn" data-lang="en" onclick="switchLang('en')">EN</button>
       </div>
-      <button class="theme-toggle" onclick="switchTheme()" title="Toggle theme">
-        <svg class="moon-icon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-        <svg class="sun-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-      </button>
       <a href="https://github.com/Yulin-Bi/CodeAuto" target="_blank" rel="noopener" class="btn-gh">
         <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         <span data-i18n="nav.github">GitHub</span>
@@ -359,46 +295,46 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
     <p class="section-desc" data-i18n="features.desc">CodeAuto packs a full-featured agent runtime into a single JAR -- from interactive TUI to automated tool orchestration.</p>
     <div class="features-grid">
       <div class="feature-card">
-        <div class="feature-icon">T</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="m6 9 3 3-3 3"/><line x1="12" y1="15" x2="18" y2="15"/></svg></div>
         <h3 data-i18n="features.card1.title">CLI + TUI</h3>
-        <p data-i18n="features.card1.desc">Dual-mode interface -- full-screen TUI with JLine 3 or classic CLI. Markdown-to-ANSI rendering, CJK support, mouse scroll, streaming output, and tab completion.</p>
+        <p data-i18n="features.card1.desc">Dual-mode interface -- full-screen TUI with JLine 3 or classic CLI. Markdown-to-ANSI rendering, CJK support, mouse scroll, streaming output, Todo sidebar (120+ cols), progress trace, and tab completion.</p>
         <div class="feature-tags"><span class="feature-tag">JLine 3</span><span class="feature-tag">Markdown</span><span class="feature-tag">Streaming</span></div>
       </div>
       <div class="feature-card">
-        <div class="feature-icon">*</div>
-        <h3 data-i18n="features.card2.title">23 Built-in Tools</h3>
-        <p data-i18n="features.card2.desc">File ops, command execution, web fetch/search, memory management, Todo tasks, MCP helpers -- extensible via ToolRegistry and Skills.</p>
-        <div class="feature-tags"><span class="feature-tag">ToolRegistry</span><span class="feature-tag">Skills</span><span class="feature-tag">Todo</span></div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+        <h3 data-i18n="features.card2.title">30 Tool Functions</h3>
+        <p data-i18n="features.card2.desc">File ops, command execution, web fetch/search, memory management, Todo tasks, undo, git checkpoints, MCP helpers -- extensible via ToolRegistry and Skills.</p>
+        <div class="feature-tags"><span class="feature-tag">ToolRegistry</span><span class="feature-tag">Skills</span><span class="feature-tag">Todo</span><span class="feature-tag">Undo</span></div>
       </div>
       <div class="feature-card">
-        <div class="feature-icon">@</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="10"/><line x1="12" y1="7" x2="19" y2="10"/><line x1="5" y1="14" x2="12" y2="17"/><line x1="19" y1="14" x2="12" y2="17"/></svg></div>
         <h3 data-i18n="features.card3.title">MCP + Skills</h3>
         <p data-i18n="features.card3.desc">Connect external tools via stdio or Streamable HTTP MCP. Skills with session-level injection keep AI on track throughout the session.</p>
         <div class="feature-tags"><span class="feature-tag">stdio</span><span class="feature-tag">HTTP</span><span class="feature-tag">Session</span></div>
       </div>
       <div class="feature-card">
-        <div class="feature-icon">!</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
         <h3 data-i18n="features.card4.title">Permission Control</h3>
         <p data-i18n="features.card4.desc">Granular allow/deny for commands and file edits. Unified diff review before write. Wildcard-based persistent rules with allow-once/always/turn.</p>
         <div class="feature-tags"><span class="feature-tag">Diff Review</span><span class="feature-tag">Wildcards</span><span class="feature-tag">TUI Modal</span></div>
       </div>
       <div class="feature-card">
-        <div class="feature-icon">~</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/><path d="m16 2 2 4-4 2"/></svg></div>
         <h3 data-i18n="features.card5.title">Session Management</h3>
         <p data-i18n="features.card5.desc">Workspace-isolated sessions with save/resume/fork. Auto context compression with artifact persistence. Micro-compaction clears stale tool results.</p>
         <div class="feature-tags"><span class="feature-tag">Save/Resume</span><span class="feature-tag">Compact</span><span class="feature-tag">Artifact</span></div>
       </div>
       <div class="feature-card">
-        <div class="feature-icon">#</div>
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
         <h3 data-i18n="features.card6.title">Persistent Memory</h3>
-        <p data-i18n="features.card6.desc">AI-driven cross-session memory with typed entries. Auto staleness detection, contradiction checking, and system-prompt injection.</p>
-        <div class="feature-tags"><span class="feature-tag">Frontmatter MD</span><span class="feature-tag">Stale Mark</span><span class="feature-tag">AI-Driven</span></div>
+        <p data-i18n="features.card6.desc">AI-driven cross-session memory via user profile + multi-level CLAUDE.md. ACE Bullets for structured experience with on-demand retrieval.</p>
+        <div class="feature-tags"><span class="feature-tag">User Profile</span><span class="feature-tag">CLAUDE.md</span><span class="feature-tag">ACE Bullet</span></div>
       </div>
     </div>
     <div class="stats-bar">
-      <div class="stat-item"><div class="stat-number">23</div><div class="stat-label" data-i18n="stats.tools">Built-in Tools</div></div>
-      <div class="stat-item"><div class="stat-number">111</div><div class="stat-label" data-i18n="stats.tests">Tests Passing</div></div>
-      <div class="stat-item"><div class="stat-number">6</div><div class="stat-label" data-i18n="stats.models">Core Systems</div></div>
+      <div class="stat-item"><div class="stat-number">30</div><div class="stat-label" data-i18n="stats.tools">Tool Functions</div></div>
+      <div class="stat-item"><div class="stat-number">215</div><div class="stat-label" data-i18n="stats.tests">Tests Passing</div></div>
+      <div class="stat-item"><div class="stat-number">8</div><div class="stat-label" data-i18n="stats.models">Core Systems</div></div>
       <div class="stat-item"><div class="stat-number">2</div><div class="stat-label" data-i18n="stats.deps">MCP Protocols</div></div>
     </div>
   </div>
@@ -408,8 +344,8 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
 <section id="highlights">
   <div class="section-inner">
     <div class="section-label" data-i18n="highlights.label">Technical Highlights</div>
-    <h2 class="section-title" data-i18n="highlights.title">Four Pillars of the Agent Runtime</h2>
-    <p class="section-desc" data-i18n="highlights.desc">The core systems that make CodeAuto a capable, safe, and extensible coding agent.</p>
+    <h2 class="section-title" data-i18n="highlights.title">Five Pillars of the Agent Runtime</h2>
+    <p class="section-desc" data-i18n="highlights.desc">The core systems that make CodeAuto a capable, safe, and extensible coding agent -- Agent Loop, TodoList, MCP/Skills, Multi-Layer Memory, and Safety Net.</p>
 
     <!-- Agent Loop -->
     <div class="highlight-card">
@@ -438,7 +374,7 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
    <span class="fr">  cancel() at any checkpoint</span></div>
       </div>
       <div class="highlight-text">
-        <div class="hl-icon agent">L</div>
+        <div class="hl-icon agent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M2.5 22v-6h6"/><path d="M2 11.5a10 10 0 0 1 18.8-4.3"/><path d="M22 12.5a10 10 0 0 1-18.8 4.2"/></svg></div>
         <h3 data-i18n="hl.agent.title">Agent Loop -- The Execution Engine</h3>
         <div class="hl-subtitle" data-i18n="hl.agent.subtitle">Multi-step tool calling with automatic context management</div>
         <p class="hl-desc" data-i18n="hl.agent.desc">The Agent Loop drives every conversation turn: sending messages to the model, parsing tool calls, executing them, and feeding results back -- up to 128 steps per turn. Streaming SSE deltas update the TUI in real time. Three-layer token management keeps context under control.</p>
@@ -474,7 +410,7 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
    <span class="dim">       |undo|delete|clear</span></div>
       </div>
       <div class="highlight-text">
-        <div class="hl-icon todo">=</div>
+        <div class="hl-icon todo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg></div>
         <h3 data-i18n="hl.todo.title">TodoList -- Multi-Step Task Tracking</h3>
         <div class="hl-subtitle" data-i18n="hl.todo.subtitle">AI and user collaboratively track complex task progress</div>
         <p class="hl-desc" data-i18n="hl.todo.desc">When the user gives a 3+ step task, the AI breaks it down with todo_create. The TUI header shows live progress (3/7). The AI updates status as it works, and users can manage tasks directly via /todo commands.</p>
@@ -512,7 +448,7 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
    <span class="fc">    +-- inject each turn [loaded]</span></div>
       </div>
       <div class="highlight-text">
-        <div class="hl-icon mcp">+</div>
+        <div class="hl-icon mcp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="8" height="8" rx="1.5"/><rect x="14" y="2" width="8" height="8" rx="1.5"/><rect x="2" y="14" width="8" height="8" rx="1.5"/><rect x="14" y="14" width="8" height="8" rx="1.5"/><line x1="10" y1="10" x2="14" y2="14"/><line x1="14" y1="6" x2="10" y2="18"/></svg></div>
         <h3 data-i18n="hl.mcp.title">MCP + Skills -- Open Extension System</h3>
         <div class="hl-subtitle" data-i18n="hl.mcp.subtitle">Connect any tool, embed any domain knowledge</div>
         <p class="hl-desc" data-i18n="hl.mcp.desc">MCP brings external tools into the agent: connect databases, APIs, or custom servers via stdio or HTTP. Skills embed domain-specific instructions that persist through the entire session via system prompt injection.</p>
@@ -537,32 +473,73 @@ footer { border-top: 1px solid var(--border-color); padding: 40px 24px; }
    <span class="dim">    InstructionLoader</span>
    <span class="dim">    + CLAUDE.md x4 levels</span>
    <span class="dim">    + SessionSkills loaded</span>
-   <span class="dim">    + Memory entries (top 5)</span>
-   <span class="fp">  L2: Persistent Memory</span>
-   <span class="dim">    MemoryManager</span>
-   <span class="dim">    ~/.codeauto/memory/*.md</span>
-   <span class="dim">    frontmatter + stale mark</span>
+   <span class="dim">    + User Profile (full)</span>
+   <span class="fp">  L2: CLAUDE.md Files</span>
+   <span class="dim">    User / CodeAuto / Project</span>
+   <span class="dim">    + CLAUDE.local.md</span>
+   <span class="dim">    AI-driven save_memory</span>
    <span class="fp">  L3: Context Compression</span>
    <span class="dim">    CompactService</span>
    <span class="dim">    .codeauto/compacted/*.md</span>
    <span class="dim">    summary + full artifact</span>
-   <span class="fp">  L4: Micro-Compact</span>
+   <span class="fp">  L4: Micro-Compact + Bullets</span>
    <span class="dim">    clear stale tool results</span>
-   <span class="dim">    keep last 3 recent</span></div>
+   <span class="dim">    ACE Bullets on-demand grep</span></div>
       </div>
       <div class="highlight-text">
-        <div class="hl-icon memory">#</div>
+        <div class="hl-icon memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/></svg></div>
         <h3 data-i18n="hl.memory.title">Multi-Layer Memory & Dynamic Context Compression</h3>
         <div class="hl-subtitle" data-i18n="hl.memory.subtitle">From persistent cross-session memory to real-time token management</div>
-        <p class="hl-desc" data-i18n="hl.memory.desc">Four layers of memory work together: L1 injects CLAUDE.md instructions + loaded skills + relevant memories into every system prompt. L2 persists AI-driven memories as frontmatter Markdown with contradiction detection. L3 compresses long conversations with full artifact persistence. L4 micro-compacts stale tool results at 50% utilization.</p>
+        <p class="hl-desc" data-i18n="hl.memory.desc">Four layers of memory work together: L1 injects CLAUDE.md instructions + user profile + loaded skills into every system prompt. L2 persists AI-driven memories to multi-level CLAUDE.md files with ACE Bullet structured experience. L3 compresses long conversations with full artifact persistence. L4 micro-compacts stale tool results at 50% utilization.</p>
         <ul class="hl-features">
           <li data-i18n="hl.memory.f1">InstructionLoader: 4-level CLAUDE.md chain (user > codeauto > project > project-local), later wins</li>
-          <li data-i18n="hl.memory.f2">MemoryManager: frontmatter Markdown files, typed entries, relevance scoring (project +8, global +1, term +2)</li>
-          <li data-i18n="hl.memory.f3">AI-driven save: system prompt guides AI to check contradictions before saving, stale after 24h</li>
+          <li data-i18n="hl.memory.f2">MemoryManager: user profile at ~/.codeauto/memory/user-profile.md, project facts written to multi-level CLAUDE.md</li>
+          <li data-i18n="hl.memory.f3">AI-driven save: system prompt guides AI to save memories via save_memory tool, check contradictions before saving</li>
           <li data-i18n="hl.memory.f4">CompactService: saves full pre-compaction context to .codeauto/compacted/compact-*.md with pointer in summary</li>
           <li data-i18n="hl.memory.f5">Token budget: 200K context window, local estimation as fallback, provider usage priority</li>
         </ul>
         <div class="hl-tags"><span class="feature-tag">4-Layer</span><span class="feature-tag">ACE Bullet</span><span class="feature-tag">Reflexion</span><span class="feature-tag">200K Window</span><span class="feature-tag">Artifact Save</span></div>
+      </div>
+    </div>
+
+    <!-- Safety Net: Undo + Git Checkpoint + Background Tasks -->
+    <div class="highlight-card">
+      <div class="highlight-visual agent">
+        <div class="ascii-diagram">
+   <span class="fg b">  Safety Net</span>
+   <span class="dim">  ====================</span>
+   <span class="fg">  Undo System</span>
+   <span class="dim">    |</span>
+   <span class="fg">    +-- undo (single file)</span>
+   <span class="fg">    +-- undo_list (history)</span>
+   <span class="fg">    +-- undo_all (batch)</span>
+   <span class="dim">  ====================</span>
+   <span class="fb">  Git Checkpoint</span>
+   <span class="dim">    |</span>
+   <span class="fb">    +-- checkpoint_list</span>
+   <span class="fb">    +-- checkpoint_restore</span>
+   <span class="dim">    |</span>
+   <span class="fb">    +-- auto pre-turn create</span>
+   <span class="dim">  ====================</span>
+   <span class="fo">  Background Tasks</span>
+   <span class="dim">    |</span>
+   <span class="fo">    +-- spawn / monitor</span>
+   <span class="fo">    +-- health check (HTTP/TCP)</span>
+   <span class="fo">    +-- restart / await ready</span></div>
+      </div>
+      <div class="highlight-text">
+        <div class="hl-icon safety"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M3 10h18"/><path d="m9 15 2 2 4-5"/></svg></div>
+        <h3 data-i18n="hl.safety.title">Safety Net -- Undo, Checkpoints & Background Tasks</h3>
+        <div class="hl-subtitle" data-i18n="hl.safety.subtitle">Confidently let AI modify your codebase with a full safety net</div>
+        <p class="hl-desc" data-i18n="hl.safety.desc">Every AI action is reversible: file-level undo tracks every modification, Git checkpoints are created before each turn, and background tasks let AI manage long-running services with health monitoring.</p>
+        <ul class="hl-features">
+          <li data-i18n="hl.safety.f1">Undo system tracks every file write/edit/patch, supporting single-file undo, batch undo_all, and history via undo_list</li>
+          <li data-i18n="hl.safety.f2">Git checkpoints auto-created before each turn (best-effort); checkpoint_list + checkpoint_restore for full repo rollback</li>
+          <li data-i18n="hl.safety.f3">Background task management: spawn processes, health-check via HTTP URL or TCP port, restart with validation</li>
+          <li data-i18n="hl.safety.f4">Background tasks persisted to ~/.codeauto/managed-apps.json, survive session restarts</li>
+          <li data-i18n="hl.safety.f5">TUI footer shows running background task count; /undo and /checkpoint slash commands for quick access</li>
+        </ul>
+        <div class="hl-tags"><span class="feature-tag">Undo</span><span class="feature-tag">Git Checkpoint</span><span class="feature-tag">Background Tasks</span><span class="feature-tag">Health Check</span></div>
       </div>
     </div>
   </div>
@@ -648,9 +625,9 @@ const I18N = {
     'features.title': '用 AI 构建，所需一切',
     'features.desc': 'CodeAuto 将一个全功能代理运行时打包在单一 JAR 中 —— 从交互式 TUI 到自动化工具编排，一应俱全。',
     'features.card1.title': 'CLI + TUI',
-    'features.card1.desc': '双模界面 —— 基于 JLine 3 的全屏 TUI 或经典 CLI。支持 Markdown 转 ANSI 渲染、CJK 文字、鼠标滚轮、流式输出和 Tab 补全。',
-    'features.card2.title': '23 个内置工具',
-    'features.card2.desc': '文件操作、命令执行、网络抓取/搜索、记忆管理、Todo 任务、MCP 辅助 —— 通过 ToolRegistry 和 Skills 可扩展。',
+    'features.card1.desc': '双模界面 —— 基于 JLine 3 的全屏 TUI 或经典 CLI。支持 Markdown 转 ANSI 渲染、CJK 文字、鼠标滚轮、流式输出、Todo 侧边栏（宽屏）、进度追踪和 Tab 补全。',
+    'features.card2.title': '30 个工具函数',
+    'features.card2.desc': '文件操作、命令执行、网络抓取/搜索、记忆管理、Todo 任务、撤销、Git 检查点、MCP 辅助 —— 通过 ToolRegistry 和 Skills 可扩展。',
     'features.card3.title': 'MCP + Skills',
     'features.card3.desc': '通过 stdio 或 Streamable HTTP MCP 连接外部工具。Skills 会话级注入确保 AI 在整个会话中遵循领域指令。',
     'features.card4.title': '权限控制',
@@ -658,14 +635,14 @@ const I18N = {
     'features.card5.title': '会话管理',
     'features.card5.desc': '基于工作空间隔离的会话，支持保存/恢复/分叉。自动上下文压缩并落盘完整产物。微压缩清理过期工具结果。',
     'features.card6.title': '持久化记忆',
-    'features.card6.desc': 'AI 驱动的跨会话记忆，支持分类条目。自动过期检测、矛盾检查和 system prompt 注入。保存前 AI 自动检查重复。',
-    'stats.tools': '内置工具',
+    'features.card6.desc': 'AI 驱动的跨会话记忆，基于用户画像 + 多级 CLAUDE.md。ACE Bullet 结构化经验支持按需检索。',
+    'stats.tools': '工具函数',
     'stats.tests': '测试通过',
     'stats.models': '核心系统',
     'stats.deps': 'MCP 协议',
     'highlights.label': '技术亮点',
-    'highlights.title': '四大核心系统支撑 Agent 运行时',
-    'highlights.desc': 'Agent Loop、TodoList、MCP/Skills、多层记忆与动态上下文压缩 —— 构成了 CodeAuto 的能力、安全性和可扩展性基础。',
+    'highlights.title': '五大核心系统支撑 Agent 运行时',
+    'highlights.desc': 'Agent Loop、TodoList、MCP/Skills、多层记忆与动态上下文压缩、安全网（撤销+检查点+后台任务）—— 构成了 CodeAuto 的能力、安全性和可扩展性基础。',
     'hl.agent.title': 'Agent Loop —— 执行引擎',
     'hl.agent.subtitle': '多步工具调用 + 自动上下文管理',
     'hl.agent.desc': 'Agent Loop 驱动每轮对话：将消息发送到模型，解析工具调用，执行工具，结果回填 —— 最多 128 步。SSE 流式输出实时更新 TUI，支持 Extended Thinking 思考内容流式显示。每轮结束后自动触发 Reflexion 自反思，检测失败信号并保存结构化教训。',
@@ -691,12 +668,20 @@ const I18N = {
     'hl.mcp.f5': 'Skill 索引在 system prompt 中展示名称+描述，减少不必要的 list_skills',
     'hl.memory.title': '多层记忆与动态上下文压缩',
     'hl.memory.subtitle': '从跨会话持久记忆到实时 token 管理',
-    'hl.memory.desc': '四层记忆协同工作：L1 注入 CLAUDE.md 指令+已加载 skills+相关记忆到每轮 system prompt。L2 将 AI 驱动的记忆持久化为 frontmatter Markdown 并自动矛盾检测，包含 ACE Bullet 结构化经验记忆（带 helpful/harmful 计数器）。L3 压缩长对话并将完整产物落盘。L4 在 50% 利用率时微压缩过期工具结果。Past experience 区域引导模型按需检索 bullets 和 reflections。',
+    'hl.memory.desc': '四层记忆协同工作：L1 注入 CLAUDE.md 指令+用户画像+已加载 skills 到每轮 system prompt。L2 将 AI 驱动的记忆持久化到各级 CLAUDE.md 文件中，包含 ACE Bullet 结构化经验（带 helpful/harmful 计数器）。L3 压缩长对话并将完整产物落盘。L4 在 50% 利用率时微压缩过期工具结果。Past experience 区域引导模型按需检索 bullets 和 reflections。',
     'hl.memory.f1': 'InstructionLoader: 4 级 CLAUDE.md 加载链（user > codeauto > project > project-local），后者优先',
-    'hl.memory.f2': 'MemoryManager: frontmatter Markdown 文件，分类条目，相关性评分（project +8, global +1, term +2）',
+    'hl.memory.f2': 'MemoryManager: 用户画像存储于 ~/.codeauto/memory/user-profile.md，项目记忆写入各级 CLAUDE.md',
     'hl.memory.f3': 'ACE Bullet 结构化经验: Reflexion 反思自动创建带 helpful/harmful 计数器的 bullet，Jaccard 去重，按需 grep 检索',
     'hl.memory.f4': 'CompactService: 压缩时保存完整上下文至 .codeauto/compacted/compact-*.md，摘要含文件指针',
     'hl.memory.f5': 'Token 预算: 200K 上下文窗口，本地估算作为 fallback，provider usage 优先使用',
+    'hl.safety.title': '安全网 —— 撤销、检查点与后台任务',
+    'hl.safety.subtitle': '放心让 AI 修改代码库，层层安全网保驾护航',
+    'hl.safety.desc': '每一步 AI 操作均可逆：文件级撤销追踪每次修改，Git 检查点在每轮对话前自动创建，后台任务支持 AI 管理长期运行的服务并监控健康状态。',
+    'hl.safety.f1': '撤销系统追踪每次文件写入/编辑/补丁操作，支持单文件撤销、批量 undo_all、历史记录 undo_list',
+    'hl.safety.f2': 'Git 检查点每轮对话前自动创建（best-effort）；checkpoint_list + checkpoint_restore 支持完整仓库回滚',
+    'hl.safety.f3': '后台任务管理：启动进程，通过 HTTP URL 或 TCP 端口健康检查，支持带验证的重启',
+    'hl.safety.f4': '后台任务持久化至 ~/.codeauto/managed-apps.json，跨会话保留',
+    'hl.safety.f5': 'TUI footer 显示运行中的后台任务数量；/undo 和 /checkpoint 快捷命令',
     'quickstart.label': '快速开始',
     'quickstart.title': '秒级启动',
     'quickstart.desc': '只需 Java 21 + Maven。从离线 Mock 模式起步（无需 API Key），或接入你自己的模型。将 bin/ 加入 PATH 即可随处运行。',
@@ -732,9 +717,9 @@ const I18N = {
     'features.title': 'Everything You Need to Build with AI',
     'features.desc': 'CodeAuto packs a full-featured agent runtime into a single JAR -- from interactive TUI to automated tool orchestration.',
     'features.card1.title': 'CLI + TUI',
-    'features.card1.desc': 'Dual-mode interface -- full-screen TUI with JLine 3 or classic CLI. Markdown-to-ANSI rendering, CJK support, mouse scroll, streaming output, and tab completion.',
-    'features.card2.title': '23 Built-in Tools',
-    'features.card2.desc': 'File ops, command execution, web fetch/search, memory management, Todo tasks, MCP helpers -- extensible via ToolRegistry and Skills.',
+    'features.card1.desc': 'Dual-mode interface -- full-screen TUI with JLine 3 or classic CLI. Markdown-to-ANSI rendering, CJK support, mouse scroll, streaming output, Todo sidebar (120+ cols), progress trace, and tab completion.',
+    'features.card2.title': '30 Tool Functions',
+    'features.card2.desc': 'File ops, command execution, web fetch/search, memory management, Todo tasks, undo, git checkpoints, MCP helpers -- extensible via ToolRegistry and Skills.',
     'features.card3.title': 'MCP + Skills',
     'features.card3.desc': 'Connect external tools via stdio or Streamable HTTP MCP. Skills with session-level injection keep AI on track throughout the session.',
     'features.card4.title': 'Permission Control',
@@ -742,14 +727,14 @@ const I18N = {
     'features.card5.title': 'Session Management',
     'features.card5.desc': 'Workspace-isolated sessions with save/resume/fork. Auto context compression with artifact persistence. Micro-compaction clears stale tool results.',
     'features.card6.title': 'Persistent Memory',
-    'features.card6.desc': 'AI-driven cross-session memory with typed entries. Auto staleness detection, contradiction checking, and system-prompt injection.',
-    'stats.tools': 'Built-in Tools',
+    'features.card6.desc': 'AI-driven cross-session memory via user profile + multi-level CLAUDE.md. ACE Bullets for structured experience with on-demand retrieval.',
+    'stats.tools': 'Tool Functions',
     'stats.tests': 'Tests Passing',
     'stats.models': 'Core Systems',
     'stats.deps': 'MCP Protocols',
     'highlights.label': 'Technical Highlights',
-    'highlights.title': 'Four Pillars of the Agent Runtime',
-    'highlights.desc': 'Agent Loop, TodoList, MCP/Skills, and Multi-Layer Memory with Dynamic Context Compression form the foundation of CodeAuto\'s capability, safety, and extensibility.',
+    'highlights.title': 'Five Pillars of the Agent Runtime',
+    'highlights.desc': 'Agent Loop, TodoList, MCP/Skills, Multi-Layer Memory with Dynamic Context Compression, and Safety Net (Undo + Checkpoints + Background Tasks) form the foundation of CodeAuto\'s capability, safety, and extensibility.',
     'hl.agent.title': 'Agent Loop -- The Execution Engine',
     'hl.agent.subtitle': 'Multi-step tool calling with automatic context management',
     'hl.agent.desc': 'The Agent Loop drives every conversation turn: sending messages to the model, parsing tool calls, executing them, and feeding results back -- up to 128 steps per turn. Streaming SSE deltas update the TUI in real time, with Extended Thinking content displayed in a dedicated footer area. After each turn, Reflexion auto-detects failure signals and saves structured lessons as ACE Bullets.',
@@ -775,12 +760,20 @@ const I18N = {
     'hl.mcp.f5': 'Skill index shows name + description in system prompt, reducing unnecessary list_skills calls',
     'hl.memory.title': 'Multi-Layer Memory & Dynamic Context Compression',
     'hl.memory.subtitle': 'From persistent cross-session memory to real-time token management',
-    'hl.memory.desc': 'Four layers of memory work together: L1 injects CLAUDE.md instructions + loaded skills + relevant memories into every system prompt. L2 persists AI-driven memories as frontmatter Markdown with ACE Bullet structured experience (helpful/harmful counters) and contradiction detection. L3 compresses long conversations with full artifact persistence. L4 micro-compacts stale tool results at 50% utilization. Past experience section guides model to retrieve bullets and reflections on demand.',
+    'hl.memory.desc': 'Four layers of memory work together: L1 injects CLAUDE.md instructions + user profile + loaded skills into every system prompt. L2 persists AI-driven memories to multi-level CLAUDE.md files with ACE Bullet structured experience (helpful/harmful counters). L3 compresses long conversations with full artifact persistence. L4 micro-compacts stale tool results at 50% utilization. Past experience section guides model to retrieve bullets and reflections on demand.',
     'hl.memory.f1': 'InstructionLoader: 4-level CLAUDE.md chain (user > codeauto > project > project-local), later wins',
-    'hl.memory.f2': 'MemoryManager: frontmatter Markdown files, typed entries, relevance scoring (project +8, global +1, term +2)',
+    'hl.memory.f2': 'MemoryManager: user profile at ~/.codeauto/memory/user-profile.md, project facts written to multi-level CLAUDE.md',
     'hl.memory.f3': 'ACE Bullet structure: Reflexion auto-creates bullets with helpful/harmful counters, Jaccard dedup, on-demand grep retrieval',
     'hl.memory.f4': 'CompactService: saves full pre-compaction context to .codeauto/compacted/compact-*.md with pointer in summary',
     'hl.memory.f5': 'Token budget: 200K context window, local estimation as fallback, provider usage priority',
+    'hl.safety.title': 'Safety Net -- Undo, Checkpoints & Background Tasks',
+    'hl.safety.subtitle': 'Confidently let AI modify your codebase with a full safety net',
+    'hl.safety.desc': 'Every AI action is reversible: file-level undo tracks every modification, Git checkpoints are created before each turn, and background tasks let AI manage long-running services with health monitoring.',
+    'hl.safety.f1': 'Undo system tracks every file write/edit/patch, supporting single-file undo, batch undo_all, and history via undo_list',
+    'hl.safety.f2': 'Git checkpoints auto-created before each turn (best-effort); checkpoint_list + checkpoint_restore for full repo rollback',
+    'hl.safety.f3': 'Background task management: spawn processes, health-check via HTTP URL or TCP port, restart with validation',
+    'hl.safety.f4': 'Background tasks persisted to ~/.codeauto/managed-apps.json, survive session restarts',
+    'hl.safety.f5': 'TUI footer shows running background task count; /undo and /checkpoint slash commands for quick access',
     'quickstart.label': 'Get Started',
     'quickstart.title': 'Running in Seconds',
     'quickstart.desc': 'Java 21 + Maven is all you need. Start with offline mock mode (no API key), or bring your own model. Add bin/ to PATH to run from anywhere.',
@@ -805,16 +798,6 @@ const I18N = {
 };
 
 let currentLang = 'zh';
-let currentTheme = localStorage.getItem('codeauto-theme') || 'light';
-
-function switchTheme() {
-  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', currentTheme === 'light' ? 'light' : '');
-  try { localStorage.setItem('codeauto-theme', currentTheme); } catch(_) {}
-}
-if (currentTheme !== 'light') {
-  document.documentElement.setAttribute('data-theme', '');
-}
 
 function switchLang(lang) {
   currentLang = lang;
@@ -853,7 +836,7 @@ function copyCode(btn) {
     } else {
       btn.textContent = 'Copied!';
     }
-    btn.style.color = 'var(--accent-green)';
+    btn.style.color = 'var(--accent)';
     setTimeout(() => {
       if (copySpan) {
         copySpan.textContent = I18N[currentLang]['quickstart.copy'] || 'Copy';

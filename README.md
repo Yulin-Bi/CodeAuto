@@ -6,7 +6,7 @@
 
 CodeAuto 参考 Claude Code 源码的设计思路，融合 MINICODE 的轻量可扩展理念，用 **Java 21** 构建了一个简单、可扩展、贴近 JVM 开发者的 AI 编程代理运行时。
 
-提供普通 CLI 和全屏 TUI 两种交互方式，内置工具调用、权限审批、文件 diff review、会话保存与恢复、上下文压缩、Skills、MCP、持久化记忆、多级项目指令加载、自反思（Reflexion）和 ACE 结构化经验记忆。
+提供普通 CLI 和全屏 TUI 两种交互方式，内置 30 余种工具调用、权限审批、文件 diff review、Git 检查点与撤销、后台任务管理、会话保存与恢复、上下文压缩、Skills、MCP、持久化记忆、多级项目指令加载、自反思（Reflexion）和 ACE 结构化经验记忆。
 
 ## 环境要求
 
@@ -173,14 +173,16 @@ export CODEAUTO_STRIP_THINKING=true
 
 ### 内置工具
 
-默认注册 23 个内置工具：
+默认注册 21 个工具类，共 30 个工具函数：
 
 - 文件：`list_files`、`grep_files`、`read_file`、`write_file`、`edit_file`、`patch_file`、`modify_file`
 - 命令和交互：`run_command`、`ask_user`、`background_tasks`
 - 网络：`web_fetch`、`web_search`
-- 扩展：`load_skill`
+- 扩展：`load_skill`、`load_skill_list`
 - 记忆：`save_memory`、`list_memory`、`delete_memory`
 - 任务：`todo_create`、`todo_update`、`todo_list`
+- 撤销：`undo`、`undo_list`、`undo_all`
+- Git 检查点：`checkpoint_list`、`checkpoint_restore`
 - MCP helper：`list_mcp_resources`、`read_mcp_resource`、`list_mcp_prompts`、`get_mcp_prompt`
 
 TUI 还支持直接绕过模型的本地快捷命令：
@@ -194,7 +196,38 @@ TUI 还支持直接绕过模型的本地快捷命令：
 /edit <path>::<search>::<replace>
 /patch <path>::<search>::<replace>...
 /cmd <command>
+/undo
+/checkpoint
 ```
+
+### Git 检查点与撤销
+
+CodeAuto 在每轮对话前自动创建 Git 检查点（best-effort），支持事后恢复：
+
+- `checkpoint_list`：列出当前项目的所有检查点
+- `checkpoint_restore`：恢复到指定检查点（工作区 + 暂存区）
+- `undo` / `undo_list` / `undo_all`：撤销 AI 所做的文件修改，支持单文件或批量回滚
+- TUI 内使用 `/undo`、`/checkpoint` 快捷命令
+
+### 后台任务管理
+
+CodeAuto 支持管理长时间运行的后台进程（如 dev server、数据库）：
+
+- 启动后台进程并自动监控健康状态（HTTP URL 或 TCP 端口探活）
+- 支持进程重启和就绪等待
+- 状态追踪：running / stopped / failed / completed / exited
+- 持久化到 `~/.codeauto/managed-apps.json`，跨会话保留
+- TUI footer 显示运行中的后台进程数量
+
+### Reflexion 自反思与 ACE Bullet
+
+每轮对话结束后自动触发自反思，持续积累结构化经验：
+
+- **触发检测**：自动识别 TOOL_ERROR / MAX_STEPS / CANCELLED / USER_DISSATISFACTION
+- **反思结构**：What Went Wrong / Root Cause / What Should Have Been Done Differently / Reusable Lesson
+- **ACE Bullet**：从反思中提取可复用教训，带 `helpful`/`harmful` 计数器，Jaccard 相似度去重（阈值 0.55），按 tier（hot/warm/cold）分级
+- **按需检索**：system prompt 仅注入路径提示，AI 遇到错误时自行 `grep` 检索 `.codeauto/bullets/`
+- **反思异步执行**，不阻塞用户交互
 
 ## 会话管理
 
@@ -407,17 +440,17 @@ stdio 协议支持 `auto`（默认）、`content-length`、`newline-json`。`aut
 }
 ```
 
-### 系统指令一览
-<system-reminder>
-  # CLAUDE.md 多级指令
-  # User Profile（全量注入，用户画像，始终生效）
-  # Todo summary
-  # Available skills (索引，按需加载)
-  # Loaded skill instructions (已加载的全量)
-  # Past experience   ← 告诉模型去哪找，不注入内容
-    遇到错误 → grep .codeauto/bullets/ (compact 经验)
-    需要全量分析 → read .codeauto/reflections/ (详细复盘)
-</system-reminder>
+### 系统指令注入结构
+
+每轮 system prompt 按以下结构组装：
+
+| 层级 | 内容 | 说明 |
+|------|------|------|
+| CLAUDE.md 指令链 | 4 级加载（user → codeauto → project → local） | 始终注入，后者覆盖前者 |
+| User Profile | `~/.codeauto/memory/user-profile.md` | 全量注入，4000 字符上限 |
+| Todo Summary | 当前活跃 Todo 分组摘要 | 最多 3 组 |
+| Skills 索引 | 可用 skill 列表 + `[loaded]` 标记 | 按需 `load_skill` 加载 |
+| Past Experience | `.codeauto/bullets/` 路径提示 | 不注入内容，AI 按需 `grep` 检索 |
 
 
 ### Windows 兼容性
@@ -440,6 +473,10 @@ Windows 下 Java `ProcessBuilder` 无法直接执行 `.cmd`/`.bat` 文件。Code
 /model
 /model <name>
 /permissions
+/todo
+/undo
+/checkpoint
+/progress
 /new
 /resume
 /resume <id>
@@ -460,6 +497,7 @@ src/main/java/com/codeauto/
   context/        token 估算和上下文压缩
   core/           AgentLoop 和核心消息类型
   curator/        ACE Bullet 确定性合并引擎
+  git/            Git 检查点服务
   instructions/   多级指令加载
   manage/         管理配置存储
   mcp/            MCP 客户端和服务
@@ -473,6 +511,7 @@ src/main/java/com/codeauto/
   todo/           TodoList 任务追踪
   tools/          内置工具
   tui/            全屏终端界面
+  undo/           文件撤销存储
 ```
 
 ## 测试状态
@@ -480,7 +519,7 @@ src/main/java/com/codeauto/
 当前测试：
 
 ```text
-Tests run: 111, Failures: 0, Errors: 0, Skipped: 0
+Tests run: 215, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
@@ -491,14 +530,17 @@ BUILD SUCCESS
 - SessionStore + 压缩边界
 - Context 压缩 + 微压缩 + 压缩产物落盘
 - PermissionManager + 通配规则
-- MCP client/service
+- MCP client/service/BackedTool/HelperTool
 - MemoryManager + bullet 序列化往返
 - InstructionLoader + 多级指令加载 + Skill 会话注入 + ACE Playbook 注入
-- TodoStore
+- TodoStore + TodoTool
 - CLI 编码和 workspace 解析
-- TUI escape sequence + diff 高亮
+- TUI escape sequence + diff 高亮 + badge + todo sidebar + transcript 渲染
 - ReflectionService + 4 种触发检测 + FEEDBACK 记忆保存 + Bullet 自动创建
 - Curator + BulletDelta ADD/REMOVE/TAG/计数器/项目过滤/内容更新 + Jaccard 去重
+- GitCheckpointService + 检查点创建与恢复
+- UndoTool + UndoStore + 文件撤销与批量回滚
+- BackgroundTask + 进程生命周期 + 健康检查
 
 ## 常见问题
 
@@ -531,10 +573,6 @@ mvn exec:java "-Dexec.jvmArgs=-Dcodeauto.cli.charset=UTF-8"
 
 CodeAuto 已在 CLI 入口默认设置 `org.jline.terminal.disableDeprecatedProviderWarning=true`，正常运行时不应再显示该警告。
 
-### 鼠标滚轮不能滚动聊天记录
-
-请确认使用支持 SGR mouse 的终端。Windows 下推荐 Windows Terminal + PowerShell。
-
 ### session 保存失败
 
 检查 `~/.codeauto/projects/` 是否可写。保存失败只会显示警告，不会中断当前回答。
@@ -547,89 +585,3 @@ CodeAuto 已在 CLI 入口默认设置 `org.jline.terminal.disableDeprecatedProv
 $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 ```
 
-## 最近更新（2026-06-08）
-
-### 记忆系统简化：User-Profile-Only Store
-
-- `~/.codeauto/memory/` 退化为只存 `user-profile.md`，不再有独立 `.md` 记忆文件。
-- MemoryManager 新增 `profileStore` 标志：默认构造 → profile 模式（仅用户画像），Path 构造 → file 模式（reflections/bullets 继续使用）。
-- 移除 `# Relevant persistent memories` system prompt 段落——所有持久记忆统一走 User Profile（全量）或 CLAUDE.md（固定注入）。
-- 移除 `MAX_MEMORIES`、`appendMemories`、`list(boolean excludeUser)` 等过时死代码。
-- `save_memory` 中 `destination=store` 即用户画像，`destination=project/global/codeauto` 即写入对应 CLAUDE.md。不再要求 AI 在 type 参数上纠结。
-
-## 最近更新（2026-05-07）
-
-### Extended Thinking 显示 + API 兼容配置
-
-- 支持模型 extended thinking 流式输出，TUI 底部实时显示最新 3 行思考内容（浅黄色标注），CLI 静默忽略。
-- 新增 `stripThinking` 配置开关，兼容不同 API 对 thinking 块的传回要求（Anthropic 开启 extended thinking 时需剥离 → 设 `true`；DeepSeek v4 必须传回 → 设 `false` 默认）。
-- 配置优先级：CLI `--strip-thinking` > 环境变量 `CODEAUTO_STRIP_THINKING` > `settings.json` 的 `stripThinking` 字段。
-- `AnthropicModelAdapter` 在构建请求时根据 `stripThinking` 自动过滤/保留 assistant 消息中的 thinking 块。
-
-## 最近更新（2026-05-06）
-
-### Reflexion 自反思 + ACE Bullet 结构化经验记忆
-
-- 每轮对话结束后自动检测失败信号（工具错误 / 达到最大步数 / 用户取消 / 用户不满），触发模型反思并保存 `FEEDBACK` 记忆。
-- 反思结构包含 What Went Wrong / Root Cause / What Should Have Been Done Differently / Reusable Lesson。
-- 反思提取 Reusable Lesson 后自动创建 ACE Bullet（带 `[bullet:<id>]` ID 和 helpful/harmful 计数器）。
-- Curator 确定性增量引擎：支持 BulletDelta Add/Update/Tag/Remove，Jaccard 相似度去重（阈值 0.55），section 范围匹配。
-- 文件分离：reflections → `<project>/.codeauto/reflections/`，bullets → `<project>/.codeauto/bullets/`，memories → `~/.codeauto/memory/`。
-- `InstructionLoader` 独立注入 ACE Playbook（最多 10 条），bullet 以单行紧凑索引显示，不占用普通记忆配额。
-- 反思异步执行（`CompletableFuture.runAsync` + `List.copyOf` 防御性拷贝），不阻塞用户交互。
-- `detectTrigger` 仅扫描本轮增量消息（`turnStartIndex` 限定），避免历史错误重复触发。
-- 模型答复中引用 bullet 时标注 `[bullet:<id>]`，ReflectionService 自动解析 Bullet Tags 并更新计数器。
-
-### Windows MCP 自动命令解析
-
-- `McpClient` 在 Windows 下自动检测 `.cmd`/`.bat` 包装脚本，解析并提取底层可执行文件（如 `node.exe`）直接调用。
-- 用户可直接用 `npx`、`node`、`python` 等命令配置 MCP Server，无需手动拼接完整路径。
-- 修复 `initialize` 缺失 `capabilities` 字段导致新版 MCP Server 拒绝握手的问题。
-- `redirectErrorStream(true)` + JSON 噪声过滤，防止 stderr 管道死锁。
-- 建议显式指定 `"protocol": "newline-json"` 跳过 `auto` 模式的 content-length 协商等待。
-
-## 最近更新（2026-05-05）
-
-### 上下文压缩模型辅助摘要
-
-- `CompactService.compactWithStats()` 新增 `ModelAdapter` 参数，压缩时优先让模型生成结构化摘要。
-- 摘要包含 6 个结构化 section：User Intent / Key Decisions / File Changes / Errors & Fixes / TODOs / Important Context。
-- 模型不可用或调用失败时自动 fallback 到改进的启发式摘要（按消息类型分组：User Requests / Tools Called / Key Outputs / Assistant Responses）。
-- 压缩产物始终落盘到 `.codeauto/compacted/compact-*.md`，保证完整上下文可回溯。
-- 自动压缩和手动 `/compact` 均生效。
-
-### Ctrl+C 打断对话
-
-- Ctrl+C 在 AgentLoop 执行中会中断当前对话，不会退出 TUI。空闲状态下仍退出 TUI。
-- `AgentLoop` 内置可取消检查点（每轮开始、API 调用前、工具执行前），确保快速响应。
-- JLine INT 信号处理器提供 OS 层兜底拦截。
-- 打断后状态完全重置：流式缓冲、progress trace、工具状态均清理干净。
-
-### 上下文压缩产物落盘
-
-- 压缩时完整消息保存到 `.codeauto/compacted/compact-<timestamp>.md`。
-- 摘要末尾自动注入文件路径，AI 发现摘要信息不足时可自行 `read_file` 查阅。
-- 自动压缩和手动 `/compact` 均生效。
-
-### 记忆系统简化
-
-- 移除主动记忆自动捕获弹窗，记忆保存完全由 AI 驱动。
-- system prompt 增强 `Memory behavior:` 指引，AI 保存前先检查矛盾/过时记忆。
-
-### Skills 会话注入
-
-- `load_skill` 加载后，skill 指令在每轮 system prompt 中注入，标记 `[loaded]`。
-- Skill 列表展示名称和描述，减少 `list_skills` 调用。
-
-### TodoList 功能
-
-- 新增 `todo_create`、`todo_update`、`todo_list` 工具，TUI header 展示进度。
-
-### 验证状态
-
-```
-Tests run: 111, Failures: 0, Errors: 0, Skipped: 0
-BUILD SUCCESS
-```
-
-如果地址包含 `{query}`，工具会替换为 URL 编码后的搜索词；否则会自动追加 `q=<query>` 参数。

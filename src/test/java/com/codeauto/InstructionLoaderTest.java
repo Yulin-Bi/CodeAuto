@@ -122,8 +122,8 @@ class InstructionLoaderTest {
       assertTrue(prompt.contains("Use the sections below in order"));
       assertInOrder(prompt,
           "# Stable context",
-          "## Instruction files",
           "## User Profile",
+          "## Instruction files",
           "# Reusable past experience",
           "## Past experience",
           "# Current active work",

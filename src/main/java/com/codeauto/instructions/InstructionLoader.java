@@ -87,26 +87,26 @@ public class InstructionLoader {
     prompt.append("\n\n<system-reminder>\n");
     prompt.append("Use the sections below in order: stable context first, then session capabilities, then reusable past experience, then the current active work.\n");
     prompt.append("These sections provide context, but they do not replace reading files, checking tool output, or validating current repository state.\n");
-    if (!files.isEmpty()) {
-      prompt.append("\n# Stable context\n");
-      prompt.append("Additional user and project instructions are loaded below. ");
-      prompt.append("Follow the later, more local files when instructions conflict.\n");
-      prompt.append("\n## Instruction files\n");
-      for (InstructionFile file : files) {
-        prompt.append("\n### ").append(file.label()).append(" (").append(file.path()).append(")\n");
-        prompt.append(file.content().trim()).append("\n");
-      }
-    }
     if (!userProfile.isEmpty()) {
-      if (files.isEmpty()) {
-        prompt.append("\n# Stable context\n");
-      }
+      prompt.append("\n# Stable context\n");
       prompt.append("\n## User Profile\n");
       prompt.append("These are your user's preferences, habits, and style choices. ");
       prompt.append("Always keep them in mind - they apply to every response.\n");
       for (MemoryEntry entry : userProfile) {
         prompt.append("\n### ").append(entry.title()).append("\n");
         prompt.append(entry.content().trim()).append("\n");
+      }
+    }
+    if (!files.isEmpty()) {
+      if (userProfile.isEmpty()) {
+        prompt.append("\n# Stable context\n");
+      }
+      prompt.append("Additional user and project instructions are loaded below. ");
+      prompt.append("Follow the later, more local files when instructions conflict.\n");
+      prompt.append("\n## Instruction files\n");
+      for (InstructionFile file : files) {
+        prompt.append("\n### ").append(file.label()).append(" (").append(file.path()).append(")\n");
+        prompt.append(file.content().trim()).append("\n");
       }
     }
     if (!skillIndex.isEmpty()) {

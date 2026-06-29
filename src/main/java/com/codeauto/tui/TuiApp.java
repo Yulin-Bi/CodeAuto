@@ -922,9 +922,9 @@ public class TuiApp {
 
     @Override
     public void onAutoCompact(CompactService.CompactResult result) {
+      persistAutoCompact(result);
       addEntry(new TranscriptEntry.Assistant(nextEntryId++,
           "Context auto-compressed: " + result.removedCount() + " messages summarized."));
-      savedCount = result.messages() != null ? result.messages().size() - 1 : savedCount;
       if (result.tokensBefore() > 0) {
         int savedTokens = Math.max(0, result.tokensBefore() - result.tokensAfter());
         int savedPct = Math.max(1, (int) ((double) savedTokens / result.tokensBefore() * 100));
@@ -1187,6 +1187,25 @@ public class TuiApp {
   private void updateStatusLine() {
     String text = statusLineText;
     statusText = (text == null || text.isBlank()) ? null : text;
+  }
+
+  private void persistAutoCompact(CompactService.CompactResult result) {
+    if (sessions == null || sessionId == null || result == null || result.summary() == null || result.messages() == null) {
+      return;
+    }
+    try {
+      sessions.appendCompactBoundary(sessionId, result.summary(), "auto", result.tokensBefore(), result.tokensAfter());
+      int pendingUnsaved = Math.max(0, messages.size() - savedCount);
+      if (pendingUnsaved > 0) {
+        // Auto-compact runs before the main model step, so current-turn unsaved messages are the newest tail.
+        int alreadySavedInCompacted = Math.max(1, result.messages().size() - pendingUnsaved);
+        sessions.save(sessionId, result.messages(), alreadySavedInCompacted);
+      }
+      savedCount = result.messages().size();
+    } catch (Exception e) {
+      addEntry(new TranscriptEntry.Assistant(nextEntryId++,
+          "Warning: auto-compact persistence failed: " + e.getMessage()));
+    }
   }
 
   private void clearStatusLine() {

@@ -129,7 +129,7 @@ class SessionStoreTest {
   }
 
   @Test
-  void multipleCompactBoundariesOnlyLoadLatestSegment() throws Exception {
+  void multipleCompactBoundariesPreserveSummaryChain() throws Exception {
     java.nio.file.Path temp = Files.createTempDirectory("codeauto-session-multi-compact-test");
     java.nio.file.Path home = Files.createTempDirectory("codeauto-home-multi-compact-test");
     System.setProperty("codeauto.home", home.toString());
@@ -143,10 +143,12 @@ class SessionStoreTest {
 
     List<ChatMessage> loaded = store.load("abc123");
 
-    assertEquals(2, loaded.size());
+    assertEquals(3, loaded.size());
     assertEquals("context_summary", loaded.getFirst().role());
-    assertTrue(((ChatMessage.ContextSummaryMessage) loaded.getFirst()).content().contains("second compact"));
-    assertEquals("msg3", ((ChatMessage.UserMessage) loaded.get(1)).content());
+    assertTrue(((ChatMessage.ContextSummaryMessage) loaded.getFirst()).content().contains("first compact"));
+    assertEquals("context_summary", loaded.get(1).role());
+    assertTrue(((ChatMessage.ContextSummaryMessage) loaded.get(1)).content().contains("second compact"));
+    assertEquals("msg3", ((ChatMessage.UserMessage) loaded.get(2)).content());
   }
 
   @Test

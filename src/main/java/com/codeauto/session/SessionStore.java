@@ -93,32 +93,7 @@ public class SessionStore {
   public List<ChatMessage> load(String sessionId) throws Exception {
     Path file = sessionFile(sessionId);
     if (!Files.exists(file)) return List.of();
-    List<String> lines = Files.readAllLines(file);
-    int start = 0;
-    for (int i = lines.size() - 1; i >= 0; i--) {
-      if (lines.get(i).isBlank()) continue;
-      try {
-        SessionEvent event = MAPPER.readValue(lines.get(i), SessionEvent.class);
-        if ("compact_boundary".equals(event.type())) {
-          start = i + 1;
-          break;
-        }
-      } catch (Exception ignored) {
-        // Skip corrupt lines.
-      }
-    }
-    List<ChatMessage> messages = new ArrayList<>();
-    for (int i = start; i < lines.size(); i++) {
-      String line = lines.get(i);
-      if (line.isBlank()) continue;
-      try {
-        SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
-        if (event.message != null) messages.add(event.message);
-      } catch (Exception e) {
-        System.err.println("[CodeAuto] Skipping corrupt session line " + i + ": " + e.getMessage());
-      }
-    }
-    return messages;
+    return replayActiveMessages(Files.readAllLines(file));
   }
 
   public List<SessionSummary> list() throws Exception {
@@ -280,32 +255,53 @@ public class SessionStore {
     Path dir = RuntimeConfig.homeDir().resolve("projects").resolve(storageName);
     Path file = dir.resolve(sessionId + ".jsonl");
     if (!Files.exists(file)) return List.of();
-    List<String> lines = Files.readAllLines(file);
-    int start = 0;
-    for (int i = lines.size() - 1; i >= 0; i--) {
-      if (lines.get(i).isBlank()) continue;
-      try {
-        SessionEvent event = MAPPER.readValue(lines.get(i), SessionEvent.class);
-        if ("compact_boundary".equals(event.type())) {
-          start = i + 1;
-          break;
-        }
-      } catch (Exception ignored) {
-        // Skip corrupt lines.
-      }
-    }
+    return replayActiveMessages(Files.readAllLines(file));
+  }
+
+  private static List<ChatMessage> replayActiveMessages(List<String> lines) {
     List<ChatMessage> messages = new ArrayList<>();
-    for (int i = start; i < lines.size(); i++) {
+    boolean awaitingSummary = false;
+    for (int i = 0; i < lines.size(); i++) {
       String line = lines.get(i);
       if (line.isBlank()) continue;
       try {
         SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
-        if (event.message != null) messages.add(event.message);
+        if ("compact_boundary".equals(event.type())) {
+          awaitingSummary = true;
+          continue;
+        }
+        if (event.message == null) {
+          continue;
+        }
+        if (awaitingSummary) {
+          if (event.message instanceof ChatMessage.ContextSummaryMessage summary) {
+            truncateAfterLastSummary(messages);
+            messages.add(summary);
+          } else {
+            messages.add(event.message);
+          }
+          awaitingSummary = false;
+          continue;
+        }
+        messages.add(event.message);
       } catch (Exception e) {
         System.err.println("[CodeAuto] Skipping corrupt session line " + i + ": " + e.getMessage());
       }
     }
     return messages;
+  }
+
+  private static void truncateAfterLastSummary(List<ChatMessage> messages) {
+    int keepCount = 0;
+    for (int i = messages.size() - 1; i >= 0; i--) {
+      if (messages.get(i) instanceof ChatMessage.ContextSummaryMessage) {
+        keepCount = i + 1;
+        break;
+      }
+    }
+    while (messages.size() > keepCount) {
+      messages.remove(messages.size() - 1);
+    }
   }
 
   private static ProjectMeta readProjectMeta(Path dir) throws Exception {

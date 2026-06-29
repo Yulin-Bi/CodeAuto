@@ -78,6 +78,10 @@ public class CodeAutoCli implements Runnable {
   String forkTarget;
 
   private boolean consoleStreamedThisTurn;
+  private SessionStore activeSessions;
+  private String activeSessionId;
+  private int activeSavedCount;
+  private int pendingUnsavedCountBeforeTurn;
 
   public static void main(String[] args) {
     System.setProperty("org.jline.terminal.disableDeprecatedProviderWarning", "true");
@@ -107,9 +111,11 @@ public class CodeAutoCli implements Runnable {
     AgentLoop loop
         = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps,
             consoleListener(model, cwd), runtime.contextWindow());
-    String sessionId = UUID.randomUUID().toString().substring(0, 8);
-    int savedCount = 1;
+    activeSessionId = UUID.randomUUID().toString().substring(0, 8);
+    activeSavedCount = 1;
+    pendingUnsavedCountBeforeTurn = 0;
     SessionStore sessions = new SessionStore(cwd);
+    activeSessions = sessions;
     try {
       sessions.cleanupExpiredSessions(Duration.ofDays(30));
     } catch (Exception ignored) {
@@ -125,13 +131,13 @@ public class CodeAutoCli implements Runnable {
           System.out.println("Session not found or empty: " + forkTarget);
         } else {
           String source = forkTarget.trim();
-          sessionId = UUID.randomUUID().toString().substring(0, 8);
+          activeSessionId = UUID.randomUUID().toString().substring(0, 8);
           messages.addAll(loaded);
-          if (saveSession(sessions, sessionId, messages, 1)) {
-            renameSession(sessions, sessionId, source + "_fork");
-            savedCount = messages.size();
+          if (saveSession(sessions, activeSessionId, messages, 1)) {
+            renameSession(sessions, activeSessionId, source + "_fork");
+            activeSavedCount = messages.size();
           }
-          System.out.println("Forked session " + source + " into " + sessionId + ".");
+          System.out.println("Forked session " + source + " into " + activeSessionId + ".");
         }
       } else if (resumeTarget != null) {
         String target = resolveResumeTarget(sessions, resumeTarget);
@@ -142,10 +148,10 @@ public class CodeAutoCli implements Runnable {
           if (loaded.isEmpty()) {
             System.out.println("Session not found or empty: " + target);
           } else {
-            sessionId = target;
+            activeSessionId = target;
             messages.addAll(loaded);
-            savedCount = messages.size();
-            System.out.println("Resumed session " + sessionId + " with " + loaded.size() + " messages.");
+            activeSavedCount = messages.size();
+            System.out.println("Resumed session " + activeSessionId + " with " + loaded.size() + " messages.");
           }
         }
       }
@@ -251,7 +257,7 @@ public class CodeAutoCli implements Runnable {
         }
         if ("/status".equals(input)) {
           var stats = TokenEstimator.compute(messages, 200_000);
-          System.out.println("cwd=" + cwd + ", session=" + sessionId + ", tools=" + tools.list().size()
+          System.out.println("cwd=" + cwd + ", session=" + activeSessionId + ", tools=" + tools.list().size()
               + ", ctx=" + stats.estimatedTokens() + " est tokens, level=" + stats.warningLevel());
           continue;
         }
@@ -260,23 +266,24 @@ public class CodeAutoCli implements Runnable {
           var result = CompactService.compactWithStats(messages, 8, 200_000, cwd, model);
           messages = new ArrayList<>(result.messages());
           if (result.summary() != null) {
-            if (appendCompactBoundary(sessions, sessionId, result.summary(), result.tokensBefore(), result.tokensAfter())) {
-              savedCount = messages.size();
+            if (appendCompactBoundary(sessions, activeSessionId, result.summary(), result.tokensBefore(), result.tokensAfter())) {
+              activeSavedCount = messages.size();
             } else {
-              savedCount = Math.min(savedCount, messages.size());
+              activeSavedCount = Math.min(activeSavedCount, messages.size());
             }
           } else {
-            savedCount = Math.min(savedCount, messages.size());
+            activeSavedCount = Math.min(activeSavedCount, messages.size());
           }
           System.out.println("Compacted messages: " + before + " -> " + messages.size());
           continue;
         }
         if ("/new".equals(input)) {
-          sessionId = UUID.randomUUID().toString().substring(0, 8);
+          activeSessionId = UUID.randomUUID().toString().substring(0, 8);
           messages = new ArrayList<>();
           messages.add(new ChatMessage.SystemMessage(systemPrompt(cwd, permissions)));
-          savedCount = 1;
-          System.out.println("Started session " + sessionId);
+          activeSavedCount = 1;
+          pendingUnsavedCountBeforeTurn = 0;
+          System.out.println("Started session " + activeSessionId);
           continue;
         }
         if (input.startsWith("/resume ")) {
@@ -285,21 +292,22 @@ public class CodeAutoCli implements Runnable {
           if (loaded.isEmpty()) {
             System.out.println("Session not found or empty: " + target);
           } else {
-            sessionId = target;
+            activeSessionId = target;
             messages = new ArrayList<>();
             messages.add(new ChatMessage.SystemMessage(systemPrompt(cwd, permissions)));
             messages.addAll(loaded);
-            savedCount = messages.size();
-            System.out.println("Resumed session " + sessionId + " with " + loaded.size() + " messages.");
+            activeSavedCount = messages.size();
+            pendingUnsavedCountBeforeTurn = 0;
+            System.out.println("Resumed session " + activeSessionId + " with " + loaded.size() + " messages.");
           }
           continue;
         }
         if ("/fork".equals(input)) {
-          sessionId = UUID.randomUUID().toString().substring(0, 8);
-          if (saveSession(sessions, sessionId, messages, 1)) {
-            savedCount = messages.size();
+          activeSessionId = UUID.randomUUID().toString().substring(0, 8);
+          if (saveSession(sessions, activeSessionId, messages, 1)) {
+            activeSavedCount = messages.size();
           }
-          System.out.println("Forked current transcript into session " + sessionId);
+          System.out.println("Forked current transcript into session " + activeSessionId);
           continue;
         }
         if (input.startsWith("/rename ")) {
@@ -307,8 +315,8 @@ public class CodeAutoCli implements Runnable {
           if (title.isBlank()) {
             System.out.println("Usage: /rename <name>");
           } else {
-            if (renameSession(sessions, sessionId, title)) {
-              System.out.println("Renamed session " + sessionId + " to " + title);
+            if (renameSession(sessions, activeSessionId, title)) {
+              System.out.println("Renamed session " + activeSessionId + " to " + title);
             }
           }
           continue;
@@ -323,11 +331,13 @@ public class CodeAutoCli implements Runnable {
         }
         permissions.beginTurn();
         messages.add(new ChatMessage.UserMessage(input));
+        pendingUnsavedCountBeforeTurn = Math.max(0, messages.size() - activeSavedCount);
         consoleStreamedThisTurn = false;
         messages = new ArrayList<>(loop.runTurn(messages));
         permissions.endTurn();
-        if (saveSession(sessions, sessionId, messages, savedCount)) {
-          savedCount = messages.size();
+        if (saveSession(sessions, activeSessionId, messages, activeSavedCount)) {
+          activeSavedCount = messages.size();
+          pendingUnsavedCountBeforeTurn = 0;
         }
         if (!consoleStreamedThisTurn) {
           messages.stream()
@@ -392,6 +402,29 @@ public class CodeAutoCli implements Runnable {
     } catch (Exception error) {
       System.out.println("Warning: could not save compact boundary for session "
           + sessionId + ": " + error.getMessage());
+      return false;
+    }
+  }
+
+  private boolean persistAutoCompact(CompactService.CompactResult result) {
+    if (activeSessions == null || activeSessionId == null || result.summary() == null || result.messages() == null) {
+      return false;
+    }
+    try {
+      activeSessions.appendCompactBoundary(
+          activeSessionId, result.summary(), "auto", result.tokensBefore(), result.tokensAfter());
+      int pendingUnsaved = Math.max(0, pendingUnsavedCountBeforeTurn);
+      if (pendingUnsaved > 0) {
+        // Auto-compact runs before the main model step, so current-turn unsaved messages are the newest tail.
+        int alreadySavedInCompacted = Math.max(1, result.messages().size() - pendingUnsaved);
+        activeSessions.save(activeSessionId, result.messages(), alreadySavedInCompacted);
+      }
+      activeSavedCount = result.messages().size();
+      pendingUnsavedCountBeforeTurn = 0;
+      return true;
+    } catch (Exception error) {
+      System.out.println("Warning: could not persist auto-compact for session "
+          + activeSessionId + ": " + error.getMessage());
       return false;
     }
   }
@@ -606,6 +639,7 @@ public class CodeAutoCli implements Runnable {
     return new AgentLoopListener() {
       @Override
       public void onAutoCompact(CompactService.CompactResult result) {
+        persistAutoCompact(result);
         System.out.println("[compact] summarized " + result.removedCount()
             + " messages (" + result.tokensBefore() + " -> " + result.tokensAfter() + " est tokens)");
       }
