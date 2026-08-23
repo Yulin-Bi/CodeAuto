@@ -379,7 +379,7 @@ public final class CodeAutoWebServer implements AutoCloseable {
         synchronized (c) { c.messages = new ArrayList<>(result); c.savedCount = persist(id, c); c.running = false; }
         ReflectionService.reflectIfNeeded(c.messages, model, c.executionCwd, turnStartIndex, id);
         publish("turn_complete", id, MAPPER.createObjectNode().put("messages", c.messages.size()));
-      } catch (Exception e) { synchronized (c) { c.running = false; c.errors++; } publish("turn_error", id, MAPPER.createObjectNode().put("message", e.getMessage() == null ? e.toString() : e.getMessage())); }
+      } catch (Exception e) { synchronized (c) { c.running = false; c.errors++; } ObjectNode error=MAPPER.createObjectNode().put("message", errorMessage(e)).put("type", e.getClass().getName()); if(e.getCause()!=null)error.put("cause", errorMessage(e.getCause())); publish("turn_error", id, error); }
       finally { turnPermissions.endTurn(); permissionBroker.endTurn(id); }
     });
     return true;
@@ -685,6 +685,12 @@ public final class CodeAutoWebServer implements AutoCloseable {
   private void events(HttpExchange exchange) throws IOException { exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8"); exchange.getResponseHeaders().set("Cache-Control", "no-cache"); exchange.getResponseHeaders().set("Connection", "keep-alive"); exchange.sendResponseHeaders(200, 0); OutputStream out=exchange.getResponseBody(); subscribers.put(out, new Object()); try { out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8)); out.flush(); while(true){ Thread.sleep(15000); out.write(": ping\n\n".getBytes(StandardCharsets.UTF_8)); out.flush(); } } catch(Exception ignored){} finally { subscribers.remove(out); try{out.close();}catch(Exception ignored){} } }
 
   private void publish(String type, String sessionId, JsonNode payload) { ObjectNode e=MAPPER.createObjectNode().put("eventId",UUID.randomUUID().toString()).put("time",Instant.now().toString()).put("type",type).put("sessionId",sessionId).set("payload",payload); Conversation c=conversation(sessionId); if(c!=null){synchronized(c){c.trace.add(e.deepCopy());}} byte[] bytes=("event: agent_event\ndata: "+e.toString()+"\n\n").getBytes(StandardCharsets.UTF_8); for(OutputStream out:subscribers.keySet()){ try{synchronized(out){out.write(bytes);out.flush();}}catch(Exception ex){subscribers.remove(out);}} }
+
+  private static String errorMessage(Throwable error) {
+    if (error == null) return "未知错误";
+    String message = error.getMessage();
+    return error.getClass().getSimpleName() + (message == null || message.isBlank() ? "" : ": " + message);
+  }
   private static String truncate(String s,int n){ if(s==null)return ""; return s.length()<=n?s:s.substring(0,n)+"\n…[truncated]"; }
   private static int positive(JsonNode body, String field, int fallback) {
     int value = body.path(field).asInt(fallback);

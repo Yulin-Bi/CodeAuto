@@ -13,6 +13,7 @@ import com.codeauto.core.ToolCall;
 import com.codeauto.tool.ToolDefinition;
 import com.codeauto.tool.ToolRegistry;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
@@ -99,16 +100,24 @@ public class AnthropicModelAdapter implements ModelAdapter {
 
   private HttpResponse<String> sendWithRetry(ObjectNode body) throws Exception {
     int attempts = Math.max(1, config.maxRetries() + 1);
+    URI endpoint = endpointUri();
     for (int attempt = 1; attempt <= attempts; attempt++) {
       HttpRequest request = HttpRequest.newBuilder()
-          .uri(URI.create(config.baseUrl().replaceAll("/+$", "") + "/v1/messages"))
+          .uri(endpoint)
           .timeout(modelTimeout())
           .header("content-type", "application/json")
           .header("anthropic-version", "2023-06-01")
           .header("x-api-key", config.authToken())
           .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)))
           .build();
-      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+      HttpResponse<String> response;
+      try {
+        response = client.send(request, HttpResponse.BodyHandlers.ofString());
+      } catch (IOException e) {
+        if (attempt == attempts) throw connectionFailure(endpoint, attempt, attempts, e);
+        Thread.sleep(retryDelayMs(attempt, null));
+        continue;
+      }
       if (response.statusCode() < 400) {
         return response;
       }
@@ -122,9 +131,10 @@ public class AnthropicModelAdapter implements ModelAdapter {
 
   private AgentStep sendStreaming(ObjectNode body, AgentLoopListener listener) throws Exception {
     int attempts = Math.max(1, config.maxRetries() + 1);
+    URI endpoint = endpointUri();
     for (int attempt = 1; attempt <= attempts; attempt++) {
       HttpRequest request = HttpRequest.newBuilder()
-          .uri(URI.create(config.baseUrl().replaceAll("/+$", "") + "/v1/messages"))
+          .uri(endpoint)
           .timeout(modelTimeout())
           .header("content-type", "application/json")
           .header("accept", "text/event-stream")
@@ -132,7 +142,14 @@ public class AnthropicModelAdapter implements ModelAdapter {
           .header("x-api-key", config.authToken())
           .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)))
           .build();
-      HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+      HttpResponse<InputStream> response;
+      try {
+        response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+      } catch (IOException e) {
+        if (attempt == attempts) throw connectionFailure(endpoint, attempt, attempts, e);
+        Thread.sleep(retryDelayMs(attempt, null));
+        continue;
+      }
       if (response.statusCode() < 400) {
         return parseStreamingResponse(response.body(), listener);
       }
@@ -143,6 +160,21 @@ public class AnthropicModelAdapter implements ModelAdapter {
       Thread.sleep(retryDelayMs(attempt, response.headers().firstValue("retry-after").orElse(null)));
     }
     throw new IllegalStateException("Model request failed after retries");
+  }
+
+  private URI endpointUri() {
+    return URI.create(config.baseUrl().replaceAll("/+$", "") + "/v1/messages");
+  }
+
+  private IllegalStateException connectionFailure(URI endpoint, int attempt, int attempts, IOException error) {
+    String root = error.getMessage();
+    Throwable cause = error.getCause();
+    while (cause != null) {
+      if (cause.getMessage() != null && !cause.getMessage().isBlank()) root += "; cause=" + cause.getMessage();
+      cause = cause.getCause();
+    }
+    return new IllegalStateException("模型连接失败：POST " + endpoint + "；尝试 " + attempt + "/" + attempts
+        + "；异常=" + error.getClass().getSimpleName() + "；原因=" + (root == null ? "未知网络错误" : root), error);
   }
 
   private Duration modelTimeout() {
