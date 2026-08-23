@@ -156,6 +156,7 @@ h1 { min-width: 0; margin: 0; font-size: 22px; line-height: 1.2; letter-spacing:
 .board-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
 .board { display: flex; flex-direction: column; gap: 14px; }
 .board-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 0 10px; margin-bottom: 0; border-bottom: 1px solid #e1e7f0; }
+.evaluation-time-scale { border: 1px solid #d9e1ec; border-radius: 7px; background: #f7f9fc; color: #526078; font: inherit; font-size: 11px; padding: 5px 8px; }
 .board-toolbar b,.board-toolbar small { display: block; }
 .board-toolbar b { color: #293750; font-size: 14px; }
 .board-toolbar small { margin-top: 4px; color: #8995a8; font-size: 9px; }
