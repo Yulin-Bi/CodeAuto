@@ -162,6 +162,7 @@ h1 { min-width: 0; margin: 0; font-size: 22px; line-height: 1.2; letter-spacing:
 .board-scope { display: inline-flex; padding: 3px; border: 1px solid #dbe4ef; border-radius: 9px; background: #f7faff; }
 .board-scope button { border: 0; border-radius: 7px; padding: 7px 9px; color: #77849a; background: transparent; font-size: 9px; cursor: pointer; }
 .board-scope button.active { color: #175fbe; background: #fff; box-shadow: 0 1px 4px rgba(30,58,96,.12); font-weight: 700; }
+.evaluation-day { max-width: 170px; height: 31px; margin-left: auto; border: 1px solid #dbe4ef; border-radius: 8px; padding: 0 8px; color: #526077; background: #fff; font-size: 10px; }
 .board-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 9px; }
 .board-grid .board-card { min-width: 0; padding: 13px; }
 .board-grid .board-card b,.board-grid .board-card span { display: block; }
