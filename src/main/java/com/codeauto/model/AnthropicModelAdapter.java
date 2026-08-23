@@ -280,6 +280,8 @@ public class AnthropicModelAdapter implements ModelAdapter {
       ObjectNode usageNode = message.putObject("usage");
       usageNode.put("input_tokens", usage[0].inputTokens());
       usageNode.put("output_tokens", usage[0].outputTokens());
+      usageNode.put("cache_read_input_tokens", usage[0].cacheReadInputTokens());
+      usageNode.put("cache_creation_input_tokens", usage[0].cacheCreationInputTokens());
     }
     return parseStep(message);
   }
@@ -393,12 +395,17 @@ public class AnthropicModelAdapter implements ModelAdapter {
 
   private static ProviderUsage parseUsage(JsonNode usage) {
     if (usage == null || usage.isMissingNode()) return null;
-    int cacheCreation = usage.path("cache_creation_input_tokens").asInt(0);
-    int cacheRead = usage.path("cache_read_input_tokens").asInt(0);
+    int cacheCreation = firstInt(usage, "cache_creation_input_tokens", "prompt_cache_miss_tokens", "cache_write_input_tokens");
+    int cacheRead = firstInt(usage, "cache_read_input_tokens", "prompt_cache_hit_tokens", "cache_hit_tokens", "cached_tokens");
     int input = usage.path("input_tokens").asInt(0) + cacheCreation + cacheRead;
     int output = usage.path("output_tokens").asInt(0);
     int total = input + output;
     return total <= 0 ? null : new ProviderUsage(input, output, total, "anthropic", cacheRead, cacheCreation);
+  }
+
+  private static int firstInt(JsonNode node, String... names) {
+    for (String name : names) if (node.has(name) && node.path(name).isNumber()) return node.path(name).asInt(0);
+    return 0;
   }
 
   private static ParsedText parseAssistantText(String content) {
