@@ -106,7 +106,7 @@ public final class ReflectionService {
         reflection);
 
     String lesson = extractReusableLesson(reflection);
-    if (shouldWriteBullet(lesson, reflection)) {
+    if (shouldWriteBullet(trigger, lesson, reflection)) {
       try {
         Curator curator = new Curator(bulletMemory);
         String bulletId = "ref-" + UUID.randomUUID().toString().substring(0, 6);
@@ -434,11 +434,22 @@ public final class ReflectionService {
     return containsActionSignal(normalized) && containsSpecificitySignal(normalized + "\n" + reflection.toLowerCase());
   }
 
+  /** Tool failures are actionable by definition; do not lose their lesson only because the model wrote Chinese. */
+  static boolean shouldWriteBullet(ReflectionTrigger trigger, String lesson, String reflection) {
+    if (trigger == ReflectionTrigger.TOOL_ERROR && lesson != null) {
+      String normalized = lesson.replaceAll("\\s+", " ").trim();
+      if (normalized.length() >= 20 && !normalized.equalsIgnoreCase("nothing.")
+          && !normalized.equalsIgnoreCase("be more careful.")) return true;
+    }
+    return shouldWriteBullet(lesson, reflection);
+  }
+
   private static boolean containsActionSignal(String text) {
     return containsAny(text,
         "before", "after", "when", "use ", "avoid", "check", "verify",
         "run ", "grep", "read ", "write ", "keep ", "confirm",
-        "omit ", "exclude ", "look up", "call ");
+        "omit ", "exclude ", "look up", "call ",
+        "应该", "需要", "必须", "避免", "检查", "确认", "先", "重新", "使用");
   }
 
   private static boolean containsSpecificitySignal(String text) {
@@ -447,6 +458,6 @@ public final class ReflectionService {
         "mvn", "gradle", "pytest", "import", "server", "port", "health_url",
         "background task", "stream", "sse", ".java", ".md",
         "tool parameter", "parameter description", "function call", "tool call",
-        "list operation", "undo", "undo_list");
+        "list operation", "undo", "undo_list", "工具", "参数", "命令", "接口", "连接", "网络");
   }
 }

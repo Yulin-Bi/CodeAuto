@@ -170,7 +170,8 @@ h1 { min-width: 0; margin: 0; font-size: 22px; line-height: 1.2; letter-spacing:
 .board-chart { margin-top: 0; padding: 16px; border: 1px solid #e1e7f0; border-radius: 13px; background: #fff; }
 .board-chart-head { display: flex; justify-content: space-between; gap: 8px; color: #35425a; font-size: 10px; }
 .board-chart-head span { color: #8b96a8; font-size: 8px; }
-.board-chart svg { width: 100%; height: 100px; margin-top: 12px; overflow: visible; background: linear-gradient(to bottom,transparent 49%,#edf2f8 50%,transparent 51%); }
+.board-chart svg { width: 100%; height: 180px; margin-top: 12px; overflow: visible; background: linear-gradient(to bottom,transparent 49%,#edf2f8 50%,transparent 51%); }
+.chart-axis { display: flex; justify-content: space-between; margin: 10px 4px -22px 0; color: #8b96a8; font-size: 8px; }
 .chart-legend { display: flex; gap: 12px; color: #8b96a8; font-size: 8px; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .legend-line { width: 13px; height: 2px; display: inline-block; border-radius: 2px; background: #246bfd; }

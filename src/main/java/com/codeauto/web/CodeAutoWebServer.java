@@ -575,20 +575,31 @@ public final class CodeAutoWebServer implements AutoCloseable {
   private ObjectNode evaluation(boolean projectScope, String sessionId) {
     ObjectNode out = MAPPER.createObjectNode().put("scope", projectScope ? "project" : "session");
     ArrayNode series = out.putArray("contextSeries");
-    int turns = 0, tools = 0, errors = 0, compactions = 0;
+    int turns = 0, tools = 0, errors = 0, compactions = 0, toolErrors = 0;
     List<Conversation> selected = new ArrayList<>();
     if (projectScope) selected.addAll(conversations.values());
     else { Conversation c = conversation(sessionId); if (c != null) selected.add(c); }
     for (Conversation c : selected) synchronized (c) {
       turns += c.turns; tools += c.toolCalls; errors += c.errors; compactions += c.compactions;
+      int traceTools = 0, traceToolErrors = 0;
       for (JsonNode event : c.trace) {
+        if ("tool_start".equals(event.path("type").asText())) traceTools++;
+        if ("tool_result".equals(event.path("type").asText()) && event.path("payload").path("error").asBoolean(false)) traceToolErrors++;
         if ("context_stats".equals(event.path("type").asText())) {
           ObjectNode point = series.addObject().put("tokens", event.path("payload").path("tokens").asInt(0));
           point.put("time", event.path("time").asText("")).put("sessionId", c.id);
         }
       }
+      if (traceTools > 0 || c.toolCalls == 0) { tools += traceTools - c.toolCalls; toolErrors += traceToolErrors; }
+      else {
+        for (ChatMessage message : c.messages) {
+          if (message instanceof ChatMessage.ToolResultMessage result && result.isError()) toolErrors++;
+        }
+      }
     }
     out.putObject("metrics").put("turns", turns).put("toolCalls", tools).put("errors", errors)
+        .put("toolErrors", toolErrors)
+        .put("toolErrorRate", tools == 0 ? 0.0 : (double) toolErrors / tools)
         .put("compactions", compactions).put("contextTokens", selected.stream().mapToInt(c -> c.contextTokens).sum());
     out.put("seriesAvailable", series.size() > 0);
     return out;
