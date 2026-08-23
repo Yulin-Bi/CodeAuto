@@ -77,7 +77,10 @@ public final class GitWorktreeService {
     Map<String,String> branches = new java.util.LinkedHashMap<>();
     ProcessResult refs = run(repositoryRoot, "git", "for-each-ref", "--format=%(refname:short)|%(objectname)", "refs/heads");
     if (refs.ok()) for (String line : refs.stdout().replace("\r", "").lines().toList()) { String[] p=line.split("\\|",2); if(p.length==2)branches.put(p[0],p[1]); }
-    return new CommitGraph(List.copyOf(nodes), List.copyOf(edges), Map.copyOf(branches));
+    Map<String,String> remoteBranches = new java.util.LinkedHashMap<>();
+    ProcessResult remoteRefs = run(repositoryRoot, "git", "for-each-ref", "--format=%(refname:short)|%(objectname)", "refs/remotes");
+    if (remoteRefs.ok()) for (String line : remoteRefs.stdout().replace("\r", "").lines().toList()) { String[] p=line.split("\\|",2); if(p.length==2 && !p[0].endsWith("/HEAD"))remoteBranches.put(p[0],p[1]); }
+    return new CommitGraph(List.copyOf(nodes), List.copyOf(edges), Map.copyOf(branches), Map.copyOf(remoteBranches));
   }
 
   public WorktreeInfo create(String sessionId, String baseRef) {
@@ -442,7 +445,8 @@ public final class GitWorktreeService {
   public record CommitInfo(String hash, String subject, String author) {
   }
 
-  public record CommitGraph(List<CommitNode> nodes, List<CommitEdge> edges, Map<String,String> branches) {
+  public record CommitGraph(List<CommitNode> nodes, List<CommitEdge> edges, Map<String,String> branches,
+      Map<String,String> remoteBranches) {
   }
 
   public record CommitNode(String hash, String subject, String author, String timestamp, List<String> parents) {

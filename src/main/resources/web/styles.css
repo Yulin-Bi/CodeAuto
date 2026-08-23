@@ -331,6 +331,8 @@ h1 { min-width: 0; margin: 0; font-size: 22px; line-height: 1.2; letter-spacing:
 .worktree-graph-svg .graph-lane-rail { stroke: color-mix(in srgb,var(--graph-color,#2878d0) 28%,#e7edf5); stroke-width: 2; }
 .worktree-graph-svg .graph-commit { cursor: pointer; outline: 0; }
 .worktree-graph-svg .graph-commit circle { fill: #fff; stroke: var(--graph-color,#2878d0); stroke-width: 2.5; }
+.worktree-graph-svg .graph-commit.pushed > circle:first-child { fill: var(--graph-color,#2878d0); stroke: #fff; stroke-width: 2; }
+.worktree-graph-svg .graph-commit .graph-local-marker { fill: #fff; stroke: var(--graph-color,#2878d0); stroke-width: 1; pointer-events: none; }
 .worktree-graph-svg .graph-commit:hover circle,.worktree-graph-svg .graph-commit:focus circle { fill: var(--graph-color,#2878d0); stroke: color-mix(in srgb,var(--graph-color,#2878d0) 78%,#17243a); }
 .worktree-graph-svg .graph-commit text { fill: #506078; font: 9px ui-sans-serif,system-ui,sans-serif; }
 .worktree-graph-svg .graph-commit:focus text { fill: #1a4f9e; font-weight: 700; }

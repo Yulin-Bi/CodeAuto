@@ -432,7 +432,8 @@ public final class CodeAutoWebServer implements AutoCloseable {
           .put("author", node.author()).put("timestamp", node.timestamp()); ArrayNode parents=item.putArray("parents"); node.parents().forEach(parents::add);
     }
     ArrayNode edges = out.putArray("edges"); for (var edge : graph.edges()) edges.addObject().put("child", edge.child()).put("parent", edge.parent());
-    ObjectNode branches=out.putObject("branches"); graph.branches().forEach(branches::put); return out;
+    ObjectNode branches=out.putObject("branches"); graph.branches().forEach(branches::put);
+    ObjectNode remoteBranches=out.putObject("remoteBranches"); graph.remoteBranches().forEach(remoteBranches::put); return out;
   }
 
   private void handleGit(HttpExchange exchange, String path) throws IOException {
