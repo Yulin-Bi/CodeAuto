@@ -12,6 +12,9 @@ public interface AgentLoopListener {
   default void onContextStats(ContextStats stats) {
   }
 
+  default void onProviderUsage(ProviderUsage usage) {
+  }
+
   default void onAutoCompact(CompactService.CompactResult result) {
   }
 

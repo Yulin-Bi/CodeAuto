@@ -98,6 +98,8 @@ public class AgentLoop {
         messages.add(new ChatMessage.AssistantMessage("(Internal error: model returned null response)"));
         return finishTurn(messages);
       }
+      if (next instanceof AgentStep.AssistantStep assistant) listener.onProviderUsage(assistant.usage());
+      else if (next instanceof AgentStep.ToolCallsStep toolCalls) listener.onProviderUsage(toolCalls.usage());
 
       if (next instanceof AgentStep.AssistantStep assistant) {
         String content = assistant.content() == null ? "" : assistant.content().trim();

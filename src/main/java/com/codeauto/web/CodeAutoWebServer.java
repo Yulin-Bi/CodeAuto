@@ -392,6 +392,7 @@ public final class CodeAutoWebServer implements AutoCloseable {
   private AgentLoopListener listenerFor(String id) {
     return new AgentLoopListener() {
       public void onContextStats(ContextStats stats) { Conversation c=conversation(id); if(c!=null)c.contextTokens=stats.estimatedTokens(); publish("context_stats", id, MAPPER.createObjectNode().put("tokens", stats.estimatedTokens()).put("limit", runtime.contextWindow())); }
+      public void onProviderUsage(ProviderUsage usage) { if (usage == null) return; publish("usage_stats", id, MAPPER.createObjectNode().put("inputTokens", usage.inputTokens()).put("outputTokens", usage.outputTokens()).put("totalTokens", usage.totalTokens()).put("cacheReadTokens", usage.cacheReadInputTokens()).put("cacheCreationTokens", usage.cacheCreationInputTokens())); }
       public void onAssistantDelta(String delta) { publish("assistant_delta", id, MAPPER.createObjectNode().put("delta", delta)); }
       public void onThinkingDelta(String delta) { publish("thinking_delta", id, MAPPER.createObjectNode().put("delta", delta)); }
       public void onProgressMessage(String content) { publish("progress", id, MAPPER.createObjectNode().put("content", content).put("renderedHtml", MarkdownService.render(content))); }
@@ -603,7 +604,9 @@ public final class CodeAutoWebServer implements AutoCloseable {
       }
       int traceTools = 0, traceToolErrors = 0;
       int runningTools = 0, runningToolErrors = 0, lastContextTokens = 0;
+      List<JsonNode> usageEvents = new ArrayList<>();
       for (JsonNode event : c.trace) {
+        if ("usage_stats".equals(event.path("type").asText())) usageEvents.add(event);
         if ("tool_start".equals(event.path("type").asText())) { traceTools++; runningTools++; }
         if ("tool_result".equals(event.path("type").asText())) {
           if (event.path("payload").path("error").asBoolean(false)) { traceToolErrors++; runningToolErrors++; }
@@ -617,7 +620,14 @@ public final class CodeAutoWebServer implements AutoCloseable {
         }
       }
       int seriesBefore = tokenSeries.size(), usageIndex = 0;
-      for (JsonNode context : c.trace) if ("context_stats".equals(context.path("type").asText())) {
+      if (!usageEvents.isEmpty()) for (JsonNode event : usageEvents) {
+        JsonNode payload = event.path("payload");
+        tokenSeries.addObject().put("time", event.path("time").asText("")).put("contextTokens", lastContextTokens)
+            .put("inputTokens", payload.path("inputTokens").asInt(0)).put("outputTokens", payload.path("outputTokens").asInt(0))
+            .put("totalTokens", payload.path("totalTokens").asInt(0)).put("cacheReadTokens", payload.path("cacheReadTokens").asInt(0))
+            .put("cacheCreationTokens", payload.path("cacheCreationTokens").asInt(0));
+      }
+      if (usageEvents.isEmpty()) for (JsonNode context : c.trace) if ("context_stats".equals(context.path("type").asText())) {
         ObjectNode point = tokenSeries.addObject().put("time", context.path("time").asText(""));
         point.put("contextTokens", context.path("payload").path("tokens").asInt(0));
         if (usageIndex < usages.size()) { ProviderUsage usage = usages.get(usageIndex++); point.put("inputTokens", usage.inputTokens()).put("outputTokens", usage.outputTokens()).put("totalTokens", usage.totalTokens()).put("cacheReadTokens", usage.cacheReadInputTokens()).put("cacheCreationTokens", usage.cacheCreationInputTokens()); }
