@@ -122,6 +122,8 @@ public final class CodeAutoWebServer implements AutoCloseable {
       if ("GET".equals(exchange.getRequestMethod()) && "/app.js".equals(path)) { resource(exchange, "web/app.js", "text/javascript; charset=utf-8"); return; }
       if ("GET".equals(exchange.getRequestMethod()) && "/styles.css".equals(path)) { resource(exchange, "web/styles.css", "text/css; charset=utf-8"); return; }
       if ("GET".equals(exchange.getRequestMethod()) && "/icons.svg".equals(path)) { resource(exchange, "web/icons.svg", "image/svg+xml; charset=utf-8"); return; }
+      if ("GET".equals(exchange.getRequestMethod()) && "/vendor/chart.umd.min.js".equals(path)) { resource(exchange, "web/vendor/chart.umd.min.js", "text/javascript; charset=utf-8"); return; }
+      if ("GET".equals(exchange.getRequestMethod()) && "/vendor/CHART_JS_LICENSE.txt".equals(path)) { resource(exchange, "web/vendor/CHART_JS_LICENSE.txt", "text/plain; charset=utf-8"); return; }
       if ("GET".equals(exchange.getRequestMethod()) && "/api/state".equals(path)) { json(exchange, state()); return; }
       if ("GET".equals(exchange.getRequestMethod()) && "/api/settings".equals(path)) { json(exchange, settings()); return; }
       if ("GET".equals(exchange.getRequestMethod()) && "/api/worktrees".equals(path)) { json(exchange, worktreeState()); return; }
