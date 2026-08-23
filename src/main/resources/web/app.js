@@ -112,7 +112,7 @@ function render(){
   $('#session-meta').textContent=waitingApproval?'等待权限审批…':running?'Agent 正在工作…':'';$('#session-meta').classList.toggle('hidden',!running)
   $('#connection').textContent=waitingApproval?'等待审批':running?'Agent 工作中':'实时连接';$('#connection').classList.toggle('busy',running)
   const prompt=$('#prompt'),send=$('.send');prompt.disabled=!s||running;prompt.placeholder=running?'Agent 正在执行当前任务…':'描述你想完成的事情…（Enter 发送，Shift+Enter 换行）';send.disabled=!s||running;send.innerHTML=running?'<span class="send-spinner" aria-label="任务执行中"></span>':iconSvg('arrow-up');send.title=running?'任务执行中':'发送消息';$('#composer').classList.toggle('running',running)
-  const used=s?.contextTokens||0,limit=state.contextWindow||0,percent=limit?Math.min(100,Math.round(used/limit*100)):0
+  const used=Number(state.evaluation?.metrics?.contextTokens||s?.contextTokens||0),limit=state.contextWindow||0,percent=limit?Math.min(100,Math.round(used/limit*100)):0
   $('#rail-token').querySelector('.token-numbers').innerHTML=`<b>${used.toLocaleString()}</b><span>/ ${limit.toLocaleString()} tokens</span>`
   $('#token-fill').style.width=`${percent}%`;$('#token-fill').classList.toggle('warning',percent>=70);$('#token-fill').classList.toggle('danger',percent>=90)
   $('#token-caption').textContent=s?(used?`已使用 ${percent}% · 剩余约 ${Math.max(0,limit-used).toLocaleString()}`:'本轮尚未产生 Token 统计'):'选择会话后显示实时用量'
