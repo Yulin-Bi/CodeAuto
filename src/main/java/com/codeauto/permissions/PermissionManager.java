@@ -37,6 +37,11 @@ public class PermissionManager {
     loadStore();
   }
 
+  /** Rebind the same persisted permission store to another workspace and presentation prompt. */
+  public PermissionManager rebind(Path workspaceRoot, PermissionPrompt newPrompt) {
+    return new PermissionManager(workspaceRoot, store, newPrompt);
+  }
+
   public void beginTurn() {
     allowAllEditsThisTurn = false;
     turnAllowedCommands.clear();

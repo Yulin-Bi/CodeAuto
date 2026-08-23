@@ -90,10 +90,52 @@ public class SessionStore {
     }
   }
 
+  /** Persist a fork marker before copying the source transcript into a child session. */
+  public void markFork(String childSessionId, String parentSessionId, int boundary, String title) throws Exception {
+    Path file = sessionFile(childSessionId);
+    Files.createDirectories(file.getParent());
+    SessionEvent event = new SessionEvent("fork", null, UUID.randomUUID().toString(), Instant.now().toString(),
+        childSessionId, cwd.toString(), title, null, null, null, parentSessionId, boundary, title);
+    appendAtomically(file, MAPPER.writeValueAsString(event) + "\n");
+  }
+
+  /** Create a fork marker and its copied transcript in one locked append. */
+  public void createFork(String childSessionId, String parentSessionId, int boundary, String title,
+      List<ChatMessage> messages, int alreadySavedCount) throws Exception {
+    createFork(childSessionId, parentSessionId, boundary, title, messages, alreadySavedCount,
+        null, null, null);
+  }
+
+  /** Create a fork and its optional worktree binding in one atomic append. */
+  public void createFork(String childSessionId, String parentSessionId, int boundary, String title,
+      List<ChatMessage> messages, int alreadySavedCount, String worktreePath, String gitBranch,
+      String baseCommit) throws Exception {
+    Path file = sessionFile(childSessionId);
+    Files.createDirectories(file.getParent());
+    List<String> lines = new ArrayList<>();
+    lines.add(MAPPER.writeValueAsString(new SessionEvent("fork", null, UUID.randomUUID().toString(),
+        Instant.now().toString(), childSessionId, cwd.toString(), title, null, null, null,
+        parentSessionId, boundary, title)));
+    if (worktreePath != null && !worktreePath.isBlank()) {
+      lines.add(MAPPER.writeValueAsString(new SessionEvent("worktree_binding", null,
+          UUID.randomUUID().toString(), Instant.now().toString(), childSessionId, cwd.toString(),
+          null, null, null, null, null, null, null, worktreePath, gitBranch, baseCommit)));
+    }
+    for (ChatMessage message : messages.subList(Math.min(alreadySavedCount, messages.size()), messages.size())) {
+      lines.add(MAPPER.writeValueAsString(new SessionEvent(typeFor(message), message, UUID.randomUUID().toString(),
+          Instant.now().toString(), childSessionId, cwd.toString(), null, null, null, null)));
+    }
+    appendAtomically(file, String.join("\n", lines) + "\n");
+  }
+
   public List<ChatMessage> load(String sessionId) throws Exception {
     Path file = sessionFile(sessionId);
     if (!Files.exists(file)) return List.of();
     return replayActiveMessages(Files.readAllLines(file));
+  }
+
+  public boolean delete(String sessionId) throws Exception {
+    return Files.deleteIfExists(sessionFile(sessionId));
   }
 
   public List<SessionSummary> list() throws Exception {
@@ -206,7 +248,14 @@ public class SessionStore {
   }
 
   private Path sessionFile(String sessionId) {
-    return projectDir().resolve(sessionId + ".jsonl");
+    return projectDir().resolve(validateSessionId(sessionId) + ".jsonl");
+  }
+
+  private static String validateSessionId(String sessionId) {
+    if (sessionId == null || !sessionId.matches("[A-Za-z0-9_-]{1,64}")) {
+      throw new IllegalArgumentException("Invalid session id");
+    }
+    return sessionId;
   }
 
   private Path projectDir() {
@@ -218,13 +267,30 @@ public class SessionStore {
     String title = null;
     String firstUser = null;
     String updatedAt = "";
+    String parentId = null;
+    Integer forkBoundary = null;
+    String branchTitle = null;
+    String worktreePath = null;
+    String gitBranch = null;
+    String baseCommit = null;
     for (String line : Files.readAllLines(file)) {
       if (line.isBlank()) continue;
       try {
         SessionEvent event = MAPPER.readValue(line, SessionEvent.class);
         updatedAt = event.timestamp() == null ? updatedAt : event.timestamp();
+        if ("fork".equals(event.type())) {
+          parentId = event.parentSessionId(); forkBoundary = event.forkBoundary(); branchTitle = event.branchTitle();
+          if ((title == null || title.isBlank()) && event.title() != null && !event.title().isBlank()) {
+            title = event.title();
+          }
+        }
         if ("rename".equals(event.type()) && event.title() != null && !event.title().isBlank()) {
           title = event.title();
+        }
+        if ("worktree_binding".equals(event.type())) {
+          worktreePath = event.worktreePath();
+          gitBranch = event.gitBranch();
+          baseCommit = event.baseCommit();
         }
         if (firstUser == null && event.message() instanceof ChatMessage.UserMessage user) {
           firstUser = user.content();
@@ -234,7 +300,8 @@ public class SessionStore {
       }
     }
     if (title == null || title.isBlank()) title = firstUser == null ? "(untitled)" : excerpt(firstUser);
-    return new SessionSummary(id, title, updatedAt);
+    return new SessionSummary(id, title, updatedAt, parentId, forkBoundary, branchTitle,
+        worktreePath, gitBranch, baseCommit);
   }
 
   public static List<SessionSummary> listSessions(String storageName) throws Exception {
@@ -253,7 +320,7 @@ public class SessionStore {
 
   public static List<ChatMessage> loadSession(String storageName, String sessionId) throws Exception {
     Path dir = RuntimeConfig.homeDir().resolve("projects").resolve(storageName);
-    Path file = dir.resolve(sessionId + ".jsonl");
+    Path file = dir.resolve(validateSessionId(sessionId) + ".jsonl");
     if (!Files.exists(file)) return List.of();
     return replayActiveMessages(Files.readAllLines(file));
   }
@@ -411,11 +478,39 @@ public class SessionStore {
       String title,
       String compactTrigger,
       Integer preTokens,
-      Integer postTokens
+      Integer postTokens,
+      String parentSessionId,
+      Integer forkBoundary,
+      String branchTitle,
+      String worktreePath,
+      String gitBranch,
+      String baseCommit
   ) {
+    public SessionEvent(String type, ChatMessage message, String uuid, String timestamp, String sessionId,
+        String cwd, String title, String compactTrigger, Integer preTokens, Integer postTokens) {
+      this(type, message, uuid, timestamp, sessionId, cwd, title, compactTrigger, preTokens,
+          postTokens, null, null, null, null, null, null);
+    }
+
+    public SessionEvent(String type, ChatMessage message, String uuid, String timestamp, String sessionId,
+        String cwd, String title, String compactTrigger, Integer preTokens, Integer postTokens,
+        String parentSessionId, Integer forkBoundary, String branchTitle) {
+      this(type, message, uuid, timestamp, sessionId, cwd, title, compactTrigger, preTokens,
+          postTokens, parentSessionId, forkBoundary, branchTitle, null, null, null);
+    }
   }
 
-  public record SessionSummary(String id, String title, String updatedAt) {
+  public record SessionSummary(String id, String title, String updatedAt, String parentSessionId,
+      Integer forkBoundary, String branchTitle, String worktreePath, String gitBranch,
+      String baseCommit) {
+    public SessionSummary(String id, String title, String updatedAt) {
+      this(id, title, updatedAt, null, null, null, null, null, null);
+    }
+
+    public SessionSummary(String id, String title, String updatedAt, String parentSessionId,
+        Integer forkBoundary, String branchTitle) {
+      this(id, title, updatedAt, parentSessionId, forkBoundary, branchTitle, null, null, null);
+    }
   }
 
   public record TranscriptEntry(String kind, String toolName, String body, String status) {

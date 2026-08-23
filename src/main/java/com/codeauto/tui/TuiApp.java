@@ -55,7 +55,8 @@ public class TuiApp {
 
   private final ToolRegistry tools;
   private ModelAdapter model;
-  private final Path cwd;
+  private final Path projectCwd;
+  private Path cwd;
   private final int maxSteps;
   private RuntimeConfig config;
 
@@ -209,7 +210,8 @@ public class TuiApp {
                 RuntimeConfig config) {
     this.tools = tools;
     this.model = model;
-    this.cwd = cwd;
+    this.projectCwd = cwd.toAbsolutePath().normalize();
+    this.cwd = this.projectCwd;
     this.maxSteps = maxSteps;
     this.config = config;
   }
@@ -223,19 +225,8 @@ public class TuiApp {
 
       renderer = new TuiRenderer(terminal, writer, config.contextWindow());
 
-      permissions = new PermissionManager(cwd, new com.codeauto.permissions.PermissionStore(),
-          new PermissionPrompt() {
-            @Override
-            public PermissionDecision ask(PermissionRequest req) {
-              return askPermission(req).decision();
-            }
-            @Override
-            public PermissionResponse askDetailed(PermissionRequest req) {
-              return askPermission(req);
-            }
-          });
-      loop = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps, listener, config.contextWindow());
-      sessions = new SessionStore(cwd);
+      configureExecutionWorkspace(projectCwd);
+      sessions = new SessionStore(projectCwd);
       sessionId = UUID.randomUUID().toString().substring(0, 8);
       savedCount = 1;
       messages.add(new ChatMessage.SystemMessage(systemPrompt()));
@@ -767,6 +758,7 @@ public class TuiApp {
   }
 
   void newSession() {
+    configureExecutionWorkspace(projectCwd);
     sessionId = UUID.randomUUID().toString().substring(0, 8);
     messages.clear();
     messages.add(new ChatMessage.SystemMessage(systemPrompt()));
@@ -802,8 +794,8 @@ public class TuiApp {
           if (taken) { counter++; forkName = base + counter; }
         } while (taken);
       } catch (Exception ignored) {}
-      sessions.save(newId, messages, 1);
-      if (forkName != null) sessions.rename(newId, forkName);
+      sessions.createFork(newId, sessionId, messages.size(),
+          forkName == null ? "(untitled)_fork" : forkName, messages, 1);
       savedCount = messages.size();
       addEntry(new TranscriptEntry.Assistant(nextEntryId++,
           "Forked " + (forkName != null ? "as \"" + forkName + "\" " : "") + "into session " + newId));
@@ -847,6 +839,7 @@ public class TuiApp {
       if (loaded == null || loaded.isEmpty()) {
         addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Session not found: " + target));
       } else {
+        switchToSessionWorkspace(target);
         sessionId = target;
         messages.clear();
         messages.add(new ChatMessage.SystemMessage(systemPrompt()));
@@ -1360,6 +1353,7 @@ public class TuiApp {
       if (loaded == null || loaded.isEmpty()) {
         addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Session not found: " + target));
       } else {
+        switchToSessionWorkspace(target);
         sessionId = target;
         messages.clear();
         messages.add(new ChatMessage.SystemMessage(systemPrompt()));
@@ -1377,6 +1371,35 @@ public class TuiApp {
     } catch (Exception e) {
       addEntry(new TranscriptEntry.Assistant(nextEntryId++, "Resume failed: " + e.getMessage()));
     }
+  }
+
+  private void switchToSessionWorkspace(String target) throws Exception {
+    SessionStore.SessionSummary summary = sessions.list().stream()
+        .filter(item -> item.id().equals(target)).findFirst().orElse(null);
+    if (summary == null || summary.worktreePath() == null || summary.worktreePath().isBlank()) {
+      configureExecutionWorkspace(projectCwd);
+      return;
+    }
+    Path worktree = Path.of(summary.worktreePath()).toAbsolutePath().normalize();
+    if (!new com.codeauto.git.GitWorktreeService(projectCwd).isRegistered(worktree)) {
+      throw new IllegalStateException("Session worktree is unavailable: " + worktree);
+    }
+    configureExecutionWorkspace(worktree);
+  }
+
+  private void configureExecutionWorkspace(Path workspace) {
+    cwd = workspace.toAbsolutePath().normalize();
+    permissions = new PermissionManager(cwd, new com.codeauto.permissions.PermissionStore(),
+        new PermissionPrompt() {
+          @Override public PermissionDecision ask(PermissionRequest req) {
+            return askPermission(req).decision();
+          }
+          @Override public PermissionResponse askDetailed(PermissionRequest req) {
+            return askPermission(req);
+          }
+        });
+    loop = new AgentLoop(model, tools, new ToolContext(cwd, permissions), maxSteps, listener,
+        config.contextWindow());
   }
 
   private void loadSessionFromProject(String storageName, String target) {

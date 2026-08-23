@@ -16,6 +16,7 @@ public class GrepFilesTool implements ToolDefinition {
   private static final Set<String> EXCLUDED_DIRS = Set.of(
       ".git", ".codeauto", "node_modules", "target", "build", "__pycache__",
       ".svn", ".hg", "dist", ".next", ".nuxt", "out", "coverage", ".nyc_output");
+  private static final long MAX_FILE_BYTES = 10_485_760L;
 
   @Override public String name() { return "grep_files"; }
   @Override public String description() { return "Search text files by substring."; }
@@ -36,9 +37,11 @@ public class GrepFilesTool implements ToolDefinition {
     List<String> matches = new ArrayList<>();
     try (var paths = Files.walk(root, 20)) {
       for (Path file : paths
-          .filter(p -> Files.isRegularFile(p) && !isExcludedDir(p))
+          .filter(p -> Files.isRegularFile(p) && !isExcludedDir(p)
+              && context.permissions().canRead(p))
           .limit(500).toList()) {
         try {
+          if (Files.size(file) > MAX_FILE_BYTES) continue;
           int lineNo = 0;
           for (String line : Files.readAllLines(file)) {
             lineNo++;

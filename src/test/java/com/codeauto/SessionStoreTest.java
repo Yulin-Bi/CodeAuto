@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
@@ -149,6 +150,90 @@ class SessionStoreTest {
     assertEquals("context_summary", loaded.get(1).role());
     assertTrue(((ChatMessage.ContextSummaryMessage) loaded.get(1)).content().contains("second compact"));
     assertEquals("msg3", ((ChatMessage.UserMessage) loaded.get(2)).content());
+  }
+
+  @Test
+  void forkMetadataAndMessagesSurviveReloadWithoutDuplicateSystemPrompt() throws Exception {
+    java.nio.file.Path temp = Files.createTempDirectory("codeauto-session-fork-test");
+    java.nio.file.Path home = Files.createTempDirectory("codeauto-home-fork-test");
+    System.setProperty("codeauto.home", home.toString());
+    SessionStore store = new SessionStore(temp);
+
+    List<ChatMessage> parentMessages = List.of(
+        new ChatMessage.SystemMessage("system"),
+        new ChatMessage.UserMessage("parent prompt"),
+        new ChatMessage.AssistantMessage("parent answer"));
+    store.save("parent01", parentMessages, 1);
+
+    store.markFork("child01", "parent01", parentMessages.size(), "Readable branch");
+    store.save("child01", parentMessages, 1);
+
+    List<ChatMessage> child = store.load("child01");
+    assertEquals(2, child.size());
+    assertEquals("parent prompt", ((ChatMessage.UserMessage) child.getFirst()).content());
+
+    SessionStore.SessionSummary summary = store.list().stream()
+        .filter(item -> item.id().equals("child01"))
+        .findFirst().orElseThrow();
+    assertEquals("Readable branch", summary.title());
+    assertEquals("parent01", summary.parentSessionId());
+    assertEquals(parentMessages.size(), summary.forkBoundary());
+  }
+
+  @Test
+  void multipleSiblingForksArePersistedIndependently() throws Exception {
+    java.nio.file.Path temp = Files.createTempDirectory("codeauto-sibling-fork-test");
+    java.nio.file.Path home = Files.createTempDirectory("codeauto-home-sibling-fork-test");
+    System.setProperty("codeauto.home", home.toString());
+    SessionStore store = new SessionStore(temp);
+    List<ChatMessage> messages = List.of(
+        new ChatMessage.SystemMessage("system"),
+        new ChatMessage.UserMessage("hello"),
+        new ChatMessage.AssistantMessage("world"));
+
+    store.save("parent02", messages, 1);
+    store.createFork("child02a", "parent02", messages.size(), "Branch A", messages, 1);
+    store.createFork("child02b", "parent02", messages.size(), "Branch B", messages, 1);
+
+    Map<String, SessionStore.SessionSummary> summaries = store.list().stream()
+        .collect(java.util.stream.Collectors.toMap(SessionStore.SessionSummary::id, item -> item));
+    assertEquals("parent02", summaries.get("child02a").parentSessionId());
+    assertEquals("parent02", summaries.get("child02b").parentSessionId());
+    assertEquals(2, store.load("child02a").size());
+    assertEquals(2, store.load("child02b").size());
+  }
+
+  @Test
+  void oldSessionEventsWithoutForkFieldsRemainReadable() throws Exception {
+    java.nio.file.Path temp = Files.createTempDirectory("codeauto-session-legacy-test");
+    java.nio.file.Path home = Files.createTempDirectory("codeauto-home-legacy-test");
+    System.setProperty("codeauto.home", home.toString());
+    SessionStore store = new SessionStore(temp);
+
+    store.save("legacy01", List.of(new ChatMessage.UserMessage("legacy")), 0);
+    SessionStore.SessionSummary summary = store.list().getFirst();
+    assertEquals("legacy01", summary.id());
+    assertEquals("legacy", summary.title());
+    assertEquals(null, summary.parentSessionId());
+    assertEquals(null, summary.forkBoundary());
+  }
+
+  @Test
+  void persistsForkWorktreeBindingWithConversationMetadata() throws Exception {
+    java.nio.file.Path temp = Files.createTempDirectory("codeauto-session-worktree-test");
+    java.nio.file.Path home = Files.createTempDirectory("codeauto-home-worktree-test");
+    System.setProperty("codeauto.home", home.toString());
+    SessionStore store = new SessionStore(temp);
+
+    store.createFork("child01", "parent01", 2, "isolated branch",
+        List.of(new ChatMessage.SystemMessage("system"), new ChatMessage.UserMessage("hello")),
+        1, "D:\\worktrees\\child01", "codeauto/session-child01", "abc123");
+
+    SessionStore.SessionSummary summary = store.list().getFirst();
+    assertEquals("parent01", summary.parentSessionId());
+    assertEquals("D:\\worktrees\\child01", summary.worktreePath());
+    assertEquals("codeauto/session-child01", summary.gitBranch());
+    assertEquals("abc123", summary.baseCommit());
   }
 
   @Test

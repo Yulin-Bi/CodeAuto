@@ -30,6 +30,8 @@ public class EditFileTool implements ToolDefinition {
     if (rawPath.isBlank()) return ToolResult.error("path is required");
     if (oldText.isEmpty()) return ToolResult.error("oldText is required");
     Path file = context.cwd().resolve(rawPath).normalize();
+    if (!context.permissions().canRead(file)) return ToolResult.error("Path is not allowed: " + file);
+    if (!Files.isRegularFile(file)) return ToolResult.error("Not a regular file: " + rawPath);
     String before = Files.readString(file);
     if (!before.contains(oldText)) return ToolResult.error("oldText was not found in " + file);
     String after = replaceAll

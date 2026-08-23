@@ -29,6 +29,7 @@ public class McpHttpClient implements AutoCloseable {
   private final McpServerConfig config;
   private final int requestTimeoutSec;
   private int nextId = 1;
+  private boolean initialized;
 
   public McpHttpClient(McpServerConfig config) {
     this(config, 30);
@@ -92,9 +93,14 @@ public class McpHttpClient implements AutoCloseable {
   }
 
   private void initialize() throws Exception {
-    // Initialize is a no-op for HTTP transport:
-    // we skip the stdio-style initialize/notifications/initialized handshake
-    // because the Streamable HTTP spec sends initialize as the first request.
+    if (initialized) return;
+    ObjectNode params = MAPPER.createObjectNode();
+    params.put("protocolVersion", "2025-03-26");
+    params.set("capabilities", MAPPER.createObjectNode());
+    params.set("clientInfo", MAPPER.createObjectNode().put("name", "codeauto").put("version", "0.1.0"));
+    request("initialize", params);
+    sendNotification("notifications/initialized", MAPPER.createObjectNode());
+    initialized = true;
   }
 
   public JsonNode request(String method, JsonNode params) throws Exception {
@@ -112,9 +118,16 @@ public class McpHttpClient implements AutoCloseable {
         .timeout(Duration.ofSeconds(requestTimeoutSec))
         .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body), StandardCharsets.UTF_8));
 
-    // Apply configured headers
+    // Apply explicit HTTP headers and translate the managed bearer token.
     for (Map.Entry<String, String> entry : config.env().entrySet()) {
-      reqBuilder.header(entry.getKey(), entry.getValue());
+      String key = entry.getKey();
+      if (key.startsWith("MCP_HEADER_")) {
+        reqBuilder.header(key.substring("MCP_HEADER_".length()), entry.getValue());
+      } else if (("MCP_BEARER_TOKEN".equals(key) || "MCP_AUTH_TOKEN".equals(key))
+          && config.env().entrySet().stream().noneMatch(item ->
+              "MCP_HEADER_Authorization".equals(item.getKey()) || "Authorization".equalsIgnoreCase(item.getKey()))) {
+        reqBuilder.header("Authorization", "Bearer " + entry.getValue());
+      }
     }
 
     HttpRequest request = reqBuilder.build();
@@ -144,6 +157,28 @@ public class McpHttpClient implements AutoCloseable {
       // Fallback: try to handle text/event-stream (SSE)
       throw new IllegalStateException("MCP HTTP " + config.name()
           + ": expected JSON-RPC response but got content type: " + response.headers().firstValue("content-type").orElse("unknown"));
+    }
+  }
+
+  private void sendNotification(String method, JsonNode params) throws Exception {
+    ObjectNode body = MAPPER.createObjectNode();
+    body.put("jsonrpc", "2.0");
+    body.put("method", method);
+    body.set("params", params);
+    HttpRequest.Builder request = HttpRequest.newBuilder()
+        .uri(URI.create(config.url()))
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .timeout(Duration.ofSeconds(requestTimeoutSec))
+        .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body), StandardCharsets.UTF_8));
+    for (Map.Entry<String, String> entry : config.env().entrySet()) {
+      if (entry.getKey().startsWith("MCP_HEADER_")) {
+        request.header(entry.getKey().substring("MCP_HEADER_".length()), entry.getValue());
+      }
+    }
+    HttpResponse<Void> response = HTTP.send(request.build(), HttpResponse.BodyHandlers.discarding());
+    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+      throw new IllegalStateException("MCP HTTP " + config.name() + " notification failed: " + response.statusCode());
     }
   }
 

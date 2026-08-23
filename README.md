@@ -28,6 +28,14 @@ mvn test
 mvn exec:java "-Dexec.args=--mock --tui"
 ```
 
+启动单进程本地 Web UI（Java 直接托管静态前端和 SSE/API）：
+
+```bash
+mvn exec:java "-Dexec.args=--mock --web --web-port 0"
+```
+
+启动后终端会打印本地访问地址。Web UI 包含对话、会话地图、事件追踪和 Agent 评估看板；运行阶段不需要单独启动 Node/Vite 服务。
+
 真实模型模式启动 TUI：
 
 ```bash
@@ -584,4 +592,3 @@ CodeAuto 已在 CLI 入口默认设置 `org.jline.terminal.disableDeprecatedProv
 ```powershell
 $env:CODEAUTO_SEARCH_URL="https://example/search?q={query}"
 ```
-

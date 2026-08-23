@@ -27,6 +27,12 @@ public class WriteFileTool implements ToolDefinition {
     if (rawPath.isBlank()) return ToolResult.error("path is required");
     if (content.isEmpty()) return ToolResult.error("content is required");
     Path file = context.cwd().resolve(rawPath).normalize();
+    if (Files.exists(file) && !context.permissions().canRead(file)) {
+      return ToolResult.error("Path is not allowed: " + file);
+    }
+    if (Files.exists(file) && !Files.isRegularFile(file)) {
+      return ToolResult.error("Not a regular file: " + rawPath);
+    }
     String before = Files.exists(file) ? Files.readString(file) : "";
     return FileReviewService.reviewAndWrite(file, before, content, context, "Wrote");
   }
