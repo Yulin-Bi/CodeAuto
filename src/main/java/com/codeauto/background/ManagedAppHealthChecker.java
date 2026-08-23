@@ -29,6 +29,12 @@ final class ManagedAppHealthChecker {
 
   static boolean isHealthyUrl(String healthUrl) {
     try {
+      URI uri = URI.create(healthUrl);
+      String host = uri.getHost();
+      if (host == null || !(host.equalsIgnoreCase("localhost")
+          || host.equals("127.0.0.1") || host.equals("::1") || host.equals("[::1]"))) {
+        return false;
+      }
       HttpRequest request = HttpRequest.newBuilder(URI.create(healthUrl))
           .GET()
           .timeout(Duration.ofSeconds(1))

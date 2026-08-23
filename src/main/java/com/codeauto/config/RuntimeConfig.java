@@ -57,7 +57,7 @@ public record RuntimeConfig(
   }
 
   public RuntimeConfig withStripThinking(boolean stripThinking) {
-    return stripThinking ? new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds, contextWindow, true) : this;
+    return new RuntimeConfig(model, baseUrl, authToken, maxOutputTokens, maxRetries, modelTimeoutSeconds, contextWindow, stripThinking);
   }
 
   /** Merge another config over this one: non-null/non-default fields in {@code overlay} win. */

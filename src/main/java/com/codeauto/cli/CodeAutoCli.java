@@ -22,6 +22,7 @@ import com.codeauto.tool.ToolRegistry;
 import com.codeauto.todo.TodoStore;
 import com.codeauto.tools.DefaultTools;
 import com.codeauto.tui.TuiApp;
+import com.codeauto.web.CodeAutoWebServer;
 import java.io.Console;
 import java.util.concurrent.CompletableFuture;
 import java.nio.charset.Charset;
@@ -48,6 +49,12 @@ public class CodeAutoCli implements Runnable {
 
   @CommandLine.Option(names = "--tui", description = "Start the full-screen terminal UI")
   boolean tui;
+
+  @CommandLine.Option(names = "--web", description = "Start the local Web UI")
+  boolean web;
+
+  @CommandLine.Option(names = "--web-port", defaultValue = "0", description = "Web UI port (0 chooses a free local port)")
+  int webPort;
 
   @CommandLine.Option(names = "--mock", description = "Use the offline mock model")
   boolean mock;
@@ -104,6 +111,19 @@ public class CodeAutoCli implements Runnable {
     ModelAdapter model = mock || "mock".equalsIgnoreCase(runtime.model())
         ? new MockModelAdapter()
         : new AnthropicModelAdapter(runtime, tools);
+    if (web) {
+      if (tui) throw new CommandLine.ParameterException(new CommandLine(this), "--web and --tui cannot be used together");
+      try (CodeAutoWebServer webServer = new CodeAutoWebServer(cwd, runtime, tools, model, permissions)) {
+        int port = webServer.start(webPort);
+        System.out.println("CodeAuto Web UI: http://127.0.0.1:" + port + "/");
+        System.out.println("Press Ctrl+C to stop.");
+        try { new java.util.concurrent.CountDownLatch(1).await(); }
+        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+      } catch (Exception error) {
+        throw new CommandLine.ExecutionException(new CommandLine(this), "Web UI failed: " + error.getMessage(), error);
+      }
+      return;
+    }
     if (tui) {
       new TuiApp(tools, model, cwd, maxSteps, runtime).run();
       return;
@@ -133,10 +153,8 @@ public class CodeAutoCli implements Runnable {
           String source = forkTarget.trim();
           activeSessionId = UUID.randomUUID().toString().substring(0, 8);
           messages.addAll(loaded);
-          if (saveSession(sessions, activeSessionId, messages, 1)) {
-            renameSession(sessions, activeSessionId, source + "_fork");
-            activeSavedCount = messages.size();
-          }
+          sessions.createFork(activeSessionId, source, messages.size(), source + "_fork", messages, 1);
+          activeSavedCount = messages.size();
           System.out.println("Forked session " + source + " into " + activeSessionId + ".");
         }
       } else if (resumeTarget != null) {
@@ -159,6 +177,15 @@ public class CodeAutoCli implements Runnable {
       throw new CommandLine.ExecutionException(new CommandLine(this), error.getMessage(), error);
     }
 
+    Path boundWorkspace = resolveSessionWorkspace(sessions, activeSessionId, cwd);
+    if (!boundWorkspace.equals(cwd)) {
+      permissions = new PermissionManager(boundWorkspace);
+      messages.set(0, new ChatMessage.SystemMessage(systemPrompt(boundWorkspace, permissions)));
+      loop = new AgentLoop(model, tools, new ToolContext(boundWorkspace, permissions), maxSteps,
+          consoleListener(model, boundWorkspace), runtime.contextWindow());
+      System.out.println("Using session worktree " + boundWorkspace);
+    }
+
     System.out.println("CodeAuto (" + runtime.model() + "). Type /help, /tools, /status, or /exit.");
     try (CliInput cliInput = openCliInput()) {
       while (true) {
@@ -177,6 +204,7 @@ public class CodeAutoCli implements Runnable {
               /mcp                 List configured MCP servers
               /memory              List memories, or add/delete with arguments
               /status              Show workspace, session, and context stats
+              /worktrees           List Git worktrees
               /model               Show active model
               /new                 Start a new session
               /resume <id>         Load a session
@@ -261,6 +289,14 @@ public class CodeAutoCli implements Runnable {
               + ", ctx=" + stats.estimatedTokens() + " est tokens, level=" + stats.warningLevel());
           continue;
         }
+        if ("/worktrees".equals(input)) {
+          var worktreeService = new com.codeauto.git.GitWorktreeService(cwd);
+          if (!worktreeService.available()) System.out.println("Current workspace is not a Git repository.");
+          else worktreeService.list().forEach(item -> System.out.println(
+              (item.current() ? "* " : "  ") + (item.branch() == null ? "(detached)" : item.branch())
+                  + "  " + item.path() + "  " + item.changedFiles() + " changed"));
+          continue;
+        }
         if ("/compact".equals(input)) {
           int before = messages.size();
           var result = CompactService.compactWithStats(messages, 8, 200_000, cwd, model);
@@ -288,6 +324,12 @@ public class CodeAutoCli implements Runnable {
         }
         if (input.startsWith("/resume ")) {
           String target = input.substring("/resume ".length()).trim();
+          Path targetWorkspace = resolveSessionWorkspace(sessions, target, cwd);
+          if (!targetWorkspace.equals(boundWorkspace)) {
+            System.out.println("This session uses a different worktree. Restart with --resume " + target
+                + " so permissions and tools are rebound safely.");
+            continue;
+          }
           List<ChatMessage> loaded = sessions.load(target);
           if (loaded.isEmpty()) {
             System.out.println("Session not found or empty: " + target);
@@ -303,10 +345,10 @@ public class CodeAutoCli implements Runnable {
           continue;
         }
         if ("/fork".equals(input)) {
+          String parentId = activeSessionId;
           activeSessionId = UUID.randomUUID().toString().substring(0, 8);
-          if (saveSession(sessions, activeSessionId, messages, 1)) {
-            activeSavedCount = messages.size();
-          }
+          sessions.createFork(activeSessionId, parentId, messages.size(), parentId + "_fork", messages, 1);
+          activeSavedCount = messages.size();
           System.out.println("Forked current transcript into session " + activeSessionId);
           continue;
         }
@@ -376,6 +418,24 @@ public class CodeAutoCli implements Runnable {
     } catch (Exception error) {
       System.out.println("Warning: could not save session " + sessionId + ": " + error.getMessage());
       return false;
+    }
+  }
+
+  private static Path resolveSessionWorkspace(SessionStore sessions, String sessionId, Path projectCwd) {
+    if (sessionId == null || sessionId.isBlank()) return projectCwd;
+    try {
+      SessionStore.SessionSummary summary = sessions.list().stream()
+          .filter(item -> item.id().equals(sessionId)).findFirst().orElse(null);
+      if (summary == null || summary.worktreePath() == null || summary.worktreePath().isBlank()) return projectCwd;
+      Path worktree = Path.of(summary.worktreePath()).toAbsolutePath().normalize();
+      if (!new com.codeauto.git.GitWorktreeService(projectCwd).isRegistered(worktree)) {
+        throw new IllegalStateException("Session worktree is unavailable: " + worktree);
+      }
+      return worktree;
+    } catch (RuntimeException error) {
+      throw error;
+    } catch (Exception error) {
+      throw new IllegalStateException("Unable to resolve session worktree: " + error.getMessage(), error);
     }
   }
 

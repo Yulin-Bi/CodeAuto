@@ -29,7 +29,9 @@ public class PatchFileTool implements ToolDefinition {
     String rawPath = JsonSchemas.textAny(input, parsed.path(), "path", "file_path", "filepath", "filePath");
     if (rawPath == null || rawPath.isBlank()) return ToolResult.error("path is required or must be present in patch header");
     Path file = context.cwd().resolve(stripPrefix(rawPath)).normalize();
+    if (!context.permissions().canRead(file)) return ToolResult.error("Path is not allowed: " + file);
     if (!Files.exists(file)) return ToolResult.error("File does not exist: " + file);
+    if (!Files.isRegularFile(file)) return ToolResult.error("Not a regular file: " + file);
     String before = Files.readString(file);
     String after = apply(parsed, before);
     return FileReviewService.reviewAndWrite(file, before, after, context, "Patched");

@@ -22,9 +22,9 @@ public class ConfigLoader {
     RuntimeConfig config = RuntimeConfig.DEFAULTS;
     config = config.merge(fromEnvironment());
     if (cwd != null) {
-      config = config.merge(fromFile(RuntimeConfig.projectDir(cwd).resolve("settings.json")));
+      config = mergeFile(config, RuntimeConfig.projectDir(cwd).resolve("settings.json"));
     }
-    config = config.merge(fromFile(RuntimeConfig.homeDir().resolve("settings.json")));
+    config = mergeFile(config, RuntimeConfig.homeDir().resolve("settings.json"));
     return config;
   }
 
@@ -97,6 +97,20 @@ public class ConfigLoader {
           json.path("stripThinking").asBoolean(false));
     } catch (Exception error) {
       return RuntimeConfig.DEFAULTS;
+    }
+  }
+
+  private static RuntimeConfig mergeFile(RuntimeConfig base, Path path) {
+    if (!Files.exists(path)) return base;
+    try {
+      JsonNode json = MAPPER.readTree(path.toFile());
+      RuntimeConfig overlay = fromFile(path);
+      if (!json.has("stripThinking")) {
+        overlay = overlay.withStripThinking(base.stripThinking());
+      }
+      return base.merge(overlay);
+    } catch (Exception ignored) {
+      return base;
     }
   }
 

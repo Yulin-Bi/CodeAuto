@@ -66,6 +66,12 @@ public final class ReflectionService {
 
   public static Optional<MemoryEntry> reflectIfNeeded(
       List<ChatMessage> messages, ModelAdapter model, Path cwd, int turnStartIndex) {
+    return reflectIfNeeded(messages, model, cwd, turnStartIndex, null);
+  }
+
+  /** Stores Web/session-scoped reflections separately from project-wide lessons when a session id is supplied. */
+  public static Optional<MemoryEntry> reflectIfNeeded(
+      List<ChatMessage> messages, ModelAdapter model, Path cwd, int turnStartIndex, String sessionId) {
 
     if (model == null || messages == null || messages.isEmpty()) return Optional.empty();
 
@@ -81,10 +87,16 @@ public final class ReflectionService {
     // Per-project storage: reflections and bullets go under <project>/.codeauto/
     // Regular memories remain in ~/.codeauto/memory/
     Path projectRoot = cwd != null ? cwd.resolve(".codeauto") : RuntimeConfig.homeDir();
-    MemoryManager reflectionMemory = new MemoryManager(projectRoot.resolve("reflections"));
-    MemoryManager bulletMemory = new MemoryManager(projectRoot.resolve("bullets"));
-    ReflectionSummaryService summaryService =
-        new ReflectionSummaryService(projectRoot.resolve("reflection-summaries"));
+    Path scopeRoot = sessionId == null || sessionId.isBlank()
+        ? projectRoot
+        : projectRoot.resolve("sessions").resolve(sessionId);
+    MemoryManager reflectionMemory = new MemoryManager(sessionId == null || sessionId.isBlank()
+        ? projectRoot.resolve("reflections") : projectRoot.resolve("reflections").resolve("sessions").resolve(sessionId));
+    MemoryManager bulletMemory = new MemoryManager(sessionId == null || sessionId.isBlank()
+        ? projectRoot.resolve("bullets") : projectRoot.resolve("bullets").resolve("sessions").resolve(sessionId));
+    ReflectionSummaryService summaryService = new ReflectionSummaryService(
+        sessionId == null || sessionId.isBlank() ? projectRoot.resolve("reflection-summaries")
+            : scopeRoot.resolve("reflection-summaries"));
 
     MemoryEntry entry = reflectionMemory.save(
         MemoryType.FEEDBACK,

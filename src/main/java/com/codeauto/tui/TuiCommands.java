@@ -28,6 +28,7 @@ final class TuiCommands {
       new SlashCommand("/skills", "List discovered skills"),
       new SlashCommand("/sessions", "List saved sessions"),
       new SlashCommand("/status", "Show workspace, session, and context stats"),
+      new SlashCommand("/worktrees", "List Git worktrees for this repository"),
       new SlashCommand("/model", "Show or switch active model"),
       new SlashCommand("/mcp", "Show MCP server and tool status"),
       new SlashCommand("/ls [path]", "List local files without model call"),
@@ -66,6 +67,7 @@ final class TuiCommands {
     if (text.equals("/skills")) { app.addEntry(assistant(app.nextEntryId(), skillsText(app))); return true; }
     if (text.equals("/sessions")) { app.addEntry(assistant(app.nextEntryId(), sessionsText(app))); return true; }
     if (text.equals("/status")) { app.addEntry(assistant(app.nextEntryId(), statusText(app))); return true; }
+    if (text.equals("/worktrees")) { app.addEntry(assistant(app.nextEntryId(), worktreesText(app))); return true; }
     if (text.startsWith("/mcp")) { handleMcp(text, app); return true; }
     if (text.equals("/model")) { app.addEntry(assistant(app.nextEntryId(), app.modelName())); return true; }
     if (text.startsWith("/model ")) { app.switchModel(text.substring("/model ".length()).trim()); return true; }
@@ -96,6 +98,7 @@ final class TuiCommands {
         /skills     List discovered skills
         /sessions   List saved sessions
         /status     Show workspace, session, and context stats
+        /worktrees  List Git worktrees and their branches
         /model      Show active model name
         /model <n>  Switch model and persist to user settings
         /mcp        Show MCP server and tool status
@@ -161,6 +164,22 @@ final class TuiCommands {
         + "\nskills=" + (app.skillCount() >= 0 ? app.skillCount() : "?")
         + "\nmcp=" + (app.mcpToolCount() >= 0 ? app.mcpToolCount() : "?")
         + "\nctx=" + (stats != null ? stats.estimatedTokens() + " est tokens, level=" + stats.warningLevel() : "?");
+  }
+
+  private static String worktreesText(TuiApp app) {
+    var service = new com.codeauto.git.GitWorktreeService(app.cwd());
+    if (!service.available()) return "Current workspace is not a Git repository.";
+    var items = service.list();
+    if (items.isEmpty()) return "(no worktrees)";
+    var out = new StringBuilder();
+    for (var item : items) {
+      out.append(item.current() ? "* " : "  ")
+          .append(item.branch() == null ? "(detached)" : item.branch())
+          .append("  ").append(item.path())
+          .append("  ").append(item.changedFiles()).append(" changed")
+          .append("\n");
+    }
+    return out.toString().trim();
   }
 
   private static void handleMcp(String text, TuiApp app) {
@@ -237,8 +256,15 @@ final class TuiCommands {
       return true;
     }
     try {
-      Path file = app.cwd().resolve(parts[0]).normalize();
-      String before = java.nio.file.Files.readString(file);
+      ObjectNode readInput = MAPPER.createObjectNode().put("path", parts[0]);
+      var readResult = app.tools().execute("read_file", readInput,
+          new ToolContext(app.cwd(), app.permissions()));
+      if (!readResult.ok()) {
+        app.addEntry(new TranscriptEntry.Tool(app.nextEntryId(), "patch",
+            TranscriptEntry.ToolStatus.ERROR, readResult.output()));
+        return true;
+      }
+      String before = readResult.output();
       String after = before;
       for (int i = 1; i < parts.length; i += 2) {
         after = after.replace(parts[i], parts[i + 1]);
