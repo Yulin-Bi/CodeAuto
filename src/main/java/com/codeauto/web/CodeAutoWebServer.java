@@ -33,6 +33,8 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -103,6 +105,7 @@ public final class CodeAutoWebServer implements AutoCloseable {
           if (message instanceof ChatMessage.ContextSummaryMessage) c.compactions++;
         }
         c.savedCount = c.messages.size();
+        c.trace.addAll(loadEvaluationTrace(summary.id()));
         conversations.putIfAbsent(summary.id(), c);
       }
     } catch (Exception ignored) {
@@ -577,47 +580,57 @@ public final class CodeAutoWebServer implements AutoCloseable {
     ObjectNode out = MAPPER.createObjectNode().put("scope", projectScope ? "project" : "session");
     ArrayNode series = out.putArray("contextSeries");
     ArrayNode tokenSeries = out.putArray("tokenSeries");
-    ArrayNode errorSeries = out.putArray("toolErrorSeries");
+    ArrayNode errorSeries = out.putArray("toolSuccessSeries");
     int turns = 0, tools = 0, errors = 0, compactions = 0, toolErrors = 0;
-    int inputTokens = 0, outputTokens = 0, totalTokens = 0, cacheRead = 0, cacheCreation = 0, experienceHits = 0, experienceCandidates = 0;
+    int inputTokens = 0, outputTokens = 0, totalTokens = 0, cacheRead = 0, cacheCreation = 0, experienceHits = 0, experienceCandidates = 0, contextTokens = 0;
     List<Conversation> selected = new ArrayList<>();
     if (projectScope) selected.addAll(conversations.values());
     else { Conversation c = conversation(sessionId); if (c != null) selected.add(c); }
     for (Conversation c : selected) synchronized (c) {
       turns += c.turns; tools += c.toolCalls; errors += c.errors; compactions += c.compactions;
       List<ProviderUsage> usages = new ArrayList<>();
+      boolean afterToolError = false, hitForError = false;
       for (ChatMessage message : c.messages) {
         ProviderUsage usage = usageOf(message);
         if (usage != null) usages.add(usage);
         String text = messageText(message);
-        if (text.contains("Bullet index") || text.contains("Past experience")) experienceCandidates++;
-        if (text.contains("[bullet:")) experienceHits++;
+        if (message instanceof ChatMessage.ToolResultMessage result && result.isError()) { experienceCandidates++; afterToolError = true; hitForError = false; }
+        if (afterToolError && (text.contains("[bullet:") || text.contains(".codeauto/reflections") || text.contains(".codeauto/bullets"))) { if (!hitForError) experienceHits++; hitForError = true; }
       }
       for (ProviderUsage usage : usages) {
         inputTokens += usage.inputTokens(); outputTokens += usage.outputTokens(); totalTokens += usage.totalTokens();
         cacheRead += usage.cacheReadInputTokens(); cacheCreation += usage.cacheCreationInputTokens();
       }
       int traceTools = 0, traceToolErrors = 0;
-      int runningTools = 0, runningToolErrors = 0;
+      int runningTools = 0, runningToolErrors = 0, lastContextTokens = 0;
       for (JsonNode event : c.trace) {
         if ("tool_start".equals(event.path("type").asText())) { traceTools++; runningTools++; }
         if ("tool_result".equals(event.path("type").asText())) {
           if (event.path("payload").path("error").asBoolean(false)) { traceToolErrors++; runningToolErrors++; }
           ObjectNode point = errorSeries.addObject().put("time", event.path("time").asText(""));
-          point.put("rate", runningTools == 0 ? 0.0 : (double) runningToolErrors / runningTools);
+          point.put("rate", runningTools == 0 ? 1.0 : 1.0 - (double) runningToolErrors / runningTools);
         }
         if ("context_stats".equals(event.path("type").asText())) {
-          ObjectNode point = series.addObject().put("tokens", event.path("payload").path("tokens").asInt(0));
+          lastContextTokens = event.path("payload").path("tokens").asInt(0);
+          ObjectNode point = series.addObject().put("tokens", lastContextTokens);
           point.put("time", event.path("time").asText("")).put("sessionId", c.id);
         }
       }
-      int usageIndex = 0;
+      int seriesBefore = tokenSeries.size(), usageIndex = 0;
       for (JsonNode context : c.trace) if ("context_stats".equals(context.path("type").asText())) {
         ObjectNode point = tokenSeries.addObject().put("time", context.path("time").asText(""));
         point.put("contextTokens", context.path("payload").path("tokens").asInt(0));
         if (usageIndex < usages.size()) { ProviderUsage usage = usages.get(usageIndex++); point.put("inputTokens", usage.inputTokens()).put("outputTokens", usage.outputTokens()).put("totalTokens", usage.totalTokens()).put("cacheReadTokens", usage.cacheReadInputTokens()).put("cacheCreationTokens", usage.cacheCreationInputTokens()); }
         else point.put("inputTokens", 0).put("outputTokens", 0).put("totalTokens", 0).put("cacheReadTokens", 0).put("cacheCreationTokens", 0);
       }
+      if (lastContextTokens == 0 && !usages.isEmpty()) lastContextTokens = usages.get(usages.size() - 1).inputTokens();
+      if (tokenSeries.size() == seriesBefore && !usages.isEmpty()) {
+        for (ProviderUsage usage : usages) tokenSeries.addObject().put("time", c.updatedAt.toString())
+            .put("contextTokens", usage.inputTokens()).put("inputTokens", usage.inputTokens())
+            .put("outputTokens", usage.outputTokens()).put("totalTokens", usage.totalTokens())
+            .put("cacheReadTokens", usage.cacheReadInputTokens()).put("cacheCreationTokens", usage.cacheCreationInputTokens());
+      }
+      contextTokens += lastContextTokens;
       if (traceTools > 0 || c.toolCalls == 0) { tools += traceTools - c.toolCalls; toolErrors += traceToolErrors; }
       else {
         for (ChatMessage message : c.messages) {
@@ -628,13 +641,14 @@ public final class CodeAutoWebServer implements AutoCloseable {
     out.putObject("metrics").put("turns", turns).put("toolCalls", tools).put("errors", errors)
         .put("toolErrors", toolErrors)
         .put("toolErrorRate", tools == 0 ? 0.0 : (double) toolErrors / tools)
+        .put("toolSuccessRate", tools == 0 ? 0.0 : 1.0 - (double) toolErrors / tools)
         .put("inputTokens", inputTokens).put("outputTokens", outputTokens).put("totalTokens", totalTokens)
         .put("cacheReadTokens", cacheRead).put("cacheCreationTokens", cacheCreation)
         .put("cacheHitRate", inputTokens == 0 ? 0.0 : (double) cacheRead / inputTokens)
         .put("experienceHits", experienceHits)
         .put("experienceHitRate", experienceCandidates == 0 ? 0.0 : Math.min(1.0, (double) experienceHits / experienceCandidates))
-        .put("compactions", compactions).put("contextTokens", selected.stream().mapToInt(c -> c.contextTokens).sum());
-    if (errorSeries.isEmpty() && tools > 0) errorSeries.addObject().put("time", Instant.now().toString()).put("rate", tools == 0 ? 0.0 : (double) toolErrors / tools);
+        .put("compactions", compactions).put("contextTokens", contextTokens);
+    if (errorSeries.isEmpty() && tools > 0) errorSeries.addObject().put("time", Instant.now().toString()).put("rate", 1.0 - (double) toolErrors / tools);
     out.put("seriesAvailable", series.size() > 0);
     return out;
   }
@@ -745,7 +759,20 @@ public final class CodeAutoWebServer implements AutoCloseable {
 
   private void events(HttpExchange exchange) throws IOException { exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8"); exchange.getResponseHeaders().set("Cache-Control", "no-cache"); exchange.getResponseHeaders().set("Connection", "keep-alive"); exchange.sendResponseHeaders(200, 0); OutputStream out=exchange.getResponseBody(); subscribers.put(out, new Object()); try { out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8)); out.flush(); while(true){ Thread.sleep(15000); out.write(": ping\n\n".getBytes(StandardCharsets.UTF_8)); out.flush(); } } catch(Exception ignored){} finally { subscribers.remove(out); try{out.close();}catch(Exception ignored){} } }
 
-  private void publish(String type, String sessionId, JsonNode payload) { ObjectNode e=MAPPER.createObjectNode().put("eventId",UUID.randomUUID().toString()).put("time",Instant.now().toString()).put("type",type).put("sessionId",sessionId).set("payload",payload); Conversation c=conversation(sessionId); if(c!=null){synchronized(c){c.trace.add(e.deepCopy());}} byte[] bytes=("event: agent_event\ndata: "+e.toString()+"\n\n").getBytes(StandardCharsets.UTF_8); for(OutputStream out:subscribers.keySet()){ try{synchronized(out){out.write(bytes);out.flush();}}catch(Exception ex){subscribers.remove(out);}} }
+  private void publish(String type, String sessionId, JsonNode payload) { ObjectNode e=MAPPER.createObjectNode().put("eventId",UUID.randomUUID().toString()).put("time",Instant.now().toString()).put("type",type).put("sessionId",sessionId).set("payload",payload); Conversation c=conversation(sessionId); if(c!=null){synchronized(c){c.trace.add(e.deepCopy());}} persistEvaluationEvent(e); byte[] bytes=("event: agent_event\ndata: "+e.toString()+"\n\n").getBytes(StandardCharsets.UTF_8); for(OutputStream out:subscribers.keySet()){ try{synchronized(out){out.write(bytes);out.flush();}}catch(Exception ex){subscribers.remove(out);}} }
+
+  private Path evaluationPath(String sessionId) { return cwd.resolve(".codeauto").resolve("evaluation").resolve("sessions").resolve(sessionId + ".jsonl"); }
+
+  private List<JsonNode> loadEvaluationTrace(String sessionId) {
+    Path file = evaluationPath(sessionId); if (!Files.isRegularFile(file)) return List.of();
+    try { List<JsonNode> result = new ArrayList<>(); for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) if (!line.isBlank()) result.add(MAPPER.readTree(line)); return result; }
+    catch (Exception ignored) { return List.of(); }
+  }
+
+  private void persistEvaluationEvent(JsonNode event) {
+    try { Path file = evaluationPath(event.path("sessionId").asText()); Files.createDirectories(file.getParent()); Files.writeString(file, event.toString() + System.lineSeparator(), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND); }
+    catch (Exception ignored) { }
+  }
 
   private static String errorMessage(Throwable error) {
     if (error == null) return "未知错误";
