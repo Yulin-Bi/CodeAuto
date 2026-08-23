@@ -420,14 +420,14 @@ h1 { min-width: 0; margin: 0; font-size: 22px; line-height: 1.2; letter-spacing:
 .git-file-tabs button.active { color: #175fbe; font-weight: 700; }
 .git-file-tabs button.active::after { background: #246bfd; }
 .git-file-tabs button:disabled { color: #b5bdc9; cursor: not-allowed; }
-.git-file-content { min-height: 0; overflow: auto; background: #f7f9fc; scrollbar-color: #c5cedb transparent; }
+.git-file-content { min-height: 0; overflow: auto; background: #f7f9fc; scrollbar-color: #c5cedb transparent; font-size: 13px; line-height: 1.65; }
 .git-file-loading { height: 100%; display: grid; place-items: center; color: #8793a5; font-size: 11px; }
 .memory-markdown { max-width: 860px; margin: 0 auto; padding: 24px 28px 36px; color: #334158; font-size: 13px; line-height: 1.7; }
 .memory-markdown h1,.memory-markdown h2,.memory-markdown h3 { color: #25344d; }
 .git-code-view { display: table; min-width: 100%; padding: 10px 0 22px; counter-reset: line; }
-.git-code-line { min-height: 22px; display: grid; grid-template-columns: 56px minmax(max-content,1fr); align-items: stretch; color: #334056; }
-.git-code-line > i { position: sticky; left: 0; z-index: 1; padding: 3px 13px 3px 8px; border-right: 1px solid #e6eaf0; color: #a0a9b7; background: #f7f9fc; font: normal 9px/16px ui-monospace,SFMono-Regular,Consolas,monospace; text-align: right; user-select: none; }
-.git-code-line > code { min-width: 100%; padding: 3px 16px; color: inherit; white-space: pre; font: 10px/16px ui-monospace,SFMono-Regular,Consolas,monospace; }
+.git-code-line { min-height: 26px; display: grid; grid-template-columns: 62px minmax(max-content,1fr); align-items: stretch; color: #334056; }
+.git-code-line > i { position: sticky; left: 0; z-index: 1; padding: 4px 14px 4px 8px; border-right: 1px solid #e6eaf0; color: #8c98aa; background: #f7f9fc; font: normal 11px/18px ui-monospace,SFMono-Regular,Consolas,monospace; text-align: right; user-select: none; }
+.git-code-line > code { min-width: 100%; padding: 4px 18px; color: inherit; white-space: pre; font: 12px/18px ui-monospace,SFMono-Regular,Consolas,monospace; }
 .git-code-line.meta { color: #66758a; background: #edf1f6; }
 .git-code-line.meta > i { background: #edf1f6; }
 .git-code-line.hunk { color: #285a9c; background: #eaf2ff; }
