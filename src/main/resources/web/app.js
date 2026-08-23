@@ -116,7 +116,7 @@ function render(){
   $('#rail-token').querySelector('.token-numbers').innerHTML=`<b>${used.toLocaleString()}</b><span>/ ${limit.toLocaleString()} tokens</span>`
   $('#token-fill').style.width=`${percent}%`;$('#token-fill').classList.toggle('warning',percent>=70);$('#token-fill').classList.toggle('danger',percent>=90)
   $('#token-caption').textContent=s?(used?`已使用 ${percent}% · 剩余约 ${Math.max(0,limit-used).toLocaleString()}`:'本轮尚未产生 Token 统计'):'选择会话后显示实时用量'
-  $('#rail-eval').innerHTML=s?`${s.running?'Agent 正在运行':'Agent 已就绪'}<br>压缩 ${s.compactions} 次 · 错误 ${s.errors} 次`:'事件、工具和错误会持续记录'
+  $('#rail-eval').innerHTML=s?`${s.running?'Agent 正在运行':'Agent 已就绪'}<br>工具 ${s.toolCalls||0} 次 · 压缩 ${s.compactions||0} 次`:'选择会话后显示运行状态'
   renderTodos()
   if(state.railView==='worktrees')renderWorktrees()
   renderTranscript(s)
