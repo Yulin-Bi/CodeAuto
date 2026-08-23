@@ -63,7 +63,7 @@ public final class GitWorktreeService {
   /** Returns a bounded, parent-aware commit DAG for the repository graph UI. */
   public CommitGraph graph(int limit) {
     int bounded = Math.max(20, Math.min(limit, 500));
-    ProcessResult log = run(repositoryRoot, "git", "log", "--all", "--date-order", "-n", Integer.toString(bounded),
+    ProcessResult log = run(repositoryRoot, "git", "log", "--all", "--topo-order", "--date-order", "-n", Integer.toString(bounded),
         "--pretty=format:%H%x1f%P%x1f%s%x1f%an%x1f%aI");
     List<CommitNode> nodes = new ArrayList<>();
     List<CommitEdge> edges = new ArrayList<>();
