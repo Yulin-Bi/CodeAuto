@@ -34,7 +34,8 @@ mvn exec:java "-Dexec.args=--mock --tui"
 mvn exec:java "-Dexec.args=--mock --web --web-port 0"
 ```
 
-启动后终端会打印本地访问地址。Web UI 包含对话、会话地图、事件追踪和 Agent 评估看板；运行阶段不需要单独启动 Node/Vite 服务。
+启动后终端会打印本地访问地址。Web 工作台的使用说明见
+[Web 工作台使用指南](docs/instructions/web-workbench.md)。运行阶段不需要单独启动 Node/Vite 服务。
 
 真实模型模式启动 TUI：
 
