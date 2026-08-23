@@ -11,6 +11,7 @@ import com.codeauto.context.ContextStats;
 import com.codeauto.core.AgentLoop;
 import com.codeauto.core.AgentLoopListener;
 import com.codeauto.core.ChatMessage;
+import com.codeauto.core.ProviderUsage;
 import com.codeauto.model.ModelAdapter;
 import com.codeauto.model.AnthropicModelAdapter;
 import com.codeauto.model.MockModelAdapter;
@@ -575,20 +576,47 @@ public final class CodeAutoWebServer implements AutoCloseable {
   private ObjectNode evaluation(boolean projectScope, String sessionId) {
     ObjectNode out = MAPPER.createObjectNode().put("scope", projectScope ? "project" : "session");
     ArrayNode series = out.putArray("contextSeries");
+    ArrayNode tokenSeries = out.putArray("tokenSeries");
+    ArrayNode errorSeries = out.putArray("toolErrorSeries");
     int turns = 0, tools = 0, errors = 0, compactions = 0, toolErrors = 0;
+    int inputTokens = 0, outputTokens = 0, totalTokens = 0, cacheRead = 0, cacheCreation = 0, experienceHits = 0, experienceCandidates = 0;
     List<Conversation> selected = new ArrayList<>();
     if (projectScope) selected.addAll(conversations.values());
     else { Conversation c = conversation(sessionId); if (c != null) selected.add(c); }
     for (Conversation c : selected) synchronized (c) {
       turns += c.turns; tools += c.toolCalls; errors += c.errors; compactions += c.compactions;
+      List<ProviderUsage> usages = new ArrayList<>();
+      for (ChatMessage message : c.messages) {
+        ProviderUsage usage = usageOf(message);
+        if (usage != null) usages.add(usage);
+        String text = messageText(message);
+        if (text.contains("Bullet index") || text.contains("Past experience")) experienceCandidates++;
+        if (text.contains("[bullet:")) experienceHits++;
+      }
+      for (ProviderUsage usage : usages) {
+        inputTokens += usage.inputTokens(); outputTokens += usage.outputTokens(); totalTokens += usage.totalTokens();
+        cacheRead += usage.cacheReadInputTokens(); cacheCreation += usage.cacheCreationInputTokens();
+      }
       int traceTools = 0, traceToolErrors = 0;
+      int runningTools = 0, runningToolErrors = 0;
       for (JsonNode event : c.trace) {
-        if ("tool_start".equals(event.path("type").asText())) traceTools++;
-        if ("tool_result".equals(event.path("type").asText()) && event.path("payload").path("error").asBoolean(false)) traceToolErrors++;
+        if ("tool_start".equals(event.path("type").asText())) { traceTools++; runningTools++; }
+        if ("tool_result".equals(event.path("type").asText())) {
+          if (event.path("payload").path("error").asBoolean(false)) { traceToolErrors++; runningToolErrors++; }
+          ObjectNode point = errorSeries.addObject().put("time", event.path("time").asText(""));
+          point.put("rate", runningTools == 0 ? 0.0 : (double) runningToolErrors / runningTools);
+        }
         if ("context_stats".equals(event.path("type").asText())) {
           ObjectNode point = series.addObject().put("tokens", event.path("payload").path("tokens").asInt(0));
           point.put("time", event.path("time").asText("")).put("sessionId", c.id);
         }
+      }
+      int usageIndex = 0;
+      for (JsonNode context : c.trace) if ("context_stats".equals(context.path("type").asText())) {
+        ObjectNode point = tokenSeries.addObject().put("time", context.path("time").asText(""));
+        point.put("contextTokens", context.path("payload").path("tokens").asInt(0));
+        if (usageIndex < usages.size()) { ProviderUsage usage = usages.get(usageIndex++); point.put("inputTokens", usage.inputTokens()).put("outputTokens", usage.outputTokens()).put("totalTokens", usage.totalTokens()).put("cacheReadTokens", usage.cacheReadInputTokens()).put("cacheCreationTokens", usage.cacheCreationInputTokens()); }
+        else point.put("inputTokens", 0).put("outputTokens", 0).put("totalTokens", 0).put("cacheReadTokens", 0).put("cacheCreationTokens", 0);
       }
       if (traceTools > 0 || c.toolCalls == 0) { tools += traceTools - c.toolCalls; toolErrors += traceToolErrors; }
       else {
@@ -600,9 +628,31 @@ public final class CodeAutoWebServer implements AutoCloseable {
     out.putObject("metrics").put("turns", turns).put("toolCalls", tools).put("errors", errors)
         .put("toolErrors", toolErrors)
         .put("toolErrorRate", tools == 0 ? 0.0 : (double) toolErrors / tools)
+        .put("inputTokens", inputTokens).put("outputTokens", outputTokens).put("totalTokens", totalTokens)
+        .put("cacheReadTokens", cacheRead).put("cacheCreationTokens", cacheCreation)
+        .put("cacheHitRate", inputTokens == 0 ? 0.0 : (double) cacheRead / inputTokens)
+        .put("experienceHits", experienceHits)
+        .put("experienceHitRate", experienceCandidates == 0 ? 0.0 : Math.min(1.0, (double) experienceHits / experienceCandidates))
         .put("compactions", compactions).put("contextTokens", selected.stream().mapToInt(c -> c.contextTokens).sum());
+    if (errorSeries.isEmpty() && tools > 0) errorSeries.addObject().put("time", Instant.now().toString()).put("rate", tools == 0 ? 0.0 : (double) toolErrors / tools);
     out.put("seriesAvailable", series.size() > 0);
     return out;
+  }
+
+  private static ProviderUsage usageOf(ChatMessage message) {
+    if (message instanceof ChatMessage.AssistantMessage m) return m.providerUsage();
+    if (message instanceof ChatMessage.AssistantRawMessage m) return m.providerUsage();
+    if (message instanceof ChatMessage.AssistantProgressMessage m) return m.providerUsage();
+    if (message instanceof ChatMessage.AssistantToolCallMessage m) return m.providerUsage();
+    return null;
+  }
+
+  private static String messageText(ChatMessage message) {
+    if (message instanceof ChatMessage.SystemMessage m) return m.content();
+    if (message instanceof ChatMessage.UserMessage m) return m.content();
+    if (message instanceof ChatMessage.AssistantMessage m) return m.content();
+    if (message instanceof ChatMessage.AssistantProgressMessage m) return m.content();
+    return "";
   }
 
   private ObjectNode reflections(boolean projectScope, String sessionId) {

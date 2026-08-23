@@ -293,7 +293,9 @@ public class AnthropicModelAdapter implements ModelAdapter {
     if (previous == null) return next;
     int input = Math.max(previous.inputTokens(), next.inputTokens());
     int output = Math.max(previous.outputTokens(), next.outputTokens());
-    return new ProviderUsage(input, output, input + output, "anthropic");
+    return new ProviderUsage(input, output, input + output, "anthropic",
+        previous.cacheReadInputTokens() + next.cacheReadInputTokens(),
+        previous.cacheCreationInputTokens() + next.cacheCreationInputTokens());
   }
 
   private static long retryDelayMs(int attempt, String retryAfter) {
@@ -391,12 +393,12 @@ public class AnthropicModelAdapter implements ModelAdapter {
 
   private static ProviderUsage parseUsage(JsonNode usage) {
     if (usage == null || usage.isMissingNode()) return null;
-    int input = usage.path("input_tokens").asInt(0)
-        + usage.path("cache_creation_input_tokens").asInt(0)
-        + usage.path("cache_read_input_tokens").asInt(0);
+    int cacheCreation = usage.path("cache_creation_input_tokens").asInt(0);
+    int cacheRead = usage.path("cache_read_input_tokens").asInt(0);
+    int input = usage.path("input_tokens").asInt(0) + cacheCreation + cacheRead;
     int output = usage.path("output_tokens").asInt(0);
     int total = input + output;
-    return total <= 0 ? null : new ProviderUsage(input, output, total, "anthropic");
+    return total <= 0 ? null : new ProviderUsage(input, output, total, "anthropic", cacheRead, cacheCreation);
   }
 
   private static ParsedText parseAssistantText(String content) {
