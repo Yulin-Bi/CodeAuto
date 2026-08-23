@@ -19,7 +19,72 @@ mvn package -DskipTests
 java -jar target/codeauto-0.1.0-SNAPSHOT-shaded.jar --tui
 ```
 
-真实模型模式需要配置 `CODEAUTO_BASE_URL`、`CODEAUTO_AUTH_TOKEN` 和 `CODEAUTO_MODEL`，也可以写入项目级或用户级 `.codeauto/settings.json`。配置优先级由低到高为：默认值、环境变量、项目配置、用户配置、CLI 参数。
+## 模型 Key 与配置
+
+真实模型模式至少需要配置模型服务地址、认证 Key 和模型名称。PowerShell 示例：
+
+```powershell
+$env:CODEAUTO_BASE_URL="https://api.anthropic.com"
+$env:CODEAUTO_AUTH_TOKEN="your-api-key"
+$env:CODEAUTO_MODEL="your-model-name"
+$env:CODEAUTO_STRIP_THINKING="true"
+mvn exec:java "-Dexec.args=--web --web-port 0"
+```
+
+macOS / Linux：
+
+```bash
+export CODEAUTO_BASE_URL="https://api.anthropic.com"
+export CODEAUTO_AUTH_TOKEN="your-api-key"
+export CODEAUTO_MODEL="your-model-name"
+export CODEAUTO_STRIP_THINKING=true
+mvn exec:java "-Dexec.args=--web --web-port 0"
+```
+
+也可以写入用户级 `~/.codeauto/settings.json` 或项目级 `.codeauto/settings.json`：
+
+```json
+{
+  "baseUrl": "https://api.anthropic.com",
+  "authToken": "your-api-key",
+  "model": "your-model-name",
+  "maxOutputTokens": 4096,
+  "maxRetries": 4,
+  "modelTimeoutSeconds": 600,
+  "contextWindow": 200000,
+  "stripThinking": true
+}
+```
+
+配置优先级由低到高为：默认值、环境变量、项目配置、用户配置、CLI 参数。`stripThinking` 用于适配不同模型对 extended thinking 的要求：Anthropic 通常设为 `true`，需要原样回传 thinking block 的模型设为 `false`。
+
+## 在任意目录启动
+
+项目自带 `bin` 启动脚本，会把当前目录作为工作区：
+
+```powershell
+bin\codeauto.bat --web --web-port 0
+bin\codeauto.bat --tui
+bin\codeauto.bat --cwd D:\path\to\another-project --web --web-port 0
+```
+
+如果希望在任意终端直接输入 `codeauto`，将项目的 `bin` 目录加入用户 PATH：
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+  "Path",
+  [Environment]::GetEnvironmentVariable("Path", "User") + ";D:\JAVA\git-pro\CodeAuto\bin",
+  "User"
+)
+```
+
+重新打开终端后即可使用：
+
+```powershell
+codeauto --web --web-port 0
+codeauto --tui
+codeauto --cwd D:\path\to\another-project
+```
 
 ## 交互方式
 
