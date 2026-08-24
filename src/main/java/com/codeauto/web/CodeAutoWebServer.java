@@ -382,7 +382,7 @@ public final class CodeAutoWebServer implements AutoCloseable {
         AgentLoop loop = new AgentLoop(model, tools, new ToolContext(c.executionCwd, turnPermissions),
             128, listener, runtime.contextWindow());
         List<ChatMessage> result = loop.runTurn(c.messages);
-        synchronized (c) { c.messages = new ArrayList<>(result); c.awaitingUserQuestion = result.stream()
+        synchronized (c) { c.messages = new ArrayList<>(result); c.awaitingUserQuestion = result.subList(Math.min(turnStartIndex, result.size()), result.size()).stream()
             .filter(message -> message instanceof ChatMessage.ToolResultMessage tool && "ask_user".equals(tool.toolName()))
             .map(message -> ((ChatMessage.ToolResultMessage) message).content()).filter(text -> text != null && !text.isBlank())
             .reduce((first, second) -> second).orElse(null); c.savedCount = persist(id, c); c.running = false; }
