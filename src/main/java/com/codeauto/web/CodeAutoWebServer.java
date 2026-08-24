@@ -372,7 +372,7 @@ public final class CodeAutoWebServer implements AutoCloseable {
   }
 
   private boolean startTurn(String id, String content) {
-    Conversation c = conversation(id); final int turnStartIndex; synchronized (c) { if (c.running) return false; turnStartIndex = c.messages.size(); c.running = true; c.turns++; c.messages.add(new ChatMessage.UserMessage(content)); if (c.turns == 1 && !c.titleLocked) { c.title = titleFor(content); try { sessions.rename(id, c.title); } catch (Exception ignored) {} } c.updatedAt = Instant.now(); }
+    Conversation c = conversation(id); final int turnStartIndex; synchronized (c) { if (c.running) return false; c.awaitingUserQuestion = null; turnStartIndex = c.messages.size(); c.running = true; c.turns++; c.messages.add(new ChatMessage.UserMessage(content)); if (c.turns == 1 && !c.titleLocked) { c.title = titleFor(content); try { sessions.rename(id, c.title); } catch (Exception ignored) {} } c.updatedAt = Instant.now(); }
     publish("user_message", id, MAPPER.createObjectNode().put("content", content));
     turns.submit(() -> {
       PermissionManager turnPermissions = permissions.rebind(c.executionCwd, permissionBroker.promptFor(id));
@@ -382,7 +382,11 @@ public final class CodeAutoWebServer implements AutoCloseable {
         AgentLoop loop = new AgentLoop(model, tools, new ToolContext(c.executionCwd, turnPermissions),
             128, listener, runtime.contextWindow());
         List<ChatMessage> result = loop.runTurn(c.messages);
-        synchronized (c) { c.messages = new ArrayList<>(result); c.savedCount = persist(id, c); c.running = false; }
+        synchronized (c) { c.messages = new ArrayList<>(result); c.awaitingUserQuestion = result.stream()
+            .filter(message -> message instanceof ChatMessage.ToolResultMessage tool && "ask_user".equals(tool.toolName()))
+            .map(message -> ((ChatMessage.ToolResultMessage) message).content()).filter(text -> text != null && !text.isBlank())
+            .reduce((first, second) -> second).orElse(null); c.savedCount = persist(id, c); c.running = false; }
+        if (c.awaitingUserQuestion != null) publish("user_question", id, MAPPER.createObjectNode().put("question", c.awaitingUserQuestion));
         ReflectionService.reflectIfNeeded(c.messages, model, c.executionCwd, turnStartIndex, id);
         publish("turn_complete", id, MAPPER.createObjectNode().put("messages", c.messages.size()));
       } catch (Exception e) { synchronized (c) { c.running = false; c.errors++; } ObjectNode error=MAPPER.createObjectNode().put("message", errorMessage(e)).put("type", e.getClass().getName()); if(e.getCause()!=null)error.put("cause", errorMessage(e.getCause())); publish("turn_error", id, error); }
@@ -423,7 +427,7 @@ public final class CodeAutoWebServer implements AutoCloseable {
     ObjectNode metrics=out.putObject("metrics"); int turns=0,toolsCount=0,errors=0,compactions=0,tokens=0; for(Conversation c:conversations.values()){turns+=c.turns;toolsCount+=c.toolCalls;errors+=c.errors;compactions+=c.compactions;tokens+=c.contextTokens;} metrics.put("turns",turns).put("toolCalls",toolsCount).put("errors",errors).put("compactions",compactions).put("contextTokens",tokens); return out;
   }
 
-  private ObjectNode sessionJson(Conversation c, Map<Path, GitWorktreeService.WorktreeInfo> currentWorktrees) { synchronized(c){ ObjectNode n=MAPPER.createObjectNode().put("id",c.id).put("title",c.title).put("running",c.running).put("turns",c.turns).put("toolCalls",c.toolCalls).put("errors",c.errors).put("compactions",c.compactions).put("contextTokens",c.contextTokens).put("messageCount",c.messages.size()).put("updatedAt",c.updatedAt.toString()).put("executionCwd",c.executionCwd.toString()); if(c.parentSessionId!=null)n.put("parentSessionId",c.parentSessionId); if(c.forkBoundary!=null)n.put("forkBoundary",c.forkBoundary); if(c.worktreePath!=null){n.put("worktreePath",c.worktreePath.toString()).put("gitBranch",c.gitBranch==null?"":c.gitBranch).put("baseCommit",c.baseCommit==null?"":c.baseCommit);var info=currentWorktrees.get(c.worktreePath);n.put("worktreeAvailable",info!=null);if(info!=null)n.put("changedFiles",info.changedFiles()).put("head",info.head());} return n; } }
+  private ObjectNode sessionJson(Conversation c, Map<Path, GitWorktreeService.WorktreeInfo> currentWorktrees) { synchronized(c){ ObjectNode n=MAPPER.createObjectNode().put("id",c.id).put("title",c.title).put("running",c.running).put("turns",c.turns).put("toolCalls",c.toolCalls).put("errors",c.errors).put("compactions",c.compactions).put("contextTokens",c.contextTokens).put("messageCount",c.messages.size()).put("updatedAt",c.updatedAt.toString()).put("executionCwd",c.executionCwd.toString()); if(c.awaitingUserQuestion!=null)n.put("awaitingUserQuestion",c.awaitingUserQuestion); if(c.parentSessionId!=null)n.put("parentSessionId",c.parentSessionId); if(c.forkBoundary!=null)n.put("forkBoundary",c.forkBoundary); if(c.worktreePath!=null){n.put("worktreePath",c.worktreePath.toString()).put("gitBranch",c.gitBranch==null?"":c.gitBranch).put("baseCommit",c.baseCommit==null?"":c.baseCommit);var info=currentWorktrees.get(c.worktreePath);n.put("worktreeAvailable",info!=null);if(info!=null)n.put("changedFiles",info.changedFiles()).put("head",info.head());} return n; } }
 
   private ObjectNode worktreeState() {
     ObjectNode out = MAPPER.createObjectNode().put("available", worktrees.available());
@@ -821,5 +825,5 @@ public final class CodeAutoWebServer implements AutoCloseable {
   private static void json(HttpExchange e,JsonNode n)throws IOException{byte[] b=n.toString().getBytes(StandardCharsets.UTF_8);e.getResponseHeaders().set("Content-Type","application/json; charset=utf-8");e.sendResponseHeaders(200,b.length);try(OutputStream o=e.getResponseBody()){o.write(b);}}
   private static void error(HttpExchange e,int status,String message)throws IOException{ObjectNode n=MAPPER.createObjectNode().put("ok",false).put("error",message==null?"error":message);byte[] b=n.toString().getBytes(StandardCharsets.UTF_8);e.getResponseHeaders().set("Content-Type","application/json; charset=utf-8");e.sendResponseHeaders(status,b.length);try(OutputStream o=e.getResponseBody()){o.write(b);}}
   @Override public synchronized void close(){if(server!=null)server.stop(0);permissionBroker.close();turns.shutdownNow();for(OutputStream o:subscribers.keySet()){try{o.close();}catch(Exception ignored){}}subscribers.clear();}
-  private final class Conversation { final String id; String title = "会话"; String parentSessionId; Integer forkBoundary; Path executionCwd=cwd; Path worktreePath; String gitBranch; String baseCommit; List<ChatMessage> messages=new ArrayList<>(); List<JsonNode> trace=new ArrayList<>(); int savedCount=1,turns,toolCalls,errors,compactions,contextTokens; boolean running,titleLocked,worktreeUnavailable; Instant updatedAt=Instant.now(); Conversation(String id){this.id=id;} }
+  private final class Conversation { final String id; String title = "会话"; String parentSessionId; Integer forkBoundary; Path executionCwd=cwd; Path worktreePath; String gitBranch; String baseCommit; String awaitingUserQuestion; List<ChatMessage> messages=new ArrayList<>(); List<JsonNode> trace=new ArrayList<>(); int savedCount=1,turns,toolCalls,errors,compactions,contextTokens; boolean running,titleLocked,worktreeUnavailable; Instant updatedAt=Instant.now(); Conversation(String id){this.id=id;} }
 }

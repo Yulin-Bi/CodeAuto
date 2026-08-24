@@ -441,6 +441,8 @@ h1 { min-width: 0; margin: 0; font-size: 22px; line-height: 1.2; letter-spacing:
 .git-file-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 18px; border-top: 1px solid #dfe5ed; color: #8b96a7; background: #fff; font-size: 8px; }
 @media (max-width:760px) { .git-file-dialog { width: calc(100vw - 20px); height: calc(100vh - 20px); border-radius: 13px; } .git-file-header { padding: 11px 12px; } .git-file-tabs { padding-left: 10px; } .git-code-line { grid-template-columns: 44px minmax(max-content,1fr); } }
 .permission-dialog { width: min(560px,calc(100vw - 32px)); max-width: none; padding: 0; overflow: hidden; border: 1px solid #d9e2ef; border-radius: 20px; color: #24324a; background: #fff; box-shadow: 0 30px 90px rgba(21,35,58,.25); }
+.user-question-dialog { width: min(620px,calc(100vw - 32px)); }
+.user-question-dialog textarea { width: 100%; min-height: 120px; margin: 12px 0 4px; padding: 12px; resize: vertical; border: 1px solid #dce3ed; border-radius: 10px; color: #26344a; background: #fbfcfe; font: inherit; }
 .permission-dialog::backdrop { background: rgba(20,31,49,.34); backdrop-filter: blur(5px); }
 .permission-shell { padding: 25px; }
 .permission-kicker { display: flex; align-items: center; gap: 8px; color: #1769e8; font-size: 10px; font-weight: 750; letter-spacing: .04em; }
