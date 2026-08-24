@@ -86,6 +86,15 @@ codeauto --tui
 codeauto --cwd D:\path\to\another-project
 ```
 
+其中 `codeauto --web` 会自动把你执行命令时所在的目录作为当前工作区。例如先进入任意项目目录，再运行：
+
+```powershell
+cd D:\workspace\my-project
+codeauto --web
+```
+
+Web 服务启动后，终端会打印本地访问地址。`--web-port 0` 是默认值，表示自动选择空闲端口；也可以指定固定端口，例如 `codeauto --web --web-port 8080`。
+
 ## 交互方式
 
 CodeAuto 提供普通 CLI、全屏 TUI 和 Web 工作台。三者共享 Agent Loop、工具注册、会话存储、权限和评估数据；Web 工作台的静态资源与 API 由同一个 Java 服务提供，不需要单独运行前端服务。

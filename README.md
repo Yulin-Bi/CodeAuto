@@ -22,3 +22,5 @@ CodeAuto 是一个基于 Java 21 的 AI 编程代理运行时，面向希望在 
 ![文件变更 Diff 预览](instruction/web_diff.png)
 
 详细的启动方式、配置说明、Web 工作台使用指南和项目结构见 [CodeAuto 详细说明](instruction/codeauto-detailed.md)。
+
+将 `bin` 加入 PATH 后，可在任意项目目录直接运行 `codeauto --web`，当前目录会自动作为工作区。
