@@ -32,6 +32,13 @@ public final class GitWorktreeService {
     return run(repositoryRoot, "git", "rev-parse", "--show-toplevel").ok();
   }
 
+  /** Initializes a local repository for a workspace that does not have one yet. */
+  public void init() {
+    if (available()) return;
+    ProcessResult result = run(repositoryRoot, "git", "init");
+    if (!result.ok()) throw new IllegalStateException("无法初始化 Git 仓库：" + result.stderr());
+  }
+
   public List<WorktreeInfo> list() {
     ProcessResult result = run(repositoryRoot, "git", "worktree", "list", "--porcelain");
     if (!result.ok()) return List.of();

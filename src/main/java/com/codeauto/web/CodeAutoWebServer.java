@@ -457,6 +457,12 @@ public final class CodeAutoWebServer implements AutoCloseable {
     if (conversation == null) { error(exchange, 404, "session not found"); return; }
     try {
       Path worktree = workspaceFor(sessionId);
+      if ("init".equals(operation) && "POST".equals(exchange.getRequestMethod())) {
+        if (conversation.running) throw new IllegalStateException("Agent 正在使用该工作区，请等待本轮结束后再初始化 Git");
+        worktrees.init();
+        publish("git_initialized", sessionId, MAPPER.createObjectNode().put("path", worktree.toString()));
+        json(exchange, MAPPER.createObjectNode().put("ok", true).put("message", "已初始化本地 Git 仓库")); return;
+      }
       if ("status".equals(operation) && "GET".equals(exchange.getRequestMethod())) {
         json(exchange, gitStatusJson(worktrees.status(worktree))); return;
       }
