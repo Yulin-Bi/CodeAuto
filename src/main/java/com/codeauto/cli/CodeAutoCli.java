@@ -33,6 +33,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 import java.util.UUID;
+import javax.swing.JFileChooser;
+import javax.swing.filechooser.FileSystemView;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
@@ -64,6 +66,9 @@ public class CodeAutoCli implements Runnable {
 
   @CommandLine.Option(names = "--cwd", description = "Working directory (default: current dir)")
   String cwdOverride;
+
+  @CommandLine.Option(names = "--choose-folder", description = "Choose the working directory with a folder picker before starting")
+  boolean chooseFolder;
 
   @CommandLine.Option(names = "--max-steps", defaultValue = "128", description = "Maximum model/tool steps per turn")
   int maxSteps;
@@ -496,7 +501,23 @@ public class CodeAutoCli implements Runnable {
       System.out.println("Warning: --cwd directory not found, using current directory: " + custom);
     }
     Path current = Path.of("").toAbsolutePath().normalize();
+    if (chooseFolder) {
+      Path selected = chooseFolder(current);
+      if (selected != null) return selected;
+      System.out.println("未选择工作区，使用当前目录：" + current);
+    }
     return projectRootForBundledBin(current);
+  }
+
+  private static Path chooseFolder(Path initial) {
+    if (java.awt.GraphicsEnvironment.isHeadless()) return initial;
+    JFileChooser chooser = new JFileChooser(initial.toFile(), FileSystemView.getFileSystemView());
+    chooser.setDialogTitle("选择 CodeAuto 工作区");
+    chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+    chooser.setAcceptAllFileFilterUsed(false);
+    int result = chooser.showOpenDialog(null);
+    if (result != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) return null;
+    return chooser.getSelectedFile().toPath().toAbsolutePath().normalize();
   }
 
 

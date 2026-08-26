@@ -84,6 +84,7 @@ bin\codeauto.bat --cwd D:\path\to\another-project --web --web-port 0
 codeauto --web --web-port 0
 codeauto --tui
 codeauto --cwd D:\path\to\another-project
+codeauto --choose-folder --web
 ```
 
 其中 `codeauto --web` 会自动把你执行命令时所在的目录作为当前工作区。例如先进入任意项目目录，再运行：
@@ -94,6 +95,20 @@ codeauto --web
 ```
 
 Web 服务启动后，终端会打印本地访问地址。`--web-port 0` 是默认值，表示自动选择空闲端口；也可以指定固定端口，例如 `codeauto --web --web-port 8080`。
+
+发布版双击启动时建议使用 `--choose-folder --web`：CodeAuto 会先弹出系统目录选择器，用户选定项目后再启动 Web 工作台。该选项也适合安装包快捷方式；命令行和 TUI 不使用它时，仍按当前目录或 `--cwd` 工作。
+
+项目提供了 Windows 打包脚本，可直接生成绿色版目录：
+
+```powershell
+bin\package-release.ps1
+```
+
+生成安装程序则执行：
+
+```powershell
+bin\package-release.ps1 -Type exe
+```
 
 ## 交互方式
 
