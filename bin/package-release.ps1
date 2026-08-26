@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $project = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $inputDir = Join-Path $project 'release-input'
 $outputDir = Join-Path $project 'release'
-$jar = Join-Path $project 'target\codeauto-0.1.0-SNAPSHOT-shaded.jar'
+$jar = Join-Path $project 'target\codeauto-0.1.0-SNAPSHOT.jar'
 
 Push-Location $project
 try {
