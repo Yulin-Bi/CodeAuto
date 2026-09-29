@@ -82,12 +82,16 @@ final class WebPermissionBroker {
     });
   }
 
-  void close() {
+  void reset() {
     for (Pending item : pending.values()) {
       item.future().complete(new PermissionResponse(PermissionDecision.DENY_ONCE));
     }
     pending.clear();
     policies.clear();
+  }
+
+  void close() {
+    reset();
   }
 
   private PermissionResponse automaticDecision(String sessionId, PermissionRequest request) {

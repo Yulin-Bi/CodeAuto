@@ -25,6 +25,7 @@ import com.codeauto.tool.ToolRegistry;
 import com.codeauto.todo.TodoStore;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -48,28 +49,70 @@ import java.util.concurrent.Executors;
 /** Small single-process Web surface. It deliberately reuses CodeAuto's Java runtime. */
 public final class CodeAutoWebServer implements AutoCloseable {
   private static final ObjectMapper MAPPER = new ObjectMapper().registerModule(new JavaTimeModule());
-  private final java.nio.file.Path cwd;
+  /** Everything that is bound to one workspace directory. */
+  public record Workspace(java.nio.file.Path cwd, RuntimeConfig runtime, ToolRegistry tools,
+      ModelAdapter model, PermissionManager permissions) { }
+
+  /** Builds a fresh workspace binding; used at startup and when switching workspaces in-process. */
+  public interface WorkspaceFactory { Workspace create(java.nio.file.Path cwd); }
+
+  private volatile java.nio.file.Path cwd;
   private volatile RuntimeConfig runtime;
-  private final ToolRegistry tools;
+  private volatile ToolRegistry tools;
   private volatile ModelAdapter model;
-  private final PermissionManager permissions;
+  private volatile PermissionManager permissions;
   private final WebPermissionBroker permissionBroker = new WebPermissionBroker();
-  private final SessionStore sessions;
-  private final GitWorktreeService worktrees;
+  private volatile SessionStore sessions;
+  private volatile GitWorktreeService worktrees;
+  private final WorkspaceFactory factory;
   private final Map<String, Conversation> conversations = new ConcurrentHashMap<>();
   private final Map<OutputStream, Object> subscribers = new ConcurrentHashMap<>();
   private final ExecutorService turns = Executors.newCachedThreadPool(r -> {
     Thread t = new Thread(r, "codeauto-web-turn"); t.setDaemon(true); return t;
   });
+  private final java.util.concurrent.ScheduledExecutorService scheduler =
+      Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "codeauto-web-liveness"); t.setDaemon(true); return t;
+      });
+  private final java.util.concurrent.atomic.AtomicLong clientEpoch = new java.util.concurrent.atomic.AtomicLong();
+  private volatile boolean exitWhenNoClients;
   private HttpServer server;
+
+  public CodeAutoWebServer(Workspace initial, WorkspaceFactory factory) {
+    this.factory = factory;
+    bind(initial);
+    this.permissionBroker.onRequest(approval -> publish("permission_request", approval.sessionId(),
+        permissionJson(approval)));
+  }
+
+  /** Client-shell mode: exit once the last connected Web client has been gone for a grace period. */
+  public void enableClientExit() { this.exitWhenNoClients = true; }
+
+  private void clientDisconnected() {
+    if (!exitWhenNoClients) return;
+    long epoch = clientEpoch.incrementAndGet();
+    scheduler.schedule(() -> {
+      if (exitWhenNoClients && clientEpoch.get() == epoch && subscribers.isEmpty()) {
+        System.out.println("CodeAuto 客户端已断开，正在退出…");
+        System.exit(0);
+      }
+    }, 5, java.util.concurrent.TimeUnit.SECONDS);
+  }
 
   public CodeAutoWebServer(java.nio.file.Path cwd, RuntimeConfig runtime, ToolRegistry tools,
       ModelAdapter model, PermissionManager permissions) {
-    this.cwd = cwd.toAbsolutePath().normalize(); this.runtime = runtime; this.tools = tools;
-    this.model = model; this.permissions = permissions; this.sessions = new SessionStore(this.cwd);
+    this(new Workspace(cwd, runtime, tools, model, permissions),
+        workspace -> new Workspace(workspace, runtime, tools, model, permissions));
+  }
+
+  private void bind(Workspace workspace) {
+    this.cwd = workspace.cwd().toAbsolutePath().normalize();
+    this.runtime = workspace.runtime();
+    this.tools = workspace.tools();
+    this.model = workspace.model();
+    this.permissions = workspace.permissions();
+    this.sessions = new SessionStore(this.cwd);
     this.worktrees = new GitWorktreeService(this.cwd);
-    this.permissionBroker.onRequest(approval -> publish("permission_request", approval.sessionId(),
-        permissionJson(approval)));
   }
 
   public synchronized int start(int requestedPort) throws IOException {
@@ -125,6 +168,8 @@ public final class CodeAutoWebServer implements AutoCloseable {
       if ("GET".equals(exchange.getRequestMethod()) && "/vendor/chart.umd.min.js".equals(path)) { resource(exchange, "web/vendor/chart.umd.min.js", "text/javascript; charset=utf-8"); return; }
       if ("GET".equals(exchange.getRequestMethod()) && "/vendor/CHART_JS_LICENSE.txt".equals(path)) { resource(exchange, "web/vendor/CHART_JS_LICENSE.txt", "text/plain; charset=utf-8"); return; }
       if ("GET".equals(exchange.getRequestMethod()) && "/api/state".equals(path)) { json(exchange, state()); return; }
+      if ("GET".equals(exchange.getRequestMethod()) && "/api/fs/dirs".equals(path)) { json(exchange, listDirectories(queryParameter(exchange.getRequestURI().getRawQuery(), "path"))); return; }
+      if ("POST".equals(exchange.getRequestMethod()) && "/api/workspace/switch".equals(path)) { json(exchange, switchWorkspace(MAPPER.readTree(exchange.getRequestBody()))); return; }
       if ("GET".equals(exchange.getRequestMethod()) && "/api/settings".equals(path)) { json(exchange, settings()); return; }
       if ("GET".equals(exchange.getRequestMethod()) && "/api/worktrees".equals(path)) { json(exchange, worktreeState()); return; }
       if ("GET".equals(exchange.getRequestMethod()) && "/api/worktrees/graph".equals(path)) { json(exchange, worktreeGraphJson()); return; }
@@ -371,7 +416,7 @@ public final class CodeAutoWebServer implements AutoCloseable {
     return state().put("active", next);
   }
 
-  private boolean startTurn(String id, String content) {
+  private synchronized boolean startTurn(String id, String content) {
     Conversation c = conversation(id); final int turnStartIndex; synchronized (c) { if (c.running) return false; c.awaitingUserQuestion = null; turnStartIndex = c.messages.size(); c.running = true; c.turns++; c.messages.add(new ChatMessage.UserMessage(content)); if (c.turns == 1 && !c.titleLocked) { c.title = titleFor(content); try { sessions.rename(id, c.title); } catch (Exception ignored) {} } c.updatedAt = Instant.now(); }
     publish("user_message", id, MAPPER.createObjectNode().put("content", content));
     turns.submit(() -> {
@@ -445,6 +490,57 @@ public final class CodeAutoWebServer implements AutoCloseable {
     ArrayNode edges = out.putArray("edges"); for (var edge : graph.edges()) edges.addObject().put("child", edge.child()).put("parent", edge.parent());
     ObjectNode branches=out.putObject("branches"); graph.branches().forEach(branches::put);
     ObjectNode remoteBranches=out.putObject("remoteBranches"); graph.remoteBranches().forEach(remoteBranches::put); return out;
+  }
+
+  private ObjectNode listDirectories(String requested) {
+    Path base = cwd;
+    if (requested != null && !requested.isBlank()) {
+      try {
+        Path candidate = Path.of(requested).toAbsolutePath().normalize();
+        if (Files.isDirectory(candidate)) base = candidate;
+      } catch (Exception ignored) {
+        // A malformed path falls back to the current workspace.
+      }
+    }
+    ObjectNode out = MAPPER.createObjectNode().put("path", base.toString());
+    Path parent = base.getParent();
+    if (parent != null) out.put("parent", parent.toString()); else out.putNull("parent");
+    ArrayNode roots = out.putArray("roots");
+    for (File root : File.listRoots()) roots.add(root.getAbsolutePath());
+    ArrayNode dirs = out.putArray("dirs");
+    try (var stream = Files.list(base)) {
+      stream.filter(Files::isDirectory)
+          .sorted(Comparator.comparing(dir -> dir.getFileName().toString().toLowerCase()))
+          .forEach(dir -> {
+            ObjectNode item = dirs.addObject();
+            item.put("name", dir.getFileName().toString());
+            item.put("path", dir.toString());
+            boolean hidden = false;
+            try { hidden = Files.isHidden(dir); } catch (Exception ignored) { }
+            item.put("hidden", hidden);
+          });
+    } catch (IOException | SecurityException unreadable) {
+      out.put("error", "无法读取该目录：" + (unreadable.getMessage() == null ? unreadable.getClass().getSimpleName() : unreadable.getMessage()));
+    }
+    return out;
+  }
+
+  private synchronized ObjectNode switchWorkspace(JsonNode body) {
+    String requested = body == null ? "" : body.path("path").asText("");
+    if (requested.isBlank()) throw new IllegalArgumentException("请选择一个工作区目录");
+    Path selected = Path.of(requested).toAbsolutePath().normalize();
+    if (!Files.isDirectory(selected)) throw new IllegalArgumentException("目录不存在：" + selected);
+    if (selected.equals(cwd)) throw new IllegalStateException("该目录已经是当前工作区");
+    if (factory == null) throw new IllegalStateException("当前启动方式不支持切换工作区，请使用 --cwd 重新启动");
+    if (conversations.values().stream().anyMatch(conversation -> conversation.running)) {
+      throw new IllegalStateException("Agent 正在工作，请等待本轮结束后再切换工作区");
+    }
+    bind(factory.create(selected));
+    conversations.clear();
+    permissionBroker.reset();
+    loadPersistedSessions();
+    broadcast("workspace_changed", MAPPER.createObjectNode().put("workspace", cwd.toString()));
+    return MAPPER.createObjectNode().put("ok", true).put("workspace", cwd.toString()).put("message", "已切换到工作区：" + cwd);
   }
 
   private void handleGit(HttpExchange exchange, String path) throws IOException {
@@ -779,9 +875,10 @@ public final class CodeAutoWebServer implements AutoCloseable {
     exchange.sendResponseHeaders(200, bytes.length); try (OutputStream outStream = exchange.getResponseBody()) { outStream.write(bytes); }
   }
 
-  private void events(HttpExchange exchange) throws IOException { exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8"); exchange.getResponseHeaders().set("Cache-Control", "no-cache"); exchange.getResponseHeaders().set("Connection", "keep-alive"); exchange.sendResponseHeaders(200, 0); OutputStream out=exchange.getResponseBody(); subscribers.put(out, new Object()); try { out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8)); out.flush(); while(true){ Thread.sleep(15000); out.write(": ping\n\n".getBytes(StandardCharsets.UTF_8)); out.flush(); } } catch(Exception ignored){} finally { subscribers.remove(out); try{out.close();}catch(Exception ignored){} } }
+  private void events(HttpExchange exchange) throws IOException { exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8"); exchange.getResponseHeaders().set("Cache-Control", "no-cache"); exchange.getResponseHeaders().set("Connection", "keep-alive"); exchange.sendResponseHeaders(200, 0); OutputStream out=exchange.getResponseBody(); subscribers.put(out, new Object()); clientEpoch.incrementAndGet(); try { out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8)); out.flush(); while(true){ Thread.sleep(4000); out.write(": ping\n\n".getBytes(StandardCharsets.UTF_8)); out.flush(); } } catch(Exception ignored){} finally { subscribers.remove(out); try{out.close();}catch(Exception ignored){} clientDisconnected(); } }
 
   private void publish(String type, String sessionId, JsonNode payload) { ObjectNode e=MAPPER.createObjectNode().put("eventId",UUID.randomUUID().toString()).put("time",Instant.now().toString()).put("type",type).put("sessionId",sessionId).set("payload",payload); Conversation c=conversation(sessionId); if(c!=null){synchronized(c){c.trace.add(e.deepCopy());}} persistEvaluationEvent(e); byte[] bytes=("event: agent_event\ndata: "+e.toString()+"\n\n").getBytes(StandardCharsets.UTF_8); for(OutputStream out:subscribers.keySet()){ try{synchronized(out){out.write(bytes);out.flush();}}catch(Exception ex){subscribers.remove(out);}} }
+  private void broadcast(String type, JsonNode payload) { ObjectNode e=MAPPER.createObjectNode().put("eventId",UUID.randomUUID().toString()).put("time",Instant.now().toString()).put("type",type).put("sessionId","").set("payload",payload); byte[] bytes=("event: agent_event\ndata: "+e.toString()+"\n\n").getBytes(StandardCharsets.UTF_8); for(OutputStream out:subscribers.keySet()){ try{synchronized(out){out.write(bytes);out.flush();}}catch(Exception ex){subscribers.remove(out);}} }
 
   private Path evaluationPath(String sessionId) { return cwd.resolve(".codeauto").resolve("evaluation").resolve("sessions").resolve(sessionId + ".jsonl"); }
 
@@ -830,6 +927,6 @@ public final class CodeAutoWebServer implements AutoCloseable {
   private static void resource(HttpExchange e,String name,String type)throws IOException{var in=CodeAutoWebServer.class.getClassLoader().getResourceAsStream(name);if(in==null){error(e,404,"resource not found");return;}byte[] b=in.readAllBytes();e.getResponseHeaders().set("Content-Type",type);e.getResponseHeaders().set("Cache-Control","no-store");e.sendResponseHeaders(200,b.length);try(OutputStream o=e.getResponseBody()){o.write(b);}}
   private static void json(HttpExchange e,JsonNode n)throws IOException{byte[] b=n.toString().getBytes(StandardCharsets.UTF_8);e.getResponseHeaders().set("Content-Type","application/json; charset=utf-8");e.sendResponseHeaders(200,b.length);try(OutputStream o=e.getResponseBody()){o.write(b);}}
   private static void error(HttpExchange e,int status,String message)throws IOException{ObjectNode n=MAPPER.createObjectNode().put("ok",false).put("error",message==null?"error":message);byte[] b=n.toString().getBytes(StandardCharsets.UTF_8);e.getResponseHeaders().set("Content-Type","application/json; charset=utf-8");e.sendResponseHeaders(status,b.length);try(OutputStream o=e.getResponseBody()){o.write(b);}}
-  @Override public synchronized void close(){if(server!=null)server.stop(0);permissionBroker.close();turns.shutdownNow();for(OutputStream o:subscribers.keySet()){try{o.close();}catch(Exception ignored){}}subscribers.clear();}
+  @Override public synchronized void close(){if(server!=null)server.stop(0);permissionBroker.close();turns.shutdownNow();scheduler.shutdownNow();for(OutputStream o:subscribers.keySet()){try{o.close();}catch(Exception ignored){}}subscribers.clear();}
   private final class Conversation { final String id; String title = "会话"; String parentSessionId; Integer forkBoundary; Path executionCwd=cwd; Path worktreePath; String gitBranch; String baseCommit; String awaitingUserQuestion; List<ChatMessage> messages=new ArrayList<>(); List<JsonNode> trace=new ArrayList<>(); int savedCount=1,turns,toolCalls,errors,compactions,contextTokens; boolean running,titleLocked,worktreeUnavailable; Instant updatedAt=Instant.now(); Conversation(String id){this.id=id;} }
 }

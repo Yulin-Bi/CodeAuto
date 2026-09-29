@@ -70,6 +70,9 @@ public class CodeAutoCli implements Runnable {
   @CommandLine.Option(names = "--choose-folder", description = "Choose the working directory with a folder picker before starting")
   boolean chooseFolder;
 
+  @CommandLine.Option(names = "--client-exit", hidden = true, description = "Exit the Web server once the last connected client disconnects")
+  boolean clientExit;
+
   @CommandLine.Option(names = "--max-steps", defaultValue = "128", description = "Maximum model/tool steps per turn")
   int maxSteps;
 
@@ -104,12 +107,11 @@ public class CodeAutoCli implements Runnable {
   @Override
   public void run() {
     Path cwd = resolveCwd();
-    var runtime = new ConfigLoader().load(cwd);
-    runtime = ConfigLoader.applyCliOverrides(runtime,
-        new ConfigLoader.CliOverrides(modelOverride,
-            maxTokensOverride == null ? 0 : maxTokensOverride,
-            contextWindowOverride == null ? 0 : contextWindowOverride,
-            stripThinkingOverride));
+    ConfigLoader.CliOverrides overrides = new ConfigLoader.CliOverrides(modelOverride,
+        maxTokensOverride == null ? 0 : maxTokensOverride,
+        contextWindowOverride == null ? 0 : contextWindowOverride,
+        stripThinkingOverride);
+    var runtime = ConfigLoader.applyCliOverrides(new ConfigLoader().load(cwd), overrides);
     PermissionManager permissions = new PermissionManager(cwd);
     ToolRegistry tools = DefaultTools.create();
     tools.addTools(new McpService(new com.codeauto.manage.ManagementStore(), cwd).createBackedTools());
@@ -118,9 +120,38 @@ public class CodeAutoCli implements Runnable {
         : new AnthropicModelAdapter(runtime, tools);
     if (web) {
       if (tui) throw new CommandLine.ParameterException(new CommandLine(this), "--web and --tui cannot be used together");
-      try (CodeAutoWebServer webServer = new CodeAutoWebServer(cwd, runtime, tools, model, permissions)) {
+      CodeAutoWebServer.WorkspaceFactory workspaceFactory = workspace -> {
+        var workspaceRuntime = ConfigLoader.applyCliOverrides(new ConfigLoader().load(workspace), overrides);
+        ToolRegistry workspaceTools = DefaultTools.create();
+        workspaceTools.addTools(new McpService(new com.codeauto.manage.ManagementStore(), workspace).createBackedTools());
+        ModelAdapter workspaceModel = mock || "mock".equalsIgnoreCase(workspaceRuntime.model())
+            ? new MockModelAdapter()
+            : new AnthropicModelAdapter(workspaceRuntime, workspaceTools);
+        return new CodeAutoWebServer.Workspace(workspace, workspaceRuntime, workspaceTools, workspaceModel,
+            new PermissionManager(workspace));
+      };
+      try (CodeAutoWebServer webServer = new CodeAutoWebServer(workspaceFactory.create(cwd), workspaceFactory)) {
         int port = webServer.start(webPort);
-        System.out.println("CodeAuto Web UI: http://127.0.0.1:" + port + "/");
+        String webUrl = "http://127.0.0.1:" + port + "/";
+        System.out.println("CodeAuto Web UI: " + webUrl);
+        Process shell = openAppShell(webUrl);
+        if (clientExit || shell != null) webServer.enableClientExit();
+        if (shell != null) {
+          Thread watcher = new Thread(() -> {
+            long startedAt = System.currentTimeMillis();
+            try {
+              shell.waitFor();
+            } catch (InterruptedException interrupted) {
+              Thread.currentThread().interrupt();
+              return;
+            }
+            if (System.currentTimeMillis() - startedAt < 3000) return;
+            System.out.println("CodeAuto 客户端窗口已关闭，正在退出…");
+            System.exit(0);
+          }, "codeauto-shell-watcher");
+          watcher.setDaemon(true);
+          watcher.start();
+        }
         System.out.println("Press Ctrl+C to stop.");
         try { new java.util.concurrent.CountDownLatch(1).await(); }
         catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
@@ -518,6 +549,67 @@ public class CodeAutoCli implements Runnable {
     int result = chooser.showOpenDialog(null);
     if (result != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) return null;
     return chooser.getSelectedFile().toPath().toAbsolutePath().normalize();
+  }
+
+  private static Process openAppShell(String url) {
+    if (java.awt.GraphicsEnvironment.isHeadless()) return null;
+    Path browser = chromiumExecutable();
+    if (browser == null) { openBrowser(url); return null; }
+    try {
+      Path profile = com.codeauto.config.RuntimeConfig.homeDir().resolve("shell-profile");
+      Files.createDirectories(profile);
+      List<String> command = new ArrayList<>();
+      command.add(browser.toString());
+      command.add("--app=" + url);
+      command.add("--user-data-dir=" + profile);
+      command.add("--no-first-run");
+      command.add("--no-default-browser-check");
+      command.add("--window-size=1440,900");
+      return new ProcessBuilder(command).start();
+    } catch (Exception ignored) {
+      openBrowser(url);
+      return null;
+    }
+  }
+
+  private static Path chromiumExecutable() {
+    String os = System.getProperty("os.name", "").toLowerCase();
+    List<String> candidates = new ArrayList<>();
+    if (os.contains("win")) {
+      String pf = System.getenv("ProgramFiles");
+      String pf86 = System.getenv("ProgramFiles(x86)");
+      String local = System.getenv("LOCALAPPDATA");
+      if (pf86 != null) candidates.add(pf86 + "\\Microsoft\\Edge\\Application\\msedge.exe");
+      if (pf != null) candidates.add(pf + "\\Microsoft\\Edge\\Application\\msedge.exe");
+      if (pf != null) candidates.add(pf + "\\Google\\Chrome\\Application\\chrome.exe");
+      if (pf86 != null) candidates.add(pf86 + "\\Google\\Chrome\\Application\\chrome.exe");
+      if (local != null) candidates.add(local + "\\Google\\Chrome\\Application\\chrome.exe");
+    } else if (os.contains("mac")) {
+      candidates.add("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
+      candidates.add("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge");
+    } else {
+      candidates.add("/usr/bin/google-chrome");
+      candidates.add("/usr/bin/microsoft-edge");
+      candidates.add("/usr/bin/chromium");
+      candidates.add("/usr/bin/chromium-browser");
+    }
+    for (String candidate : candidates) {
+      Path path = Path.of(candidate);
+      if (Files.isRegularFile(path)) return path;
+    }
+    return null;
+  }
+
+  private static void openBrowser(String url) {
+    try {
+      if (!java.awt.Desktop.isDesktopSupported()) return;
+      java.awt.Desktop desktop = java.awt.Desktop.getDesktop();
+      if (desktop.isSupported(java.awt.Desktop.Action.BROWSE)) {
+        desktop.browse(java.net.URI.create(url));
+      }
+    } catch (Exception ignored) {
+      // The URL remains available in stdout when a desktop browser is unavailable.
+    }
   }
 
 
