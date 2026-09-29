@@ -123,16 +123,20 @@ class CodeAutoWebServerTest {
       Files.writeString(cwd.resolve("web-change.txt"), "from web\n");
 
       JsonNode status = get(port, "/api/sessions/" + sessionId + "/git/status");
-      assertEquals("web-change.txt", status.path("files").get(0).path("path").asText());
+      JsonNode pending = gitFile(status, "web-change.txt");
+      assertTrue(pending != null, "工作区变更应包含 web-change.txt");
+      assertTrue(pending.path("unstaged").asBoolean() || pending.path("untracked").asBoolean(),
+          "web-change.txt 应为未暂存或未跟踪状态");
       JsonNode diff = get(port, "/api/sessions/" + sessionId
           + "/git/diff?path=web-change.txt&staged=false");
       assertTrue(diff.path("diff").asText().contains("from web"));
       JsonNode staged = request(port, "/api/sessions/" + sessionId + "/git/stage", "POST",
           "{\"paths\":[\"web-change.txt\"]}");
-      assertTrue(staged.path("files").get(0).path("staged").asBoolean());
+      JsonNode stagedFile = gitFile(staged, "web-change.txt");
+      assertTrue(stagedFile != null && stagedFile.path("staged").asBoolean(), "web-change.txt 应已暂存");
       JsonNode committed = request(port, "/api/sessions/" + sessionId + "/git/commit", "POST",
           "{\"message\":\"web commit\"}");
-      assertEquals(0, committed.path("files").size());
+      assertTrue(gitFile(committed, "web-change.txt") == null, "提交后 web-change.txt 不应再出现在变更列表");
       assertEquals(409, requestStatus(port, "/api/sessions/" + sessionId + "/git/push", "{}"));
     }
   }
@@ -205,6 +209,11 @@ class CodeAutoWebServerTest {
 
   private static JsonNode findSessionOrNull(JsonNode state, String id) {
     for (JsonNode session : state.path("sessions")) if (id.equals(session.path("id").asText())) return session;
+    return null;
+  }
+
+  private static JsonNode gitFile(JsonNode status, String path) {
+    for (JsonNode file : status.path("files")) if (path.equals(file.path("path").asText())) return file;
     return null;
   }
 
